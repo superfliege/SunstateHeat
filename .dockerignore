@@ -1,0 +1,10 @@
+node_modules
+dist
+data
+.git
+.github
+deploy
+scripts/_tmp-*
+*.log
+start.cmd
+start.ps1

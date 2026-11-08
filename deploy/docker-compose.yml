@@ -1,0 +1,34 @@
+# Läuft auf tabsync.de unter /server/sunstateheat hinter dem Traefik aus /server/web.
+# Das Image wird von GitHub Actions gebaut und per `docker load` geliefert.
+# Spielstände (players.json, transactions.jsonl) liegen in /server/sunstateheat/data.
+services:
+  sunstateheat:
+    image: sunstateheat:latest
+    container_name: sunstateheat
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 20s
+    environment:
+      NODE_ENV: production
+      PORT: 2567
+      DATA_DIR: /data
+    volumes:
+      - ./data:/data
+    networks:
+      - web_proxy
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.sunstateheat.rule=Host(`sunstateheat.tabsync.de`)"
+      - "traefik.http.routers.sunstateheat.entrypoints=websecure"
+      - "traefik.http.routers.sunstateheat.tls.certresolver=myresolver"
+      - "traefik.http.services.sunstateheat.loadbalancer.server.port=2567"
+
+networks:
+  web_proxy:
+    external: true

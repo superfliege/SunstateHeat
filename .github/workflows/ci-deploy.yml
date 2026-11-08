@@ -1,0 +1,67 @@
+name: CI & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Prüfen & bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy:
+    name: Deploy nach sunstateheat.tabsync.de
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://sunstateheat.tabsync.de
+    env:
+      TARGET: deploy@tabsync.de
+      APP_DIR: /server/sunstateheat
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Docker-Image bauen
+        run: docker build --label org.opencontainers.image.revision=${{ github.sha }} -t sunstateheat:latest .
+
+      - name: SSH einrichten
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Image und Compose-Datei übertragen
+        run: |
+          docker save sunstateheat:latest | gzip | ssh "$TARGET" 'gunzip | docker load'
+          ssh "$TARGET" "mkdir -p $APP_DIR/data"
+          scp deploy/docker-compose.yml "$TARGET:$APP_DIR/docker-compose.yml"
+
+      - name: Container neu starten
+        run: |
+          ssh "$TARGET" "cd $APP_DIR && docker compose up -d --remove-orphans && docker image prune -f"
+
+      - name: Healthcheck
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS -o /dev/null https://sunstateheat.tabsync.de/; then echo "OK"; exit 0; fi
+            sleep 3
+          done
+          echo "Sunstate Heat antwortet nicht" && exit 1

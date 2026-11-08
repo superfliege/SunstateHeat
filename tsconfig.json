@@ -12,5 +12,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["client/src", "server/src", "shared/src", "scripts/*.ts", "vite.config.ts"]
+  "include": ["client/src", "server/src", "shared/src", "scripts/*.ts", "vite.config.ts"],
+  "exclude": ["scripts/_tmp-*.ts"]
 }
