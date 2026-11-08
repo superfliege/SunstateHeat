@@ -147,7 +147,7 @@ export class Game {
     this.shops = generateShops(this.map);
     this.shopsView = new ShopsView(this.map, this.shops.map((s) => ({ x: s.x, z: s.z, name: s.name, color: SHOP_COLORS[s.type] })));
     this.phones = payphones(this.map);
-    this.phonesView = new ShopsView(this.map, this.phones.map((p) => ({ x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
+    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.play('toggle', 0.5); };
@@ -565,6 +565,8 @@ export class Game {
     while (this.acc >= SIM_DT && steps < MAX_STEPS_PER_FRAME) {
       const s = this.input.sample(this.predictor.inVehicle);
       let buttons = s.buttons;
+      // Rennstart: Fahrzeug steht bis zum Countdown-Ende (Server erzwingt dasselbe)
+      if (this.questState?.freeze && this.predictor.inVehicle) { s.ax = 0; s.ay = 0; buttons = Btn.BRAKE; }
       if (this.unflipFrames > 0) { buttons |= Btn.UNFLIP; this.unflipFrames--; }
       this.predictor.step(s.ax, s.ay, buttons, SIM_DT);
       this.buttons = buttons;
@@ -874,7 +876,7 @@ export class Game {
       } else {
         const shop = this.shopNearMe();
         const ph = this.phoneNearMe();
-        this.hud.setHint(shop ? `<b>F</b> ${shop.name}` : ph ? '<b>F</b> Missionstelefon' : null);
+        this.hud.setHint(shop ? `<b>F</b> ${shop.name}` : ph ? (ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
       }
     }
   }
@@ -883,8 +885,8 @@ export class Game {
     const dots: MapDot[] = [];
     for (const w of this.map.workshops) dots.push({ x: w.x, z: w.z, color: '#2af0e6', size: 3, ring: true });
     for (const s of this.shops) dots.push({ x: s.x, z: s.z, color: s.type === 'ammo' ? '#ff6a6a' : s.type === 'paint' ? '#c98bff' : '#4fd16b', size: 2, ring: true });
-    for (const ph of this.phones) dots.push({ x: ph.x, z: ph.z, color: '#ffe14d', size: 3, ring: true });
-    for (const t of this.questState?.targets ?? []) dots.push({ x: t[0], z: t[1], color: t[3] === 5 ? '#ff3d5a' : '#4dff9a', size: 4, ring: t[3] !== 5 });
+    for (const ph of this.phones) dots.push({ x: ph.x, z: ph.z, color: ph.race ? '#ff8a3a' : '#ffe14d', size: 3, ring: true });
+    for (const t of this.questState?.targets ?? []) dots.push({ x: t[0], z: t[1], color: t[3] === 5 ? '#ff3d5a' : t[3] === 2 ? '#ffd23a' : t[3] === 7 ? '#ffffff' : '#4dff9a', size: 4, ring: t[3] !== 5 });
     for (const c of this.copDots.values()) dots.push({ x: c[0], z: c[1], color: '#2a6bff', size: 3 });
     for (const v of vehicles.values()) {
       if (v.driver >= 0) continue;

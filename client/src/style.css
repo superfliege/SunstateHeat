@@ -217,3 +217,19 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 .pn-rep > span { width: 130px; } .pn-rep .bar { flex: 1; height: 10px; background: rgba(0,0,0,0.5); border-radius: 6px; position: relative; overflow: hidden; }
 .pn-rep .bar i { position: absolute; top: 0; bottom: 0; }
 .pn-state { font-size: 12px; opacity: 0.8; min-width: 90px; text-align: right; }
+
+/* Straßenrennen: Platz/Runde im Quest-Panel und großer Countdown */
+#quest-panel .race { display: flex; align-items: baseline; gap: 12px; margin: 2px 0 4px; font-family: var(--mono); color: #fff; }
+#quest-panel .race .place { font-size: 30px; font-weight: bold; color: #ffd23a; text-shadow: 0 0 8px rgba(255, 210, 58, 0.6); }
+#race-count {
+  position: fixed; left: 50%; top: 32%; transform: translate(-50%, -50%); z-index: 30; pointer-events: none;
+  font: bold 140px/1 'Trebuchet MS', sans-serif; color: #ffd23a; letter-spacing: 4px;
+  text-shadow: 0 0 24px rgba(255, 140, 40, 0.8), 0 6px 0 #6a2b00;
+  animation: race-pop 0.9s ease-out forwards;
+}
+#race-count.go { color: #4dff9a; text-shadow: 0 0 24px rgba(77, 255, 154, 0.8), 0 6px 0 #0a4a2a; }
+@keyframes race-pop {
+  0% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.85; }
+}

@@ -10,7 +10,7 @@ Browser-Multiplayer-Open-World (Three.js-Client, Node/WebSocket-Server, gemeinsa
 
 ## Struktur
 - `shared/src/` – Code für Client **und** Server: `protocol.ts` (Nachrichten), `constants.ts`, `balance.ts`, `sim/` (Fahrzeugphysik; Handling-Werte in `sim/handling.ts`), `world/` (prozedurale Weltgenerierung, `palmara.ts`, `mapgen.ts`, `roads.ts`, `city.ts`).
-- `server/src/` – `index.ts` (HTTP + WS `/ws`, liefert in Prod `dist/client` aus), `rooms/WorldRoom.ts` (Spiel-Loop, Dev-Befehle), `sim/Traffic.ts`, `quests/`, `services/PlayerStore.ts` (JSON-Dateien in `DATA_DIR`, Standard `data/`).
+- `server/src/` – `index.ts` (HTTP + WS `/ws`, liefert in Prod `dist/client` aus), `rooms/WorldRoom.ts` (Spiel-Loop, Dev-Befehle), `sim/Traffic.ts`, `quests/` (QuestEngine + `Races.ts` Straßenrennen; Strecken in `shared/src/races.ts`), `services/PlayerStore.ts` (JSON-Dateien in `DATA_DIR`, Standard `data/`).
 - `client/src/` – `game/Game.ts` (Hauptschleife), `render/` (Three.js-Aufbau), `net/Network.ts`, `ui/`, `audio/`, `input/`.
 
 ## Befehle

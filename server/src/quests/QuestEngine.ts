@@ -429,6 +429,9 @@ export class QuestEngine {
   }
 
   // ------------------------------------------------------------------ Anzeige
+  /** Spieler hat einen aktiven Auftrag. */
+  isActive(playerId: number) { return this.byPlayer.has(playerId); }
+
   isCarrying(playerId: number): boolean {
     const run = this.byPlayer.get(playerId);
     return !!run && run.pickups.length > 0;

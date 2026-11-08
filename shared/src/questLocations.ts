@@ -1,12 +1,14 @@
 // Benannte Orte und Missionstelefone für Quests. Alles wird deterministisch aus der Karte
 // abgeleitet (Client und Server erzeugen dieselben Punkte); Wasser-Orte per Suche.
 import { mulberry32 } from './math';
+import { raceTracks } from './races';
 import { findFootSpot } from './sim/movement';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
 
 export interface Point { x: number; z: number }
-export interface PhoneDef { id: string; name: string; x: number; z: number }
+/** race = Renntelefon (Start eines Straßenrennens, siehe races.ts). */
+export interface PhoneDef { id: string; name: string; x: number; z: number; race?: boolean }
 
 const isWater = (t: number) => t === Tile.WATER || t === Tile.SWAMP;
 
@@ -139,5 +141,6 @@ export function payphones(map: WorldMap): PhoneDef[] {
     at('dustline', 'Telefon Cane Ridge', loc.dustlineCamp, -10, 6),
     at('okeefield', 'Telefon Sunny Acres', dry, 12, -8),
     at('gator', 'Telefon Rennstrecke', loc.stiltHouse, -14, 10),
+    ...raceTracks(map).map((t) => ({ id: t.def.id, name: `Straßenrennen: ${t.def.name}`, x: t.phone.x, z: t.phone.z, race: true })),
   ];
 }

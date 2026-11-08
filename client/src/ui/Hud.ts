@@ -19,6 +19,8 @@ export class Hud {
   private lastHint: string | null = null;
   private frames = 0;
   private fpsTime = 0;
+  private countEl: HTMLDivElement | null = null;
+  private lastCount: number | undefined = undefined;
 
   /** Zone (mit Banner beim Wechsel) und, falls vorhanden, das Viertel davor. */
   setZone(zone: number, district: string | null = null) {
@@ -53,16 +55,47 @@ export class Hud {
     if (html) this.hintEl.innerHTML = html; // nur statische, eigene Texte
   }
 
-  /** Auftrags-Anzeige: Titel, aktuelle Stufe, Fortschritt, Timer. */
+  /** Großer Renn-Countdown in der Bildmitte (3, 2, 1, LOS!). */
+  private setCountdown(n: number | undefined) {
+    if (n === this.lastCount) return;
+    this.lastCount = n;
+    if (!this.countEl) {
+      this.countEl = document.createElement('div');
+      this.countEl.id = 'race-count';
+      document.body.append(this.countEl);
+    }
+    const el = this.countEl;
+    el.classList.toggle('hidden', n === undefined);
+    if (n === undefined) return;
+    el.textContent = n > 0 ? String(n) : 'LOS!';
+    el.classList.toggle('go', n <= 0);
+    // Animation neu starten
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  }
+
+  /** Auftrags-Anzeige: Titel, aktuelle Stufe, Fortschritt, Timer (bei Rennen zusätzlich Platz/Runde). */
   setQuestState(q: QuestState | null) {
-    const sig = q ? JSON.stringify([q.id, q.stage, q.prog, q.timer]) : '';
+    this.setCountdown(q?.count);
+    const sig = q ? JSON.stringify([q.id, q.stage, q.prog, q.timer, q.race]) : '';
     if (sig === this.lastQuestHtml) return;
     this.lastQuestHtml = sig;
     this.questEl.classList.toggle('hidden', !q);
     if (!q) { this.questEl.replaceChildren(); return; }
     const h = document.createElement('h3');
-    h.textContent = `${q.title} (${q.stageIdx + 1}/${q.stageCount})`;
+    h.textContent = q.stageCount > 1 ? `${q.title} (${q.stageIdx + 1}/${q.stageCount})` : q.title;
     const els: HTMLElement[] = [h];
+    if (q.race) {
+      const r = document.createElement('div');
+      r.className = 'race';
+      const place = document.createElement('span');
+      place.className = 'place';
+      place.textContent = `${q.race.place}/${q.race.field}`;
+      r.append(place);
+      if (q.race.laps > 1) { const lap = document.createElement('span'); lap.textContent = `Runde ${q.race.lap}/${q.race.laps}`; r.append(lap); }
+      els.push(r);
+    }
     if (q.timer >= 0) {
       const t = document.createElement('div');
       t.className = 'timer';

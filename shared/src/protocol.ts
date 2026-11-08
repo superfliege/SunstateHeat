@@ -109,7 +109,7 @@ export interface PlayerStats {
   arrest: number;
 }
 
-/** Aktiver Auftrag des Spielers (privat). targets: [x, z, Radius, Art] – Art: 1 Ziel, 2 Checkpoint, 3 Sammelobjekt, 4 Schützling, 5 Gegner, 6 Fahrzeug. */
+/** Aktiver Auftrag des Spielers (privat). targets: [x, z, Radius, Art] – Art: 1 Ziel, 2 Checkpoint, 3 Sammelobjekt, 4 Schützling, 5 Gegner, 6 Fahrzeug, 7 Ziellinie (Rennen). */
 export interface QuestState {
   id: string;
   title: string;
@@ -120,6 +120,12 @@ export interface QuestState {
   /** Restzeit in Sekunden, -1 = kein Zeitlimit */
   timer: number;
   targets: [number, number, number, number][];
+  /** Rennen: Startaufstellung – Fahrzeug steht (Client sendet keine Fahreingaben). */
+  freeze?: boolean;
+  /** Rennen: Countdown-Anzeige (3, 2, 1, 0 = „LOS!“), fehlt = keine Anzeige. */
+  count?: number;
+  /** Rennen: Platz / Starter, Runde / Runden. */
+  race?: { place: number; field: number; lap: number; laps: number };
 }
 
 export interface PhoneQuest {

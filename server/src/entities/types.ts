@@ -91,6 +91,9 @@ export interface ServerVehicle {
   /** Quest-Fahrzeug: Tag und Lauf-ID. */
   qtag?: string;
   qrun?: number;
+  /** Rennwagen: Renn-ID und Besitzer (Spieler-ID, -1 = KI-Fahrer). */
+  race?: number;
+  raceOwner?: number;
   /** Kinematisch geführtes Verkehrsauto (true) oder freie Physik. */
   kinematic: boolean;
 }
