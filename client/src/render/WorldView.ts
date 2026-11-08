@@ -606,6 +606,7 @@ export class WorldView {
     const ch = this.chunkAt(b.x, b.z);
     const ground = this.map.terrainHeight(b.x, b.z);
     const base = Math.max(0, ground);
+    if (b.style === BuildingStyle.Store) { this.buildStore(b, ch, base, ground); return; }
     if (this.kitBuilding(b, ch, base)) return;
     const rnd = this.rnd;
     const style = this.styleAt(b.x, b.z);
@@ -713,6 +714,51 @@ export class WorldView {
     } else if ((style === 'port' || style === 'industrial' || b.style === BuildingStyle.Warehouse) && rnd() < 0.4 && b.d > 4) {
       sideWall('decal_graffiti', 5, 2.4, base + 0.3);
     }
+  }
+
+  /**
+   * Begehbarer Laden (shops.ts): 2 m dicke Wände genau auf dem Kollisionsraster (7x5 Zellen), 1 Zelle
+   * breite Tür in der Front (+z), Boden, Theke, Regale, Dach. Die Wände blenden wie alle Gebäude aus,
+   * sobald sie zwischen Kamera und Spieler liegen.
+   */
+  private buildStore(b: BuildingDef, ch: Chunk, base: number, ground: number) {
+    const rnd = this.rnd;
+    const sv = Math.sin(b.rot), cv = Math.cos(b.rot);
+    const local = (lx: number, lz: number): [number, number] => [b.x + lx * cv + lz * sv, b.z - lx * sv + lz * cv];
+    const y0 = base - 1.2, hh = b.h + 1.2, top = base + b.h;
+    const hw = b.w / 2, hd = b.d / 2; // 7 und 5 m
+    const wallBox = (lx: number, lz: number, w: number, d: number, yy = y0, h = hh) => {
+      const [x, z] = local(lx, lz);
+      ch.solid.box(x, yy, z, w, h, d, b.rot, b.color);
+    };
+    ch.solid.use('facade_shop');
+    wallBox(0, -(hd - 1), b.w, 2); // Rückwand
+    wallBox(-(hw - 1), 0, 2, b.d - 4); // Seitenwände
+    wallBox(hw - 1, 0, 2, b.d - 4);
+    wallBox(-(hw + 1) / 2, hd - 1, hw - 1, 2); // Front links neben der Tür (x −7 … −1)
+    wallBox((hw + 1) / 2, hd - 1, hw - 1, 2); // Front rechts (x 1 … 7)
+    wallBox(0, hd - 1, 2, 2, base + 2.6, b.h - 2.6); // Sturz über der Tür
+    // Dach, Neonkante, Markise und Schild wie bei den übrigen Läden
+    const [rx, rz] = local(0, 0);
+    ch.solid.use('concrete').box(rx, top, rz, b.w, 0.3, b.d, b.rot, 0xf2ece8);
+    ch.neon.box(b.x, top - 0.6, b.z, b.w + 0.3, 0.4, b.d + 0.3, b.rot, 0x4ff2ff);
+    this.awning(ch, b, base);
+    this.sign(ch, b, top + 0.3, 0.9);
+    // Innenraum: heller Boden, Theke an der Rückwand, Regale an den Seiten, Deckenleuchte
+    const fy = Math.max(0.05, ground) + CURB_TOP + 0.04;
+    ch.solid.use('marble').box(rx, fy, rz, b.w - 4, 0.03, b.d - 4, b.rot, 0xffffff);
+    ch.solid.use('flat');
+    const [tx, tz] = local(0, -2.2);
+    ch.solid.box(tx, fy, tz, 6, 1.1, 0.9, b.rot, 0xcfa56b, 0xf5e6c4);
+    for (const sx of [-4.2, 4.2]) {
+      const [x, z] = local(sx, -0.4);
+      ch.solid.box(x, fy, z, 0.7, 1.9, 4, b.rot, 0x8aa7c0);
+      for (let k = 0; k < 5; k++) { // bunte Ware auf den Regalen
+        const [gx, gz] = local(sx * 0.93, -2 + k * 0.8);
+        ch.solid.box(gx, fy + 0.6 + (k % 2) * 0.7, gz, 0.3, 0.35, 0.5, b.rot, [0xff6a6a, 0xffd23a, 0x4fd16b, 0x3a8dff, 0xc98bff][Math.floor(rnd() * 5)]);
+      }
+    }
+    ch.neon.box(rx, top - 0.3, rz, 5, 0.12, 0.3, b.rot, 0xfff6d8);
   }
 
   /** Gedrehter Quader mit Fassadentextur (Fensterraster) und Dachmaterial (null = kein Deckel). */

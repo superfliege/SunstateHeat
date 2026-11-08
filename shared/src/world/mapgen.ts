@@ -8,6 +8,7 @@ import { CELL, CHUNK, GRID_SIZE, HEIGHT_STEP, NPC_DENSITY, VEHICLE_COLORS, WORLD
 import { mulberry32 } from '../math';
 import { VehicleKind } from '../sim/vehicleDefs';
 import { buildCity } from './city';
+import { placeShops } from '../shops';
 import {
   centroid, orientedRect, pointAt, polygonArea, rasterizePolygon, rasterizePolyline, type Vec2,
 } from './geometry';
@@ -46,6 +47,9 @@ export function generateWorld(seed: number): WorldMap {
     map.workshops.push({ x: c[0], z: c[1], r: 7 });
   }
   map.workshops.push({ ...TRACK_WORKSHOP, r: 7 });
+  // Läden als echte Gebäude (nach Werkstätten, da sie daran hängen); danach Chunk-Index neu
+  placeShops(map);
+  buildChunks(map);
   return map;
 }
 

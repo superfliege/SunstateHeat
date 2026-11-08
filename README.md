@@ -192,8 +192,9 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
 ### Läden, Fahndung, Polizei (M2, Schritt 3)
 
 - **Läden** (F in der Nähe, farbige Markierung + Minimap-Punkt): *24/7 Sunmart* (Essen, Verbandskasten), *Ammo & Ammo*
-  (Waffen, Munition, Westen), *Paint & Pray* (Reparatur, Umlackieren). Standorte werden aus der Karte abgeleitet
-  (`shared/src/shops.ts`), der Server prüft Entfernung, Stufe (Waffen-Freischaltung), Geld und Rucksackplatz.
+  (Waffen, Munition, Westen), *Paint & Pray* (Reparatur, Umlackieren). Sunmart und Ammo & Ammo sind begehbare
+  Gebäude (Tür, Innenraum mit Theke; Marker im Innenraum), Paint & Pray ist nur ein Marker an der Werkstatt.
+  Standorte werden in der Weltgenerierung bestimmt (`placeShops` in `shared/src/shops.ts`), der Server prüft Entfernung, Stufe (Waffen-Freischaltung), Geld und Rucksackplatz.
 - **Inventar** (I): Waffen ausrüsten, Gegenstände benutzen (8 Rucksack-Slots).
 - **Waffenmodelle** in der Hand, Schlag-Schwung und Rückstoß; **Fahrzeugschaden** durch Schüsse (Brand/Explosion bei 0 HP);
   **Drive-by** mit der Pistole (nicht nach hinten).

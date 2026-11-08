@@ -6,6 +6,7 @@ import type { Poly, Vec2 } from './geometry';
 import { pointInPolygon } from './geometry';
 import { Tile } from './tiles';
 import type { Ramp } from './features';
+import type { ShopDef } from '../shops';
 
 export const BuildingStyle = {
   Tower: 0,
@@ -18,6 +19,7 @@ export const BuildingStyle = {
   Container: 7,
   Barn: 8,
   Stilt: 9, // Stelzenhütte in Gator Flats
+  Store: 10, // begehbarer Laden (Hohlgebäude mit Tür, shops.ts)
 } as const;
 
 export interface BuildingDef {
@@ -131,6 +133,8 @@ export class WorldMap {
   clearAreas: [number, number, number, number][] = [];
   /** Werkstätten (Reparatur): Mittelpunkt + Radius. */
   workshops: { x: number; z: number; r: number }[] = [];
+  /** Läden (Sunmart, Ammo & Ammo, Paint & Pray) mit Tür-Position; Gebäude liegen in `buildings` (shops.ts). */
+  shops: ShopDef[] = [];
   chunks: ChunkContent[] = [];
   spawn = { x: 0, z: 0 };
   questStart = { x: 0, z: 0 };
