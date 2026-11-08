@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sunstate Heat</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+
+    <!-- HUD oben -->
+    <div id="hud-top">
+      <div id="hud-zone"></div>
+      <div id="hud-clock"></div>
+      <div id="hud-speed"></div>
+      <div id="hud-money">$0</div>
+    </div>
+    <!-- Spielerwerte -->
+    <div id="hud-stats">
+      <div class="st-row"><span>HP</span><div class="st-bar"><div id="st-hp"></div></div><b id="st-hp-n">100</b></div>
+      <div class="st-row" id="st-armor-row"><span>RÜ</span><div class="st-bar"><div id="st-armor"></div></div><b id="st-armor-n">0</b></div>
+      <div class="st-row"><span id="st-level">Lv 1</span><div class="st-bar xp"><div id="st-xp"></div></div><b id="st-xp-n"></b></div>
+    </div>
+    <div id="hud-weapon"><b id="wp-name">Fäuste</b><span id="wp-ammo"></span><small id="wp-pvp" class="hidden">PvP</small></div>
+    <div id="hud-wanted" class="hidden"><i></i><i></i><i></i><i class="m3"></i></div>
+    <div id="arrest" class="hidden"><span>FESTNAHME …  weglaufen!</span><div><div id="arrest-bar"></div></div></div>
+    <div id="panel" class="hidden"></div>
+    <div id="ko" class="hidden"><h2>AUSGEKNOCKT</h2><p>Respawn im Krankenhaus in <b id="ko-t">15</b> s</p></div>
+    <!-- Fahr-HUD -->
+    <div id="drive-hud" class="hidden">
+      <div class="dh-row"><span id="dh-speed">0</span><small>km/h</small><span id="dh-gear">1</span></div>
+      <div class="dh-bar"><div id="dh-rpm"></div></div>
+      <div id="dh-nitro-wrap" class="dh-bar nitro"><div id="dh-nitro"></div></div>
+      <div class="dh-bar hp"><div id="dh-hp"></div></div>
+    </div>
+    <div id="drift" class="hidden"><span id="drift-pts">0</span><span id="drift-mul">x1</span><small>DRIFT</small></div>
+    <div id="bonus"></div>
+    <div id="quest-panel" class="hidden"></div>
+    <div id="zone-banner" class="hidden"></div>
+    <div id="toasts"></div>
+    <div id="hint" class="hidden"></div>
+    <div id="fps"></div>
+
+    <!-- Zweiter "Bildschirm" im DS-Stil mit Minimap -->
+    <div id="ds-screen">
+      <canvas id="minimap" width="240" height="240"></canvas>
+      <div id="minimap-label">MAP · M = groß</div>
+    </div>
+    <div id="bigmap" class="hidden"><canvas id="bigmap-canvas" width="640" height="640"></canvas></div>
+
+    <!-- Chat -->
+    <div id="chat">
+      <div id="chat-log"></div>
+      <input id="chat-input" class="hidden" maxlength="140" autocomplete="off" placeholder="Nachricht … (Enter senden, Esc abbrechen)" />
+    </div>
+
+    <!-- Login -->
+    <div id="login">
+      <div class="login-box">
+        <h1>SUNSTATE<span>HEAT</span></h1>
+        <p class="tagline">Willkommen in Palmara.</p>
+        <form id="login-form">
+          <input id="login-name" maxlength="16" placeholder="Dein Name" autocomplete="off" />
+          <input id="login-pass" type="password" maxlength="64" placeholder="Passwort (optional)" autocomplete="current-password" />
+          <button type="submit">Spielen</button>
+        </form>
+        <p class="login-hint">Ohne Passwort spielst du als Gast. Mit Passwort wird ein Konto angelegt bzw. angemeldet (min. 8 Zeichen); dein Gast-Fortschritt wird übernommen.</p>
+        <p id="login-status"></p>
+        <div class="controls">
+          <b>WASD/Pfeile</b> bewegen · <b>Shift</b> sprinten/Nitro · <b>E</b> ein-/aussteigen/aufrichten ·
+          <b>Leertaste</b> Handbremse · <b>H</b> Hupe · <b>Enter</b> Chat · <b>M</b> Karte · <b>F3</b> Debug · Gamepad unterstützt
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
