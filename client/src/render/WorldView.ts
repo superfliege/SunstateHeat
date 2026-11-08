@@ -107,6 +107,7 @@ export class WorldView {
   readonly group = new THREE.Group();
   readonly waterMaterial: THREE.ShaderMaterial;
   private surface = surfaceMaterial();
+  private solidMat = surfaceMaterial({ fade: true });
   private decalMat = surfaceMaterial({ decal: true });
   private neonMat = neonMaterial();
   private terrainMat = terrainMaterial();
@@ -989,9 +990,9 @@ export class WorldView {
           grp.add(m);
         }
         if (!ch.solid.empty) {
-          const m = new THREE.Mesh(ch.solid.build(), this.surface);
+          const m = new THREE.Mesh(ch.solid.build(), this.solidMat);
           m.castShadow = m.receiveShadow = true;
-          addOutline(m, LINE.building);
+          addOutline(m, LINE.building, { fade: true });
           grp.add(m);
         }
         if (!ch.decals.empty) {

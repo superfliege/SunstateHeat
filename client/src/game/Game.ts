@@ -598,6 +598,7 @@ export class Game {
     const myY = ownCar ? me.y - this.predictor.sim!.prof.cgHeight : this.map.surfaceY(me.x, me.z);
     this.rig.update(me.x, myY, me.z, me.a, ownCar?.vx ?? 0, ownCar?.vz ?? 0, this.predictor.inVehicle, dt, ownCar?.boost ? ASSISTS.nitroFov : 0);
     U.uTime.value += dt;
+    U.uFocus.value.set(me.x, myY + 1, me.z);
     this.sky.setMood(moodFor(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.style ?? null));
     this.sky.update(this.day, this.rig.target, dt);
     this.world.update(this.rig.target.x, this.rig.target.z);

@@ -7,7 +7,7 @@
 //   - Spiegelglas reflektiert die Himmelsfarbe (Env-Map-Fake), Hitzeflimmern auf Highways
 import * as THREE from 'three';
 import { ATLAS_GLSL, getAtlas } from './atlas';
-import { toonGradient, U } from './toon';
+import { FADE_PARS, toonGradient, U } from './toon';
 
 let noiseTex: THREE.DataTexture | null = null;
 /** Kachelbares Value-Noise (64 x 64, linear gefiltert) für Variation und Übergänge. */
@@ -70,6 +70,8 @@ const COMMON_FRAG = /* glsl */ `
 
 export interface SurfaceOptions {
   decal?: boolean;
+  /** Fragmente zwischen Kamera und Spieler werden ausgedithert (Häuser durchsichtig). */
+  fade?: boolean;
 }
 
 /**
@@ -181,8 +183,14 @@ export function surfaceMaterial(o: SurfaceOptions = {}): THREE.MeshToonMaterial 
         }
         #include <opaque_fragment>`);
     if (o.decal) shader.fragmentShader = '#define DECAL\n' + shader.fragmentShader;
+    if (o.fade) {
+      shader.uniforms.uFocus = U.uFocus;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\n' + FADE_PARS)
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfadeDiscard(vWorldPos);');
+    }
   };
-  m.customProgramCacheKey = () => `surface:${o.decal ? 1 : 0}`;
+  m.customProgramCacheKey = () => `surface:${o.decal ? 1 : 0}:${o.fade ? 1 : 0}`;
   return m;
 }
 

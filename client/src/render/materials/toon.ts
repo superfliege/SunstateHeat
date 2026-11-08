@@ -21,7 +21,31 @@ export const U = {
   /** Nässe nach Regen (Pfützen) – Wetter kommt in M3, Wert ist schon vorbereitet. */
   uWet: { value: 0 },
   uWind: { value: 1 },
+  /** Weltposition des Spielers: Gebäude zwischen Kamera und diesem Punkt werden ausgeblendet. */
+  uFocus: { value: new THREE.Vector3(0, -1000, 0) },
 };
+
+/** Durchsicht-Dither: Fragmente nahe der Sichtlinie Kamera -> Spieler (und davor) werden zur Hälfte verworfen. */
+export const FADE_PARS = /* glsl */ `
+  uniform vec3 uFocus;
+  float fadeAmount(vec3 wp) {
+    vec3 ro = cameraPosition;
+    vec3 rd = uFocus - ro;
+    float L = length(rd);
+    rd /= max(L, 1e-3);
+    float t = dot(wp - ro, rd);
+    float d = length(wp - (ro + rd * t));
+    float front = smoothstep(L - 1.0, L - 4.0, t) * step(1.0, t); // nur zwischen Kamera und Spieler
+    return front * (1.0 - smoothstep(3.0, 6.5, d)); // Radius um die Sichtlinie
+  }
+  void fadeDiscard(vec3 wp) {
+    float a = fadeAmount(wp) * 0.55;
+    if (a <= 0.0) return;
+    // Interleaved-Gradient-Noise als Bildschirm-Dither
+    float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (n < a) discard;
+  }
+`;
 
 type Shader = THREE.WebGLProgramParametersWithUniforms;
 
@@ -161,8 +185,8 @@ const outlineCache = new Map<string, THREE.MeshBasicMaterial>();
  * Inverted-Hull-Material. Erwartet das Attribut `outlineNormal` (geglättete Normalen, siehe
  * computeOutlineNormals) – sonst entstehen an harten Kanten Lücken.
  */
-export function outlineMaterial(widthPx: number, opts: { wind?: boolean; color?: number } = {}): THREE.MeshBasicMaterial {
-  const key = `${widthPx}:${opts.wind ? 1 : 0}:${opts.color ?? OUTLINE_COLOR}`;
+export function outlineMaterial(widthPx: number, opts: { wind?: boolean; color?: number; fade?: boolean } = {}): THREE.MeshBasicMaterial {
+  const key = `${widthPx}:${opts.wind ? 1 : 0}:${opts.color ?? OUTLINE_COLOR}:${opts.fade ? 1 : 0}`;
   const hit = outlineCache.get(key);
   if (hit) return hit;
   const m = new THREE.MeshBasicMaterial({ color: opts.color ?? OUTLINE_COLOR, side: THREE.BackSide, fog: true });
@@ -196,9 +220,18 @@ export function outlineMaterial(widthPx: number, opts: { wind?: boolean; color?:
       }`);
     // skinMatrix existiert nur, wenn skinnormal_vertex eingebunden ist -> erzwingen
     vs = vs.replace('#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING )', '#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING ) || 1');
+    if (opts.fade) {
+      shader.uniforms.uFocus = U.uFocus;
+      vs = vs
+        .replace('#include <common>', '#include <common>\nvarying vec3 vFadePos;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFadePos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vFadePos;\n' + FADE_PARS)
+        .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfadeDiscard(vFadePos);');
+    }
     shader.vertexShader = vs;
   };
-  m.customProgramCacheKey = () => `outline:${opts.wind ? 1 : 0}`;
+  m.customProgramCacheKey = () => `outline:${opts.wind ? 1 : 0}:${opts.fade ? 1 : 0}`;
   outlineCache.set(key, m);
   return m;
 }
@@ -266,7 +299,7 @@ export function addHeightWind(g: THREE.BufferGeometry, start = 0.35, strength = 
 }
 
 /** Hängt eine Umrisslinie an ein Mesh (gleiche Geometrie; Instanzen/Skelett werden geteilt). */
-export function addOutline(mesh: THREE.Mesh, widthPx: number, opts: { wind?: boolean } = {}): THREE.Mesh {
+export function addOutline(mesh: THREE.Mesh, widthPx: number, opts: { wind?: boolean; fade?: boolean } = {}): THREE.Mesh {
   computeOutlineNormals(mesh.geometry);
   if (opts.wind) ensureAttribute(mesh.geometry, 'wind', 0);
   const mat = outlineMaterial(widthPx, opts);
