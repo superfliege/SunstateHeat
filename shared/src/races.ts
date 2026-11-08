@@ -75,7 +75,7 @@ export interface RaceTrack {
 
 const START_LINE = 30;
 const RUNOFF = 140;
-const CP_SPACING = 110;
+const CP_SPACING = 55;
 
 /** Punkt + Fahrtrichtung bei Bogenlänge s. */
 export function trackPose(t: { path: Vec2[]; cum: number[] }, s: number): RacePose {
