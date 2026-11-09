@@ -1,5 +1,6 @@
 // HUD: Zone, Uhrzeit, Tempo, Quest-Panel, Hinweise und Einblendungen.
 import type { PlayerStats, QuestState } from '../../../shared/src/protocol';
+import type { MgHud } from '../../../shared/src/minigames';
 import { WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { ZONE_NAMES } from '../../../shared/src/world/WorldMap';
 
@@ -21,6 +22,8 @@ export class Hud {
   private fpsTime = 0;
   private countEl: HTMLDivElement | null = null;
   private lastCount: number | undefined = undefined;
+  private resultsEl: HTMLDivElement | null = null;
+  private lastResults = '';
 
   /** Zone (mit Banner beim Wechsel) und, falls vorhanden, das Viertel davor. */
   setZone(zone: number, district: string | null = null) {
@@ -78,7 +81,8 @@ export class Hud {
   /** Auftrags-Anzeige: Titel, aktuelle Stufe, Fortschritt, Timer (bei Rennen zusätzlich Platz/Runde). */
   setQuestState(q: QuestState | null) {
     this.setCountdown(q?.count);
-    const sig = q ? JSON.stringify([q.id, q.stage, q.prog, q.timer, q.race]) : '';
+    this.setResults(q?.mg);
+    const sig = q ? JSON.stringify([q.id, q.stage, q.prog, q.timer, q.race, q.mg && { ...q.mg, results: undefined }]) : '';
     if (sig === this.lastQuestHtml) return;
     this.lastQuestHtml = sig;
     this.questEl.classList.toggle('hidden', !q);
@@ -102,11 +106,72 @@ export class Hud {
       t.textContent = `${Math.floor(q.timer / 60)}:${String(q.timer % 60).padStart(2, '0')}`;
       els.push(t);
     }
+    if (q.mg) els.push(...this.mgBlock(q.mg));
     const s = document.createElement('div');
     s.textContent = q.stage;
     els.push(s);
-    if (q.prog) { const p = document.createElement('div'); p.className = 'prog'; p.textContent = q.prog; els.push(p); }
+    if (q.prog && !q.mg) { const p = document.createElement('div'); p.className = 'prog'; p.textContent = q.prog; els.push(p); }
+    if (q.mg?.feed.length) {
+      const f = document.createElement('ul');
+      f.className = 'mg-feed';
+      for (const line of q.mg.feed.slice(0, 4)) { const li = document.createElement('li'); li.textContent = line; f.append(li); }
+      els.push(f);
+    }
     this.questEl.replaceChildren(...els);
+  }
+
+  /** Minispiel: Verbleibende, eigener Status, Moduszeile, Balken. */
+  private mgBlock(m: MgHud): HTMLElement[] {
+    const out: HTMLElement[] = [];
+    const head = document.createElement('div');
+    head.className = 'mg-head';
+    const alive = document.createElement('span');
+    alive.className = 'mg-alive';
+    alive.textContent = m.total ? `👥 ${m.alive}/${m.total}` : '👥 Anmeldung';
+    head.append(alive);
+    const me = document.createElement('span');
+    me.className = `mg-me ${m.me}`;
+    me.textContent = m.me === 'alive' ? 'IM SPIEL' : m.me === 'out' ? `RAUS · Platz ${m.place ?? '?'}` : 'ZUSCHAUER';
+    head.append(me);
+    out.push(head);
+    if (m.info) { const i = document.createElement('div'); i.className = `mg-info${m.warn ? ' warn' : ''}`; i.textContent = m.info; out.push(i); }
+    if (m.bar) {
+      const b = document.createElement('div');
+      b.className = `mg-bar${m.bar.warn ? ' warn' : ''}`;
+      const lab = document.createElement('span'); lab.textContent = m.bar.label;
+      const track = document.createElement('div'); const fill = document.createElement('i');
+      fill.style.width = `${Math.round(Math.max(0, Math.min(1, m.bar.value)) * 100)}%`;
+      track.append(fill); b.append(lab, track);
+      out.push(b);
+    }
+    return out;
+  }
+
+  /** Ergebnis-Bildschirm am Rundenende (Minispiele). */
+  private setResults(m: MgHud | undefined) {
+    const res = m?.results;
+    const sig = res ? JSON.stringify([m!.headline, res]) : '';
+    if (sig === this.lastResults) return;
+    this.lastResults = sig;
+    if (!this.resultsEl) {
+      this.resultsEl = document.createElement('div');
+      this.resultsEl.id = 'mg-results';
+      document.body.append(this.resultsEl);
+    }
+    const el = this.resultsEl;
+    el.classList.toggle('hidden', !res);
+    if (!res) { el.replaceChildren(); return; }
+    const h = document.createElement('h2');
+    h.textContent = m!.headline ?? 'Ergebnis';
+    const table = document.createElement('table');
+    for (const r of res) {
+      const tr = document.createElement('tr');
+      if (r.me) tr.className = 'me';
+      const medal = r.place === 1 ? '🥇' : r.place === 2 ? '🥈' : r.place === 3 ? '🥉' : `${r.place}.`;
+      for (const text of [medal, r.bot ? `${r.name} 🤖` : r.name, r.score]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
+      table.append(tr);
+    }
+    el.replaceChildren(h, table);
   }
 
   /** Gesundheit, Rüstung, Stufe/XP und Knockout-Anzeige. */

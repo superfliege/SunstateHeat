@@ -5,13 +5,15 @@ import { raceTracks } from './races';
 import { findFootSpot } from './sim/movement';
 import { storeAt } from './shops';
 import { TAXI_HUNT_ID, TAXI_HUNT_NAME } from './taxiHunt';
+import { MG_PHONE_ID } from './minigames';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
 
 export interface Point { x: number; z: number }
 /** race = Renntelefon (Start eines Straßenrennens, siehe races.ts). */
 /** taxi = Telefon für den Modus „Catch the Taxi“ (taxiHunt.ts), steht direkt am Spawn. */
-export interface PhoneDef { id: string; name: string; x: number; z: number; race?: boolean; taxi?: boolean }
+/** mg = Minispiel-Telefon (Sumo & Co., siehe minigames/). */
+export interface PhoneDef { id: string; name: string; x: number; z: number; race?: boolean; taxi?: boolean; mg?: boolean }
 
 const isWater = (t: number) => t === Tile.WATER || t === Tile.SWAMP;
 
@@ -146,6 +148,7 @@ export function payphones(map: WorldMap): PhoneDef[] {
   const dry = centroid(map, 'Sunny Acres');
   return [
     { ...at(TAXI_HUNT_ID, `${TAXI_HUNT_NAME} – Spielmodus`, map.spawn, 9, -7), taxi: true },
+    { ...at(MG_PHONE_ID, 'Minispiele – Arena-Telefon', map.spawn, -9, -7), mg: true },
     at('bus', 'Telefon am Busbahnhof', loc.busStation),
     at('neon', 'Telefon Ocean Strip', loc.club, -8, 4),
     at('marlin', 'Telefon Sunset Village', loc.lighthouse, 8, 6),

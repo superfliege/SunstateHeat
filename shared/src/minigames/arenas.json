@@ -1,0 +1,16 @@
+{
+  "_doc": "Arenen der Minispiele (Daten, kein Code). Koordinaten in Metern (Weltkarte, MAP_SEED 1337). floor: schwebender Boden (disc = runde Plattform, grid = Kacheln). spawns: 'ring' verteilt n Startplätze im Kreis (radius = Anteil des Bodenradius) mit Blick zur Mitte, oder 'list' mit festen Punkten [x, z, winkel] relativ zur Mitte. death: Todeszonen – 'below' = tiefer als floor.y - margin (Wasser/Abgrund), 'water' = im Wasser, 'outside' = außerhalb von bounds. bounds: Radius um die Mitte, außerhalb davon scheidet man aus. spectate: Zuschauerplatz an Land für ausgeschiedene Spieler und /mg-Debugrunden. zones: optionale benannte Kreise (z. B. Haltezonen).",
+  "arenas": [
+    {
+      "id": "sumo_pier",
+      "name": "Sumo-Plattform vor dem Spawn-Strand",
+      "center": [1730, 968],
+      "floor": { "shape": "disc", "y": 3.2, "r": 24 },
+      "bounds": 60,
+      "death": [{ "type": "below", "margin": 1.2 }, { "type": "water" }, { "type": "outside" }],
+      "spawns": { "type": "ring", "radius": 0.62 },
+      "spectate": [1636, 968],
+      "zones": [{ "id": "center", "x": 0, "z": 0, "r": 8 }]
+    }
+  ]
+}

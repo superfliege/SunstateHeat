@@ -21,6 +21,8 @@ export interface ClientView {
   dmg: Map<number, number>; // Schadens-Version
   peds: Map<number, string>;
   props: Map<number, string>;
+  /** Zuletzt gesendete Arena-Böden (JSON, Minispiele). */
+  floors: string;
 }
 
 export interface ServerPlayer {

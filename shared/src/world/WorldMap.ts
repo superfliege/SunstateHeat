@@ -7,6 +7,7 @@ import { pointInPolygon } from './geometry';
 import { Tile } from './tiles';
 import type { Ramp } from './features';
 import type { ShopDef } from '../shops';
+import { floorHeight, floorSolid, type ArenaFloor } from './arenaFloor';
 
 export const BuildingStyle = {
   Tower: 0,
@@ -150,6 +151,11 @@ export class WorldMap {
   /** Läden (Sunmart, Ammo & Ammo, Paint & Pray) mit Tür-Position; Gebäude liegen in `buildings` (shops.ts). */
   shops: ShopDef[] = [];
   chunks: ChunkContent[] = [];
+  /**
+   * Dynamische Arena-Böden der Minispiele (arenaFloor.ts). Leer, solange kein Minispiel läuft.
+   * Auf einem tragenden Boden gilt Straßenbelag in Bodenhöhe – auch über Wasser.
+   */
+  floors: ArenaFloor[] = [];
   spawn = { x: 0, z: 0 };
   questStart = { x: 0, z: 0 };
   questDest = { x: 0, z: 0 };
@@ -165,8 +171,15 @@ export class WorldMap {
     return this.tiles[cz * GRID_SIZE + cx];
   }
 
+  /** Steht (x, z) auf einem tragenden Arena-Boden? */
+  onFloor(x: number, z: number): boolean {
+    for (const f of this.floors) if (floorSolid(f, x, z)) return true;
+    return false;
+  }
+
   /** Untergrund an Weltposition in Metern. */
   tileAt(x: number, z: number): number {
+    if (this.floors.length && this.onFloor(x, z)) return Tile.ROAD;
     return this.tile(Math.floor(x / CELL), Math.floor(z / CELL));
   }
 
@@ -246,6 +259,7 @@ export class WorldMap {
 
   /** Höhe, auf der Figuren und Landfahrzeuge stehen (Brücken, Stege, Sumpf beachtet). */
   surfaceY(x: number, z: number): number {
+    if (this.floors.length) { const h = floorHeight(this.floors, x, z); if (h !== null) return h; }
     if (this.storeTileAt(x, z)) return Math.max(0.05, this.terrainHeight(x, z)) + CURB_TOP; // Ladenboden
     switch (this.tileAt(x, z)) {
       case Tile.BRIDGE: return BRIDGE_DECK;

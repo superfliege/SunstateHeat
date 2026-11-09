@@ -33,6 +33,8 @@ import { moodFor } from '../render/palette';
 import { Particles } from '../render/Particles';
 import { Tracers } from '../render/Tracers';
 import { QuestMarkers, ShopsView } from '../render/ShopsView';
+import { ArenaView } from '../render/ArenaView';
+import { unpackFloor } from '../../../shared/src/world/arenaFloor';
 import { StoresView } from '../render/StoresView';
 import { payphones, type PhoneDef } from '../../../shared/src/questLocations';
 import type { QuestState } from '../../../shared/src/protocol';
@@ -133,6 +135,8 @@ export class Game {
   private phones: PhoneDef[];
   private phonesView: ShopsView;
   private questMarkers: QuestMarkers;
+  /** Minispiel-Arenen (Böden kommen per Snapshot `af`). */
+  private arenas = new ArenaView();
   private questState: QuestState | null = null;
   private wanted = 0;
   private audioDebug: AudioDebug;
@@ -165,13 +169,13 @@ export class Game {
     this.shops = generateShops(this.map);
     this.stores = new StoresView(this.map, this.shops);
     this.phones = payphones(this.map);
-    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.taxi ? { x: p.x, z: p.z, name: '🚕 Catch the Taxi', color: 0x3ad1ff } : p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
+    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.taxi ? { x: p.x, z: p.z, name: '🚕 Catch the Taxi', color: 0x3ad1ff } : p.mg ? { x: p.x, z: p.z, name: '🏟 Minispiele', color: 0xff4f8b } : p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
     this.panels.onOpenChange = (open) => { this.input.blocked = open; this.touch.setBlocked(open); if (open) { this.input.clear(); this.input.fire = false; } this.sfx.ui(open ? 'open' : 'close', 0.5); };
     this.particles = new Particles(this.map);
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.applyGfx();
@@ -411,6 +415,8 @@ export class Game {
     this.props.apply(snap.pr, snap.prg);
     for (const p of snap.p ?? []) { if (p[5] === 3) this.copDots.set(p[0], [p[1], p[2]]); else this.copDots.delete(p[0]); }
     for (const id of snap.pg ?? []) this.copDots.delete(id);
+    // Arena-Böden zuerst übernehmen: Prediction und Rendering nutzen dieselbe Karte wie der Server
+    if (snap.af) { this.map.floors = snap.af.map(unpackFloor); this.arenas.set(this.map.floors); }
     this.predictor.reconcile(snap, this.myId, SIM_DT);
     this.day = snap.day;
     if (snap.me) { this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.wanted = snap.me.stats.wanted; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
@@ -678,7 +684,10 @@ export class Game {
     // 3) Kamera, Licht, UI
     const ownCar = this.predictor.sim?.car ?? null;
     const myY = ownCar ? me.y - this.predictor.sim!.prof.cgHeight : this.map.surfaceY(me.x, me.z);
-    this.rig.update(me.x, myY, me.z, me.a, ownCar?.vx ?? 0, ownCar?.vz ?? 0, this.predictor.inVehicle, dt, ownCar?.boost ? ASSISTS.nitroFov : 0);
+    // Minispiel-Zuschauer (ausgeschieden/wartend, zu Fuß): Kamera auf die Arena
+    const spec = this.predictor.inVehicle ? undefined : this.questState?.mg?.spectate;
+    if (spec) this.rig.update(spec[0], this.map.surfaceY(spec[0], spec[1]), spec[1], 0, 0, 0, true, dt);
+    else this.rig.update(me.x, myY, me.z, me.a, ownCar?.vx ?? 0, ownCar?.vz ?? 0, this.predictor.inVehicle, dt, ownCar?.boost ? ASSISTS.nitroFov : 0);
     U.uTime.value += dt;
     U.uFocus.value.set(me.x, myY + 1, me.z);
     this.sky.setMood(moodFor(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.style ?? null));
@@ -699,7 +708,7 @@ export class Game {
     const talk = this.panels.talkingTo() ?? (this.chat.isOpen ? null : this.shopNearMe());
     this.stores.setTalkable(talk);
     this.stores.update(dt, me.x, me.z, this.predictor.inVehicle);
-    this.phonesView.update(dt); this.questMarkers.update(dt);
+    this.phonesView.update(dt); this.questMarkers.update(dt); this.arenas.update(dt);
     // Linienstärke: mit dem Zoom dünner, mit der Auflösung dicker (Referenz 720p)
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
     const dusk = Math.max(0, 1 - Math.abs(this.day - 0.74) / 0.08, 1 - Math.abs(this.day - 0.27) / 0.06);
