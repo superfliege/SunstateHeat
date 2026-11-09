@@ -11,6 +11,7 @@ import { Sumo } from './modes/Sumo';
 import { Derby } from './modes/Derby';
 import { HotPotato } from './modes/HotPotato';
 import { Fallout } from './modes/Fallout';
+import { Drift } from './modes/Drift';
 
 type Factory = (h: MinigameHost, opts: MinigameOptions) => Minigame;
 const FACTORIES: Record<MinigameId, Factory> = {
@@ -19,6 +20,7 @@ const FACTORIES: Record<MinigameId, Factory> = {
   hotpotato: (h, o) => new HotPotato(h, o),
   fallout: (h, o) => new Fallout(h, 'fallout', o),
   fallout_fuss: (h, o) => new Fallout(h, 'fallout_fuss', o),
+  drift: (h, o) => new Drift(h, o),
 };
 
 export class MinigameManager {

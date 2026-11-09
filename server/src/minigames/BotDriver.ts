@@ -28,6 +28,8 @@ export class BotDriver {
   /** Entfernung bis zur ersten tödlichen Stelle in Fahrtrichtung (avoidHazard) und Bremsweg. */
   private hazardDist = Infinity;
   private stopDist = 0;
+  /** Drift-Assistent: in Kurven Handbremse antippen (Drift-Wettbewerb). */
+  private drifty = false;
   // Ausgabe (gehalten bis zur nächsten Entscheidung)
   private out: BotInput = { ax: 0, ay: 0, buttons: 0 };
   private decideT = 0;
@@ -56,6 +58,7 @@ export class BotDriver {
     this.ramDist = Infinity;
     this.hazardDist = Infinity;
     this.stopDist = 0;
+    this.drifty = false;
     return this;
   }
 
@@ -92,6 +95,9 @@ export class BotDriver {
     const c = this.car!;
     this.addInterest(Math.atan2(x - c.x, z - c.z), w, 2);
   }
+
+  /** Drift-Assistent für diesen Tick einschalten. */
+  driftStyle() { this.drifty = true; }
 
   /** Wunschtempo nachträglich setzen (z. B. Vollbremsung an der Straßensperre). */
   setSpeed(v: number) { this.speedWant = v; }
@@ -221,6 +227,8 @@ export class BotDriver {
     }
     if (Math.abs(diff) > 1.2 && speed > 9) ay = -0.5;
     if (Math.abs(diff) > 1.6 && speed > 5 && speed < 15) buttons = Btn.BRAKE; // Handbremswende
+    // Drift: in der Kurve kurz die Handbremse ziehen und mit Gas halten, gegenlenken übernimmt die Physik
+    if (this.drifty && Math.abs(diff) > 0.35 && speed > 11 && Math.random() < 0.5) { buttons = Btn.BRAKE; ay = 1; }
     // Gefahr im Bremsweg: bremsen (bei Rückwärtsfahrt nicht) – außer ein Rammziel liegt davor
     const shielded = this.ram && this.ramDist + 3 < this.hazardDist && Math.abs(wrapAngle(this.ramAngle - Math.atan2(c.vx, c.vz))) < 0.4;
     const brake = this.hazardDist < this.stopDist && fwd > 2 && !shielded;

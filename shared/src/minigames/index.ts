@@ -8,12 +8,14 @@ import derbyConfig from './config/derby.json';
 import hotPotatoConfig from './config/hotpotato.json';
 import falloutConfig from './config/fallout.json';
 import falloutFootConfig from './config/fallout_fuss.json';
+import driftConfig from './config/drift.json';
+import type { DriftRules } from './drift';
 
 /** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
 export const MG_PHONE_ID = 'minigames';
 export const MG_PREFIX = 'mg:';
 
-export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss';
+export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss' | 'drift';
 
 // ------------------------------------------------------------------ Arenen
 export type DeathZone =
@@ -32,6 +34,8 @@ export interface ArenaDef {
   spawns: { type: 'ring'; radius: number } | { type: 'list'; points: [number, number, number][] };
   spectate: [number, number];
   zones?: { id: string; x: number; z: number; r: number }[];
+  /** Feste Fahrlinien (z. B. Driftlinie der NPCs), Punkte relativ zur Mitte. */
+  lines?: Record<string, [number, number][]>;
 }
 
 export const ARENAS: ArenaDef[] = (arenaData as unknown as { arenas: ArenaDef[] }).arenas;
@@ -100,6 +104,15 @@ export interface FalloutConfig extends BaseModeConfig {
   damageScale: number;
 }
 
+export interface DriftConfig extends BaseModeConfig, DriftRules {
+  zone: string;
+  line: string;
+  contactDv: number;
+  damageScale: number;
+  botRate: Record<DifficultyId, number>;
+  botSpread: number;
+}
+
 export interface MinigameMeta { id: MinigameId; name: string; icon: string; intro: string[]; config: BaseModeConfig }
 
 export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
@@ -142,6 +155,14 @@ export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
       'Rot blinkende Platten fallen gleich weg. Bleib in Bewegung, aber pass auf, wohin du läufst. Letzter oben gewinnt.',
     ],
     config: falloutFootConfig as unknown as FalloutConfig,
+  },
+  drift: {
+    id: 'drift', name: 'Drift-Wettbewerb', icon: '🌀',
+    intro: [
+      'Drift-Ring über dem Meer: Punkte gibt es für Winkel, Tempo und Dauer – verkette Drifts für den Combo-Multiplikator!',
+      'Wand- oder Fahrzeugkontakt löscht den laufenden Drift und die Combo. Höchste Punktzahl nach Ablauf der Zeit gewinnt.',
+    ],
+    config: driftConfig as unknown as DriftConfig,
   },
 };
 export const isMinigame = (s: string): s is MinigameId => s in MINIGAMES;
