@@ -151,7 +151,8 @@ export function toonMaterial(o: ToonOptions = {}): THREE.MeshToonMaterial {
         .replace('#include <lights_fragment_end>', /* glsl */ `#include <lights_fragment_end>
           #if NUM_DIR_LIGHTS > 0
           {
-            vec3 hdir = normalize(directionalLights[0].direction + normalize(vViewPosition));
+            vec3 hsum = directionalLights[0].direction + normalize(vViewPosition);
+            vec3 hdir = hsum / max(length(hsum), 1e-4); // kein NaN bei Nullvektor (-> Bloom-Flackern)
             float k = step(uSpecT, dot(normal, hdir));
             float sh = ${spec.perVertex ? 'vShine' : '1.0'};
             reflectedLight.directSpecular += directionalLights[0].color * k * uSpecS * sh;
