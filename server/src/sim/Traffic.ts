@@ -45,6 +45,9 @@ interface Brain {
   /** Ausgeparktes Auto: Parkplatz, auf den es später (außer Sicht) zurückkehrt */
   home?: ServerVehicle['home'];
   age?: number;
+  /** Beschossen: flüchtet schnell (Physik) bzw. hält an und der Fahrer rennt davon (bail). */
+  panic?: boolean;
+  bail?: boolean;
 }
 
 export interface TrafficHost {
@@ -124,6 +127,7 @@ export class Traffic {
     const v = this.host.vehicles.get(vehicleId);
     if (!b || !v) return;
     v.kinematic = false;
+    if (b.panic || b.bail) return; // schon in Panik: Reaktion nicht überschreiben
     if (b.mode === 'drive') {
       // kinematische Geschwindigkeit in den Physik-Zustand übernehmen
       const s = v.sim.car;
@@ -132,6 +136,24 @@ export class Traffic {
     b.mode = 'crash';
     b.timer = 0;
     b.severity = Math.max(b.severity, dv);
+  }
+
+  /**
+   * Auf das Auto wurde geschossen: der Fahrer gerät in Panik – entweder Vollgas weg (Physik, schneller
+   * als sonst) oder anhalten, aussteigen und zu Fuß davonrennen.
+   */
+  onShot(vehicleId: number) {
+    const b = this.brains.get(vehicleId);
+    const v = this.host.vehicles.get(vehicleId);
+    if (!b || !v || b.panic || b.bail) return;
+    v.kinematic = false;
+    if (b.mode === 'drive') {
+      const s = v.sim.car;
+      s.vx = Math.sin(s.a) * b.speed; s.vz = Math.cos(s.a) * b.speed;
+    }
+    b.timer = 0; b.stuck = 0;
+    if (Math.random() < 0.5) { b.mode = 'crash'; b.bail = true; } else { b.mode = 'flee'; b.panic = true; }
+    this.honk(v, b);
   }
 
   /** Fahrspur einer Kante in Fahrtrichtung. */
@@ -384,6 +406,10 @@ export class Traffic {
     } else if (brain.mode === 'crash') {
       // anhalten, kurz sammeln
       buttons = Math.abs(s.s) > 1 ? Btn.BRAKE : 0;
+      if (brain.bail && ((Math.abs(s.s) < 1.5 && brain.timer > 0.3) || brain.timer > 5)) {
+        // beschossen: aussteigen und weglaufen
+        this.host.driverOut(v, false); this.brains.delete(v.id); return;
+      }
       if (Math.abs(s.s) < 1 && brain.timer > 1.2) {
         if (up[1] < 0.5 || v.sim.dmg.wreck || v.sim.dmg.hp < 250) {
           this.host.driverOut(v, true); this.brains.delete(v.id); return;
@@ -408,11 +434,11 @@ export class Traffic {
       const desired = Math.atan2(target[0] - s.x, target[1] - s.z);
       const diff = wrapAngle(desired - s.a);
       ax = Math.max(-1, Math.min(1, -diff * 2.2));
-      const want = Math.abs(diff) > 0.9 ? 6 : brain.cruise * 1.5;
+      const want = Math.abs(diff) > 0.9 ? 6 : brain.cruise * (brain.panic ? 2.4 : 1.5);
       ay = s.s < want ? 1 : 0;
       if (Math.abs(s.s) < 0.6 && brain.timer > 1) brain.stuck += dt; else brain.stuck = 0;
       if (brain.stuck > 3 || up[1] < 0.5) { this.host.driverOut(v, false); this.brains.delete(v.id); return; }
-      if (brain.timer > 8 && this.nearPath(s.x, s.z, brain, 3) && Math.abs(diff) < 0.4) { this.resume(v, brain); return; }
+      if (brain.timer > (brain.panic ? 20 : 8) && this.nearPath(s.x, s.z, brain, 3) && Math.abs(diff) < 0.4) { this.resume(v, brain); return; }
     }
     for (let k = 0; k < steps; k++) this.host.stepPhysics(v, ax, ay, buttons);
   }
@@ -427,6 +453,7 @@ export class Traffic {
     brain.speed = Math.max(0, s.s);
     placeCar(this.host.map, s, v.sim.prof, s.x, s.z, s.a);
     brain.mode = 'drive';
+    brain.panic = false; brain.bail = false;
     brain.severity = 0;
     brain.timer = 0;
     v.kinematic = true;

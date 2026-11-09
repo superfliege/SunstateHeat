@@ -1158,7 +1158,7 @@ export class WorldRoom {
       if (d.hp <= 0 && !d.burn) d.burn = 0.0001;
       v.dmgVer++; v.sim.car.sleep = 0;
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 2]);
-      if (v.driver === DRIVER_NPC) this.traffic.onHit(v.id, 9);
+      if (v.driver === DRIVER_NPC) this.traffic.onShot(v.id);
       if (v.cop !== undefined) this.police.raise(p, 2, HEAT.copHit * 0.3);
     } else if (t.ref.player) {
       this.hurtPlayer(t.ref.player, dmg);
@@ -1431,6 +1431,7 @@ export class WorldRoom {
             const dp = v.driver >= 0 ? this.players.get(v.driver) : undefined;
             if (ped.cop) ped.hp -= speed * 3;
             // Polizisten umfahren = Angriff; Passanten zählen erst bei echtem Tempo (kein Anrempeln)
+            if (dp && ped.gang) this.gangs.provoke(ped, dp); // Gang angefahren: die ganze Gruppe wird wütend
             if (dp && ped.cop) this.police.raise(dp, 2, HEAT.copHit);
             else if (dp && speed > 6) this.police.crime(dp, HEAT.runover, ped.x, ped.z);
           }
