@@ -7,7 +7,7 @@
 // wieder am Startpunkt (Telefon), alle Fahrzeuge des Modus verschwinden.
 import { clamp, dist2, wrapAngle } from '../../../shared/src/math';
 import { Btn, type PhoneQuest, type QuestState } from '../../../shared/src/protocol';
-import { placeCar, upVector } from '../../../shared/src/sim/car';
+import { carInWater, placeCar, upVector } from '../../../shared/src/sim/car';
 import { findFootSpot } from '../../../shared/src/sim/movement';
 import {
   HUNTER_VARIANTS, TAXI_HUNT_DURATION, TAXI_HUNT_HEAD_START, TAXI_HUNT_HUNTERS, TAXI_HUNT_ID, TAXI_HUNT_MAX_PLAYERS,
@@ -259,6 +259,8 @@ export class TaxiHunt {
         const tp = taxi.pid >= 0 ? this.h.players.get(taxi.pid) : undefined;
         if (!tv || tv.sim.dmg.wreck || tv.sim.dmg.burn > 0 || tv.sim.dmg.hp <= 0) {
           this.finish(m, 'hunter', m.lastRam ? `${m.lastRam} hat dem Taxi den Rest gegeben!` : 'Das Taxi ist Schrott!');
+        } else if (carInWater(this.h.map, tv.sim.car)) {
+          this.finish(m, 'hunter', `${taxi.name} ist im Wasser gelandet!`);
         } else if (tp && tp.vehicleId !== taxi.vid) {
           this.finish(m, 'hunter', 'Der Taxifahrer ist ausgestiegen.');
         } else if (m.elapsed >= TAXI_HUNT_DURATION) {
