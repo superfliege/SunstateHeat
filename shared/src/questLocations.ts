@@ -3,6 +3,7 @@
 import { mulberry32 } from './math';
 import { raceTracks } from './races';
 import { findFootSpot } from './sim/movement';
+import { storeAt } from './shops';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
 
@@ -22,6 +23,14 @@ function centroid(map: WorldMap, name: string): Point {
 
 /** Begehbarer Punkt in der Nähe. */
 function foot(map: WorldMap, x: number, z: number): Point {
+  // nicht in einem Laden oder vor dessen Tür (Telefone haben 8 m Reichweite, sonst überlagern sie den Verkäufer)
+  for (let r = 0; r <= 24; r += 3) {
+    for (let k = 0; k < (r ? 12 : 1); k++) {
+      const a = (k / 12) * Math.PI * 2;
+      const p = findFootSpot(map, x + Math.cos(a) * r, z + Math.sin(a) * r, 2);
+      if (p && !storeAt(map.shops, p.x, p.z, 3.5) && !map.shops.some((sh) => sh.building && Math.hypot(sh.x - p.x, sh.z - p.z) < 14)) return p;
+    }
+  }
   return findFootSpot(map, x, z, 25) ?? { x, z };
 }
 

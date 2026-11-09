@@ -197,7 +197,8 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
   Regalgänge, Kasse; Essen, Verbandskasten), *Gas & Go* (Tankstellen-Shop, ersetzt das massive Shop-Gebäude der
   Tankstelle; Snacks, Energydrinks), *Ammo & Ammo* (Glasvitrine, Gewehrwand; Waffen, Munition, Westen),
   *Paint & Pray* (Mechaniker an der Werkstatt, auch aus dem Auto ansprechbar; Reparatur, Umlackieren).
-  Theken und Regale blockieren zu Fuß (`map.furniture`, gemeinsame Simulation). Standorte und Einrichtung bestimmt
+  Läden stehen an der Straße (Tür zur Fahrbahn, parallel zum Straßenverlauf); Wände, Theken und Regale blockieren
+  zu Fuß als gedrehte Rechtecke (`map.furniture`, gemeinsame Simulation), für Fahrzeuge sind die Kacheln darunter massiv. Standorte und Einrichtung bestimmt
   die Weltgenerierung (`placeShops`/`STORE_FURNITURE` in `shared/src/shops.ts`), gezeichnet von
   `client/src/render/StoresView.ts`. Der Server prüft Abstand zum Verkäufer, Stufe (Waffen-Freischaltung), Geld und Rucksackplatz.
 - **Inventar** (I): Waffen ausrüsten, Gegenstände benutzen (8 Rucksack-Slots).
