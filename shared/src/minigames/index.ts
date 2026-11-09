@@ -12,8 +12,8 @@ import driftConfig from './config/drift.json';
 import bombBusConfig from './config/bombbus.json';
 import type { DriftRules } from './drift';
 
-/** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
-export const MG_PHONE_ID = 'minigames';
+/** Minispiel-Telefone heißen `mg_<modus>_<n>` (über die Karte verteilt, siehe questLocations.ts); Aufträge dort `mg:<modus>`. */
+export const MG_PHONE_PREFIX = 'mg_';
 export const MG_PREFIX = 'mg:';
 
 export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss' | 'drift' | 'bombbus';
@@ -52,6 +52,8 @@ export const isDifficulty = (s: string): s is DifficultyId => s in BOT_DIFFICULT
 // ------------------------------------------------------------------ Konfiguration
 /** Felder, die jede Modus-Konfiguration hat (siehe config/*.json). */
 export interface BaseModeConfig {
+  /** Anzahl der Telefone auf der Karte, an denen dieser Modus startet (2–5). */
+  phones: number;
   arena: string;
   lobbyTime: number;
   joinRange: number;

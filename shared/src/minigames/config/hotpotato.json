@@ -1,5 +1,6 @@
 {
-  "_doc": "Hot Potato: Ein zufälliger Teilnehmer hat die Bombe. Rammen (Aufprall ab passMinSpeed m/s) gibt sie weiter. Wer sie gerade abgegeben hat, ist passImmunity Sekunden geschützt (sie kann nicht sofort zurück). Läuft der Zünder ab, explodiert der Träger und scheidet aus; nach roundPause Sekunden bekommt ein neuer zufälliger Teilnehmer die Bombe. fuse: Zünderzeit der ersten Runde (start), Änderung je Runde (step), Minimum (min). damageScale 0 = kein Fahrzeugschaden (nur die Bombe zählt). timeLimit ist nur eine Sicherung.",
+  "_doc": "phones: Anzahl der Minispiel-Telefone auf der Karte (2–5, Orte werden automatisch verteilt). Hot Potato: Ein zufälliger Teilnehmer hat die Bombe. Rammen (Aufprall ab passMinSpeed m/s) gibt sie weiter. Wer sie gerade abgegeben hat, ist passImmunity Sekunden geschützt (sie kann nicht sofort zurück). Läuft der Zünder ab, explodiert der Träger und scheidet aus; nach roundPause Sekunden bekommt ein neuer zufälliger Teilnehmer die Bombe. fuse: Zünderzeit der ersten Runde (start), Änderung je Runde (step), Minimum (min). damageScale 0 = kein Fahrzeugschaden (nur die Bombe zählt). timeLimit ist nur eine Sicherung.",
+  "phones": 3,
   "arena": "bowl",
   "lobbyTime": 15,
   "joinRange": 70,

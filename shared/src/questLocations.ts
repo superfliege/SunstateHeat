@@ -5,15 +5,16 @@ import { raceTracks } from './races';
 import { findFootSpot } from './sim/movement';
 import { storeAt } from './shops';
 import { TAXI_HUNT_ID, TAXI_HUNT_NAME } from './taxiHunt';
-import { MG_PHONE_ID } from './minigames';
+import { MG_PHONE_PREFIX, MINIGAMES, type MinigameId } from './minigames';
+import { pointInPolygon } from './world/geometry';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
 
 export interface Point { x: number; z: number }
 /** race = Renntelefon (Start eines Straßenrennens, siehe races.ts). */
 /** taxi = Telefon für den Modus „Catch the Taxi“ (taxiHunt.ts), steht direkt am Spawn. */
-/** mg = Minispiel-Telefon (Sumo & Co., siehe minigames/). */
-export interface PhoneDef { id: string; name: string; x: number; z: number; race?: boolean; taxi?: boolean; mg?: boolean }
+/** mg = Minispiel-Telefon (Sumo & Co., siehe minigames/): startet genau diesen Modus. */
+export interface PhoneDef { id: string; name: string; x: number; z: number; race?: boolean; taxi?: boolean; mg?: MinigameId }
 
 const isWater = (t: number) => t === Tile.WATER || t === Tile.SWAMP;
 
@@ -146,9 +147,8 @@ export function payphones(map: WorldMap): PhoneDef[] {
     return { id, name, x: Math.round(s.x * 10) / 10, z: Math.round(s.z * 10) / 10 };
   };
   const dry = centroid(map, 'Sunny Acres');
-  return [
+  const list: PhoneDef[] = [
     { ...at(TAXI_HUNT_ID, `${TAXI_HUNT_NAME} – Spielmodus`, map.spawn, 9, -7), taxi: true },
-    { ...at(MG_PHONE_ID, 'Minispiele – Arena-Telefon', map.spawn, -9, -7), mg: true },
     at('bus', 'Telefon am Busbahnhof', loc.busStation),
     at('neon', 'Telefon Ocean Strip', loc.club, -8, 4),
     at('marlin', 'Telefon Sunset Village', loc.lighthouse, 8, 6),
@@ -158,4 +158,70 @@ export function payphones(map: WorldMap): PhoneDef[] {
     at('gator', 'Telefon Rennstrecke', loc.stiltHouse, -14, 10),
     ...raceTracks(map).map((t) => ({ id: t.def.id, name: `Straßenrennen: ${t.def.name}`, x: t.phone.x, z: t.phone.z, race: true })),
   ];
+  return [...list, ...minigamePhones(map, list)];
+}
+
+/** Straße oder Gehweg im Umkreis (damit man mit dem Auto hinkommt). */
+function nearRoad(map: WorldMap, x: number, z: number, r: number): boolean {
+  for (let dz = -r; dz <= r; dz += 4) {
+    for (let dx = -r; dx <= r; dx += 4) {
+      const t = map.tileAt(x + dx, z + dz);
+      if (t === Tile.ROAD || t === Tile.SIDEWALK) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Minispiel-Telefone: jeder Modus startet an 2–5 Orten (config `phones`), verteilt über alle Viertel.
+ * Runde 1 stellt je Modus ein Telefon in die Nähe des Spawns, jede weitere Runde möglichst weit weg
+ * von den Telefonen desselben Modus. Deterministisch (Client und Server erhalten dieselben Punkte).
+ */
+export function minigamePhones(map: WorldMap, taken: Point[]): PhoneDef[] {
+  const MIN_GAP = 35;
+  const cands: { p: Point; district: string }[] = [];
+  for (const d of map.districts) {
+    const c = centroid(map, d.name);
+    const pts: [number, number][] = [[c.x, c.z]];
+    for (const r of [60, 120, 180]) for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2 + r * 0.01;
+      pts.push([c.x + Math.cos(a) * r, c.z + Math.sin(a) * r]);
+    }
+    for (const [x, z] of pts) {
+      if (!pointInPolygon(x, z, d.poly) || !nearRoad(map, x, z, 14)) continue;
+      const p = foot(map, x, z);
+      if (!nearRoad(map, p.x, p.z, 10) || isWater(map.tileAt(p.x, p.z))) continue;
+      cands.push({ p, district: d.name });
+    }
+  }
+  const modes = Object.keys(MINIGAMES) as MinigameId[];
+  const want = (m: MinigameId) => Math.max(2, Math.min(5, Math.round(MINIGAMES[m].config.phones ?? 3)));
+  const placed: { mode: MinigameId; p: Point; district: string }[] = [];
+  const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.z - b.z);
+  const sp = map.spawn;
+  for (let round = 0; round < 5; round++) {
+    for (const mode of modes) {
+      if (round >= want(mode)) continue;
+      let best: (typeof cands)[number] | null = null, bestScore = -Infinity;
+      for (const c of cands) {
+        let all = Infinity, same = Infinity;
+        for (const t of taken) all = Math.min(all, dist(t, c.p));
+        for (const q of placed) { const d = dist(q.p, c.p); all = Math.min(all, d); if (q.mode === mode) same = Math.min(same, d); }
+        if (all < MIN_GAP) continue;
+        // Viertel gleichmäßig füllen: jedes Telefon im selben Viertel kostet Punkte
+        const crowd = placed.filter((q) => q.district === c.district).length;
+        const score = round === 0
+          ? Math.min(all, 120) - 0.4 * dist(c.p, sp)
+          : Math.min(same, 700) + 0.6 * Math.min(all, 250) - 160 * crowd;
+        if (score > bestScore) { bestScore = score; best = c; }
+      }
+      if (best) placed.push({ mode, p: best.p, district: best.district });
+    }
+  }
+  const count: Partial<Record<MinigameId, number>> = {};
+  return placed.map(({ mode, p, district }) => {
+    const n = (count[mode] = (count[mode] ?? 0) + 1);
+    const m = MINIGAMES[mode];
+    return { id: `${MG_PHONE_PREFIX}${mode}_${n}`, name: `${m.icon} ${m.name} – Arena-Telefon ${district}`, x: Math.round(p.x * 10) / 10, z: Math.round(p.z * 10) / 10, mg: mode };
+  });
 }
