@@ -31,9 +31,11 @@ export class Input {
       if (e.code === 'Enter') { e.preventDefault(); this.onChatKey(); return; }
       if (e.code === 'KeyE' && !e.repeat) this.usePressed = true;
       if (e.code === 'KeyM' && !e.repeat) this.onMapKey();
-      if (e.code === 'KeyF' && !e.repeat) this.onInteract();
-      if (e.code === 'KeyI' && !e.repeat) this.onInventory();
-      if (e.code === 'KeyJ' && !e.repeat) this.onQuestLog();
+      // preventDefault markiert die Taste als verbraucht: das Fenster, das sie gerade geöffnet
+      // hat, darf sie nicht im selben Ereignis gleich wieder schließen (Panels)
+      if (e.code === 'KeyF' && !e.repeat) { e.preventDefault(); this.onInteract(); }
+      if (e.code === 'KeyI' && !e.repeat) { e.preventDefault(); this.onInventory(); }
+      if (e.code === 'KeyJ' && !e.repeat) { e.preventDefault(); this.onQuestLog(); }
       if (/^Digit[1-5]$/.test(e.code) && !e.repeat) this.onWeaponSlot(Number(e.code.slice(5)));
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);

@@ -1,4 +1,5 @@
-// Laden-Markierungen in der Welt: farbiger Ring, schwebender Pfeil und Schild mit dem Ladennamen.
+// Markierungen in der Welt (Telefone): farbiger Ring, schwebender Pfeil und Schild mit dem Namen.
+// Läden haben keine Marker mehr, dort spricht man mit dem Verkäufer (StoresView).
 import * as THREE from 'three';
 import type { QuestState } from '../../../shared/src/protocol';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';

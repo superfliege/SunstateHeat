@@ -22,9 +22,10 @@ export const newPawn = (x = 0, z = 0, a = 0): PawnState => ({ x, z, a, h: 0, vx:
 
 type SurfaceFn = (tile: number) => number;
 
-/** Prüft 5 Punkte eines Kreises gegen unbegehbare Kacheln. */
+/** Prüft 5 Punkte eines Kreises gegen unbegehbare Kacheln (und zu Fuß gegen Ladeneinrichtung). */
 function blocked(map: WorldMap, x: number, z: number, r: number, surface: SurfaceFn): boolean {
   return (
+    (surface === footSurface && map.furnitureHit(x, z, r)) ||
     surface(map.tileAt(x, z)) === 0 ||
     surface(map.tileAt(x + r, z)) === 0 ||
     surface(map.tileAt(x - r, z)) === 0 ||

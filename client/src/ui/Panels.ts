@@ -1,13 +1,46 @@
-// Overlay-Fenster: Laden (F in der Nähe eines Ladens) und Inventar (I).
+// Overlay-Fenster: Gespräch mit Verkäufern (F vor der Theke), Inventar (I), Quest-Log (J), Telefon.
 // Alle Daten kommen vom Server; Käufe und Benutzen werden dort geprüft, das Fenster zeigt nur an.
 import type { ClientMsg, PhoneQuest, PlayerStats, QuestState } from '../../../shared/src/protocol';
 import { GANGS, GANG_IDS, repStatus } from '../../../shared/src/gangs';
 import { QUESTS } from '../../../shared/src/questData';
 import { BACKPACK_SLOTS, ITEMS } from '../../../shared/src/items';
-import { shopCatalog, SHOP_COLORS, type ShopDef } from '../../../shared/src/shops';
+import { shopCatalog, SHOP_COLORS, type ShopDef, type ShopType } from '../../../shared/src/shops';
 import { CARRY_SLOTS, WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 
-type Mode = { kind: 'shop'; shop: ShopDef } | { kind: 'inv' } | { kind: 'log' } | { kind: 'phone'; name: string; quests: PhoneQuest[] } | null;
+type TalkStep = 'hello' | 'buy';
+type Mode = { kind: 'talk'; shop: ShopDef; step: TalkStep; line: string } | { kind: 'inv' } | { kind: 'log' } | { kind: 'phone'; name: string; quests: PhoneQuest[] } | null;
+
+// ------------------------------------------------------------------ Gesprächszeilen
+const GREET: Record<ShopType, string[]> = {
+  sunmart: ['Willkommen im Sunmart! Rund um die Uhr, rund um den Block.', 'Hey, Schatz. Brauchst du was gegen den Hunger?', 'Unsere Burger sind so frisch wie die Zeitung von gestern. Also ziemlich frisch.'],
+  gas: ['Willkommen bei Gas & Go. Sprit ist draußen, Snacks sind hier drin.', 'Lange Fahrt gehabt? Der Kaffee ist frisch – na ja, frisch genug.', 'Kein Bargeld in der Kasse, nur damit das klar ist. Was brauchst du?'],
+  ammo: ['Ammo & Ammo. Wir stellen keine Fragen – du auch nicht.', 'Schau dich um. Anfassen nur mit Waffenschein. War ein Witz, wir haben keinen.', 'Na, Ärger in der Nachbarschaft? Da bist du hier richtig.'],
+  paint: ['Paint & Pray! Neue Farbe, neues Leben – die Cops erkennen dich nicht wieder.', 'Kratzer? Beulen? Fahndung? Ich mach das weg.', 'Fahr ruhig ran, ich beiß nicht. Nur die Lackierpistole.'],
+};
+const ASK: Record<ShopType, string[]> = {
+  sunmart: ['Was darf\'s sein?', 'Greif zu, alles heute im Angebot. Also wie immer.'],
+  gas: ['Was darf\'s sein?', 'Nimm dir, was du brauchst – bezahlt wird hier vorne.'],
+  ammo: ['Hier ist die Ware. Bar, kein Anschreiben.', 'Such dir was aus. Munition gibt\'s nur zu Waffen, die du hast.'],
+  paint: ['Was soll\'s sein – Reparatur oder neue Farbe?', 'Stell die Karre hier ab, dann legen wir los.'],
+};
+const THANKS: Record<ShopType, string[]> = {
+  sunmart: ['Gute Wahl! Noch was?', 'Danke, beehr uns bald wieder.', 'Tüte brauchst du keine, oder?'],
+  gas: ['Danke dir. Gute Fahrt!', 'Gern. Noch was für unterwegs?'],
+  ammo: ['Viel Spaß damit. Und du hast es nicht von mir.', 'Gute Wahl. Ziel nicht auf mich.'],
+  paint: ['Wie neu! Na ja, fast.', 'Fertig. Und jetzt fahr vorsichtig – oder wenigstens schnell.'],
+};
+const BYE = ['Bis dann!', 'Pass auf dich auf.', 'Komm wieder!'];
+const GOSSIP = [
+  'Die Telefonzellen klingeln öfter, als man denkt. Geh ruhig mal ran.',
+  'Wenn dir die Cops im Nacken sitzen: Paint & Pray an der Werkstatt lackiert dich um.',
+  'Schutzwesten gibt\'s bei Ammo & Ammo. Glaub mir, die brauchst du.',
+  'Nachts drehen die Gangs ihre Runden. Halt dich von deren Vierteln fern, wenn sie dich nicht mögen.',
+  'Am Renntelefon gibt\'s Straßenrennen. Mein Cousin hat da seine Karre verloren. Und seinen Stolz.',
+  'Ein Verbandskasten im Rucksack hat schon so manchem das Leben gerettet.',
+  'Draußen vor der Stadt gibt\'s ein Testgelände mit Rampen. Die Jungs da sind völlig verrückt.',
+  'An der Werkstatt einfach kurz anhalten – dann wird die Karre geflickt.',
+];
+const pickLine = (list: string[]) => list[Math.floor(Math.random() * list.length)];
 
 const STATUS_TEXT: Record<string, string> = { archenemy: 'Erzfeind', hostile: 'Feindlich', neutral: 'Neutral', friendly: 'Freundlich', trusted: 'Vertraut' };
 
@@ -28,21 +61,41 @@ export class Panels {
   private done: string[] = [];
   private cooldowns: Record<string, number> = {};
   private quest: QuestState | null = null;
+  /** Gesprächsoptionen der aktuellen Ansicht (Tasten 1–9). */
+  private options: (() => void)[] = [];
   onOpenChange: (open: boolean) => void = () => {};
+  /** Gespräch beendet (für den Abschiedsgruß des Verkäufers). */
+  onTalkEnd: (shop: ShopDef, line: string) => void = () => {};
 
   constructor(private send: (m: ClientMsg) => void) {
     window.addEventListener('keydown', (e) => {
-      if (!this.mode) return;
-      if (e.code === 'Escape' || (e.code === 'KeyI' && this.mode.kind === 'inv') || (e.code === 'KeyJ' && this.mode.kind === 'log') || (e.code === 'KeyF' && this.mode.kind === 'phone') || (e.code === 'KeyF' && this.mode.kind === 'shop')) {
+      if (!this.mode || e.defaultPrevented || e.repeat) return;
+      const m = this.mode;
+      if (e.code === 'Escape' || (e.code === 'KeyI' && m.kind === 'inv') || (e.code === 'KeyJ' && m.kind === 'log') || (e.code === 'KeyF' && (m.kind === 'phone' || m.kind === 'talk'))) {
         e.preventDefault();
         this.close();
+      } else if (m.kind === 'talk' && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
+        e.preventDefault();
+        this.options[Number(e.code.slice(-1)) - 1]?.();
+      } else if (m.kind === 'talk' && m.step === 'buy' && e.code === 'Backspace') {
+        e.preventDefault();
+        this.talk('hello', pickLine(GREET[m.shop.type]));
       }
     });
   }
 
   get isOpen() { return this.mode !== null; }
 
-  openShop(shop: ShopDef) { this.setMode({ kind: 'shop', shop }); }
+  /** Gespräch mit dem Verkäufer beginnen (Begrüßung, dann Einkaufen / Plaudern / Tschüss). */
+  openTalk(shop: ShopDef) { this.setMode({ kind: 'talk', shop, step: 'hello', line: pickLine(GREET[shop.type]) }); }
+  /** Gerade im Gespräch mit diesem Laden? */
+  talkingTo(): ShopDef | null { return this.mode?.kind === 'talk' ? this.mode.shop : null; }
+
+  private talk(step: TalkStep, line: string) {
+    if (this.mode?.kind !== 'talk') return;
+    this.mode = { ...this.mode, step, line };
+    this.render();
+  }
   openPhone(name: string, quests: PhoneQuest[]) { this.setMode({ kind: 'phone', name, quests }); }
   toggleLog() { if (this.mode?.kind === 'log') this.close(); else this.setMode({ kind: 'log' }); }
   setQuestLog(done: string[], cooldowns: Record<string, number>) { this.done = done; this.cooldowns = cooldowns; this.sig = ''; if (this.mode?.kind === 'log') this.render(); }
@@ -52,6 +105,7 @@ export class Panels {
 
   private setMode(m: Mode) {
     const was = this.isOpen;
+    if (this.mode?.kind === 'talk' && m?.kind !== 'talk') this.onTalkEnd(this.mode.shop, pickLine(BYE));
     this.mode = m;
     this.sig = '';
     this.root.classList.toggle('hidden', !m);
@@ -62,29 +116,66 @@ export class Panels {
 
   /** Bei jedem Snapshot: neu zeichnen, wenn sich etwas Relevantes geändert hat. */
   update(stats: PlayerStats, cash: number, quest: QuestState | null = null) {
+    // Bezahlt? Dann bedankt sich der Verkäufer
+    if (this.mode?.kind === 'talk' && this.mode.step === 'buy' && cash < this.cash) this.mode.line = pickLine(THANKS[this.mode.shop.type]);
     this.stats = stats; this.cash = cash; this.quest = quest;
     if (!this.mode) return;
-    const sig = JSON.stringify([cash, stats.level, stats.owned, stats.inv, stats.weapon, stats.ammo, stats.rep, quest?.id ?? '', quest?.stageIdx ?? -1, this.mode.kind === 'phone' ? 0 : 1]);
-    if (sig !== this.sig) this.render();
+    if (this.signature() !== this.sig) this.render();
+  }
+
+  private signature(): string {
+    const s = this.stats!, m = this.mode;
+    return JSON.stringify([this.cash, s.level, s.owned, s.inv, s.weapon, s.ammo, s.rep, this.quest?.id ?? '', this.quest?.stageIdx ?? -1, m?.kind === 'phone' ? 0 : 1, m?.kind === 'talk' ? m.step + m.line : '']);
   }
 
   private render() {
     const m = this.mode, s = this.stats;
     if (!m || !s) return;
-    this.sig = JSON.stringify([this.cash, s.level, s.owned, s.inv, s.weapon, s.ammo, s.rep, this.quest?.id ?? '', this.quest?.stageIdx ?? -1, m.kind === 'phone' ? 0 : 1]);
+    this.sig = this.signature();
+    this.options = [];
     const box = el('div', 'pn-box');
     const head = el('div', 'pn-head');
-    const title = el('h2', undefined, m.kind === 'shop' ? m.shop.name : m.kind === 'phone' ? m.name : m.kind === 'log' ? 'Quest-Log' : 'Inventar');
-    if (m.kind === 'shop') box.style.borderColor = '#' + SHOP_COLORS[m.shop.type].toString(16).padStart(6, '0');
+    const title = el('h2', undefined, m.kind === 'talk' ? m.shop.name : m.kind === 'phone' ? m.name : m.kind === 'log' ? 'Quest-Log' : 'Inventar');
+    if (m.kind === 'talk') box.style.borderColor = '#' + SHOP_COLORS[m.shop.type].toString(16).padStart(6, '0');
     const close = el('button', 'pn-close', '✕');
     close.onclick = () => this.close();
     head.append(title, el('span', 'pn-cash', `${money(this.cash)} · Stufe ${s.level}`), close);
     box.append(head);
-    if (m.kind === 'shop') this.renderShop(box, m.shop, s);
+    if (m.kind === 'talk') this.renderTalk(box, m.shop, m.step, m.line, s);
     else if (m.kind === 'phone') this.renderPhone(box, m.quests);
     else if (m.kind === 'log') this.renderLog(box, s);
     else this.renderInventory(box, s);
     this.root.replaceChildren(box);
+  }
+
+  /** Gespräch: Sprechblase des Verkäufers, darunter Antworten (1–9) bzw. das Sortiment. */
+  private renderTalk(box: HTMLElement, shop: ShopDef, step: TalkStep, line: string, s: PlayerStats) {
+    const color = '#' + SHOP_COLORS[shop.type].toString(16).padStart(6, '0');
+    const npc = el('div', 'pn-npc');
+    npc.style.borderColor = color;
+    const who = el('b', undefined, shop.keeper.name);
+    who.style.color = color;
+    npc.append(who, el('span', undefined, `„${line}“`));
+    box.append(npc);
+    const opts = el('div', 'pn-opts');
+    const option = (text: string, fn: () => void) => {
+      const n = this.options.push(fn);
+      const b = el('button', 'pn-opt');
+      b.append(el('kbd', undefined, String(n)), document.createTextNode(text));
+      b.onclick = fn;
+      opts.append(b);
+    };
+    if (step === 'hello') {
+      option(shop.type === 'paint' ? 'Kannst du meine Karre machen?' : shop.type === 'ammo' ? 'Zeig mal, was du hast.' : 'Ich will was kaufen.', () => this.talk('buy', pickLine(ASK[shop.type])));
+      option('Was gibt\'s Neues?', () => this.talk('hello', pickLine(GOSSIP)));
+      option('Tschüss.', () => this.close());
+      box.append(opts, el('p', 'pn-foot', '1–3 oder klicken · Esc oder F zum Gehen'));
+      return;
+    }
+    this.renderShop(box, shop, s);
+    option('Das war\'s erst mal.', () => this.talk('hello', pickLine(['Sonst noch was?', 'Kann ich sonst noch helfen?'])));
+    option('Tschüss.', () => this.close());
+    box.append(opts, el('p', 'pn-foot', 'Rücktaste = zurück · Esc oder F zum Gehen'));
   }
 
   private renderShop(box: HTMLElement, shop: ShopDef, s: PlayerStats) {
@@ -103,7 +194,7 @@ export class Panels {
       row.append(info, btn);
       list.append(row);
     }
-    box.append(list, el('p', 'pn-foot', 'Esc oder F zum Schließen'));
+    box.append(list);
   }
 
   private renderPhone(box: HTMLElement, quests: PhoneQuest[]) {
@@ -189,7 +280,7 @@ export class Panels {
     box.append(el('h3', undefined, `Rucksack (${used}/${BACKPACK_SLOTS})`));
     const il = el('div', 'pn-list');
     const entries = Object.entries(s.inv).filter(([, c]) => c > 0);
-    if (!entries.length) il.append(el('p', 'pn-foot', 'Leer. Im 24/7 Sunmart gibt es Essen und Verbandskästen.'));
+    if (!entries.length) il.append(el('p', 'pn-foot', 'Leer. Im 24/7 Sunmart (und bei Gas & Go) gibt es Essen, im Sunmart auch Verbandskästen.'));
     for (const [id, c] of entries) {
       const def = ITEMS[id];
       if (!def) continue;

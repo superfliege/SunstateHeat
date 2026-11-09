@@ -560,6 +560,8 @@ Laden	Ware	Standorte
 „Okeefield Used Cars"	Gebrauchtwagen, Pick-ups	Okeefield
 „Blue Hook Marine"	Boote, Airboats	Marina, Gator Flats
 „Paint & Pray"	Lackieren, Reparatur, Tuning	eine pro Zone
+„Gas & Go"	Snacks, Getränke (Tankstellen-Shop)	an Tankstellen
+Läden sind begehbar (Dach blendet beim Betreten aus); gekauft wird im Gespräch mit dem Verkäufer an der Theke.
 Geldautomaten	Ein-/Auszahlen	15+ in der Welt
 14.5 Immobilien (M3)
 Typ	Funktion	Beispielpreise

@@ -31,8 +31,8 @@ import { moodFor } from '../render/palette';
 import { Particles } from '../render/Particles';
 import { Tracers } from '../render/Tracers';
 import { QuestMarkers, ShopsView } from '../render/ShopsView';
+import { StoresView } from '../render/StoresView';
 import { payphones, type PhoneDef } from '../../../shared/src/questLocations';
-import { SHOP_COLORS } from '../../../shared/src/shops';
 import type { QuestState } from '../../../shared/src/protocol';
 import { generateShops, shopNear, type ShopDef } from '../../../shared/src/shops';
 import { Panels } from '../ui/Panels';
@@ -117,7 +117,7 @@ export class Game {
   private tracers = new Tracers();
   private shops: ShopDef[];
   private copDots = new Map<number, [number, number]>();
-  private shopsView: ShopsView;
+  private stores: StoresView;
   private phones: PhoneDef[];
   private phonesView: ShopsView;
   private questMarkers: QuestMarkers;
@@ -145,14 +145,15 @@ export class Game {
     this.features = new FeaturesView(this.map);
     this.fx = new VehicleFx(this.map, vehicleMat);
     this.shops = generateShops(this.map);
-    this.shopsView = new ShopsView(this.map, this.shops.map((s) => ({ x: s.x, z: s.z, name: s.name, color: SHOP_COLORS[s.type] })));
+    this.stores = new StoresView(this.map, this.shops);
     this.phones = payphones(this.map);
     this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
+    this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
     this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.play('toggle', 0.5); };
     this.particles = new Particles(this.map);
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.fx.group, this.tracers.group, this.shopsView.group, this.phonesView.group, this.questMarkers.group);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.applyGfx();
@@ -193,7 +194,7 @@ export class Game {
     this.input.onMapKey = () => this.minimap.toggleBig();
     this.input.onInteract = () => {
       const s = this.shopNearMe();
-      if (s) { this.panels.openShop(s); return; }
+      if (s) { this.panels.openTalk(s); return; }
       const ph = this.phoneNearMe();
       if (ph) this.net.send({ t: 'phone', id: ph.id });
       this.net.send({ t: 'hold', on: true });
@@ -319,7 +320,7 @@ export class Game {
 
   private shopNearMe(): ShopDef | null {
     const me = this.predictor.view();
-    return shopNear(this.shops, me.x, me.z);
+    return shopNear(this.shops, me.x, me.z, this.predictor.inVehicle);
   }
 
   private rec(id: number): VehRec | undefined { return this.recs.get(id); }
@@ -613,7 +614,10 @@ export class Game {
     this.particles.update(dt, this.rig.target);
     this.fx.update(dt);
     this.tracers.update(dt);
-    this.shopsView.update(dt); this.phonesView.update(dt); this.questMarkers.update(dt);
+    const talk = this.panels.talkingTo() ?? (this.chat.isOpen ? null : this.shopNearMe());
+    this.stores.setTalkable(talk);
+    this.stores.update(dt, me.x, me.z, this.predictor.inVehicle);
+    this.phonesView.update(dt); this.questMarkers.update(dt);
     // Linienstärke: mit dem Zoom dünner, mit der Auflösung dicker (Referenz 720p)
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
     this.post.update(this.sky.mood, this.sky.night);
@@ -863,21 +867,24 @@ export class Game {
     if (this.predictor.inVehicle && sim) {
       const c = sim.car;
       const ws = this.map.workshops.find((w) => Math.hypot(w.x - c.x, w.z - c.z) < w.r);
+      const mech = this.shopNearMe();
       if (c.flip >= ASSISTS.unflipDelay) this.hud.setHint('<b>E</b> Fahrzeug aufrichten');
       else if (c.flip > 0.5) this.hud.setHint(`Überschlagen … aufrichten in ${Math.ceil(ASSISTS.unflipDelay - c.flip)} s`);
       else if (ws && (sim.dmg.hp < 1000 || sim.dmg.parts)) this.hud.setHint('Werkstatt: kurz <b>anhalten</b> zum Reparieren');
       else if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>E</b> Aussteigen');
+      else if (mech) this.hud.setHint(`<b>F</b> Mit ${mech.keeper.name} sprechen (${mech.name}) · <b>E</b> Aussteigen`);
       else this.hud.setHint(`<b>E</b> Aussteigen · <b>Leertaste</b> Handbremse${sim.prof.nitroForce > 0 ? ' · <b>Shift</b> Nitro' : ''}`);
     } else {
       const v = this.nearestEnterable(vehicles, me.x, me.z);
       if (v) {
         const verb = v.driver === -2 ? 'Übernehmen' : 'Einsteigen';
         const name = v.kind === VehicleKind.Car || v.kind === VehicleKind.Bike ? variantInfo(v.variant).name : VEHICLE_DEFS[v.kind as VehicleKindId].name;
-        this.hud.setHint(`<b>E</b> ${verb} (${name})`);
+        const shop = this.shopNearMe();
+        this.hud.setHint(`<b>E</b> ${verb} (${name})${shop ? ` · <b>F</b> Mit ${shop.keeper.name} sprechen` : ''}`);
       } else {
         const shop = this.shopNearMe();
         const ph = this.phoneNearMe();
-        this.hud.setHint(shop ? `<b>F</b> ${shop.name}` : ph ? (ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
+        this.hud.setHint(shop ? `<b>F</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
       }
     }
   }
@@ -885,7 +892,7 @@ export class Game {
   private drawMinimap(latest: SnapshotMsg, vehicles: Map<number, VehicleViewState>, me: ReturnType<Predictor['view']>) {
     const dots: MapDot[] = [];
     for (const w of this.map.workshops) dots.push({ x: w.x, z: w.z, color: '#2af0e6', size: 3, ring: true });
-    for (const s of this.shops) dots.push({ x: s.x, z: s.z, color: s.type === 'ammo' ? '#ff6a6a' : s.type === 'paint' ? '#c98bff' : '#4fd16b', size: 2, ring: true });
+    for (const s of this.shops) dots.push({ x: s.x, z: s.z, color: s.type === 'ammo' ? '#ff6a6a' : s.type === 'paint' ? '#c98bff' : s.type === 'gas' ? '#ffb33a' : '#4fd16b', size: 2, ring: true });
     for (const ph of this.phones) dots.push({ x: ph.x, z: ph.z, color: ph.race ? '#ff8a3a' : '#ffe14d', size: 3, ring: true });
     for (const t of this.questState?.targets ?? []) dots.push({ x: t[0], z: t[1], color: t[3] === 5 ? '#ff3d5a' : t[3] === 2 ? '#ffd23a' : t[3] === 7 ? '#ffffff' : '#4dff9a', size: 4, ring: t[3] !== 5 });
     for (const c of this.copDots.values()) dots.push({ x: c[0], z: c[1], color: '#2a6bff', size: 3 });

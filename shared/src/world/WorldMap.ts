@@ -131,6 +131,11 @@ export class WorldMap {
   spikes: [number, number, number, number][] = [];
   /** Baumfreie Rechtecke [x0, z0, x1, z1] (Testgelände, Rampen). */
   clearAreas: [number, number, number, number][] = [];
+  /**
+   * Einrichtung begehbarer Läden (Regale, Theken), die man zu Fuß nicht durchlaufen kann:
+   * Kachelindex -> achsparallele Rechtecke [x0, z0, x1, z1] in Metern (siehe shops.ts).
+   */
+  furniture = new Map<number, [number, number, number, number][]>();
   /** Werkstätten (Reparatur): Mittelpunkt + Radius. */
   workshops: { x: number; z: number; r: number }[] = [];
   /** Läden (Sunmart, Ammo & Ammo, Paint & Pray) mit Tür-Position; Gebäude liegen in `buildings` (shops.ts). */
@@ -154,6 +159,31 @@ export class WorldMap {
   /** Untergrund an Weltposition in Metern. */
   tileAt(x: number, z: number): number {
     return this.tile(Math.floor(x / CELL), Math.floor(z / CELL));
+  }
+
+  /** Möbelstück als Hindernis eintragen (achsparalleles Rechteck in Metern). */
+  addFurniture(x0: number, z0: number, x1: number, z1: number) {
+    const r: [number, number, number, number] = [Math.min(x0, x1), Math.min(z0, z1), Math.max(x0, x1), Math.max(z0, z1)];
+    // in alle Kacheln eintragen, die das Rechteck plus Figurenradius (< 1 m) berühren
+    for (let cz = Math.floor((r[1] - 1) / CELL); cz <= Math.floor((r[3] + 1) / CELL); cz++) {
+      for (let cx = Math.floor((r[0] - 1) / CELL); cx <= Math.floor((r[2] + 1) / CELL); cx++) {
+        const i = cz * GRID_SIZE + cx;
+        const list = this.furniture.get(i);
+        if (list) list.push(r); else this.furniture.set(i, [r]);
+      }
+    }
+  }
+
+  /** Überschneidet ein Kreis (x, z, Radius rad) ein Möbelstück? */
+  furnitureHit(x: number, z: number, rad: number): boolean {
+    if (!this.furniture.size) return false;
+    const list = this.furniture.get(Math.floor(z / CELL) * GRID_SIZE + Math.floor(x / CELL));
+    if (!list) return false;
+    for (const [x0, z0, x1, z1] of list) {
+      const dx = x < x0 ? x0 - x : x > x1 ? x - x1 : 0, dz = z < z0 ? z0 - z : z > z1 ? z - z1 : 0;
+      if (dx * dx + dz * dz < rad * rad) return true;
+    }
+    return false;
   }
 
   groundAt(x: number, z: number): number {
