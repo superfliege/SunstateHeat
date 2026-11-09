@@ -14,13 +14,15 @@ import { Tile, WATER_LEVEL } from '../../../shared/src/world/tiles';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { createQuaterniusCharacter, styleForMood } from '../render/characters';
 import { CarModel, type DebrisSpawn } from '../render/CarModel';
-import { merge, cyl } from '../render/geom';
+import { box, merge, cyl } from '../render/geom';
 import { standaloneTexture } from '../render/materials/atlas';
 import { addOutline, LINE } from '../render/materials/toon';
 import { CharacterModel, fanGeometry, lightsMat, toonVC, vehicleGeometry, vehicleMat } from '../render/models';
 import { moodFor } from '../render/palette';
 import { createWeaponMesh } from '../render/weaponModels';
 import { createKenneyCharacter, type KenneyCharacter } from '../render/kenneyCharacters';
+import { archetypeOf } from '../../../shared/src/npc/archetypes';
+import { Act } from '../../../shared/src/npc/scenarios';
 
 export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number }
 export interface VehicleViewState {
@@ -32,7 +34,9 @@ export interface VehicleViewState {
   /** Bits geplatzter Reifen (Rad läuft auf der Felge) */
   tires?: number;
 }
-export interface PedState { id: number; x: number; z: number; a: number; color: number; running: boolean; h: number; ragdoll: boolean; angry: boolean; cop: boolean; gang: boolean }
+export interface PedState { id: number; x: number; z: number; a: number; color: number; running: boolean; h: number; ragdoll: boolean; angry: boolean; cop: boolean; gang: boolean;
+  /** Archetyp-Index (-1 = klassischer Passant) und Animations-ID (Act) vom Server */
+  arch?: number; act?: number }
 
 /** Gemeinsame Schnittstelle: Quaternius-Figur (animiert) oder prozeduraler Ersatz. */
 interface Figure { root: THREE.Group; animate(speed: number, dt: number, seated?: boolean, dist?: number): void; dispose(): void }
@@ -40,6 +44,8 @@ interface CharView {
   model: Figure; lastX: number; lastZ: number; label?: THREE.Sprite; bubble?: THREE.Sprite; seen: boolean; tumble: number;
   /** Gehaltene Waffe (Index in WEAPONS, -1 = keine), Schwung-/Rückstoß-Zeit in Sekunden */
   held: THREE.Mesh | null; heldIdx: number; swing: number; kick: number;
+  /** Hund an der Leine (Hundebesitzer): Mesh + Leine */
+  dog?: THREE.Mesh; leash?: THREE.Line; dogX?: number; dogZ?: number; dogA?: number;
 }
 const SWING_TIME = 0.28, KICK_TIME = 0.12;
 interface VehView {
@@ -115,6 +121,7 @@ export class EntityViews {
   private packageGeo = new THREE.BoxGeometry(1, 1, 1);
   private packageMat = new THREE.MeshLambertMaterial({ color: 0xc98a4a, emissive: 0x3a1a00 });
   private clock = 0;
+  private lastDt = 0.016;
   private foam: THREE.InstancedMesh;
   private foamCount = 0;
   /** Kamera-Fokus für Animations-LOD. */
@@ -182,6 +189,7 @@ export class EntityViews {
 
   beginFrame(dt: number) {
     this.clock += dt;
+    this.lastDt = dt;
     this.shadowCount = 0;
     this.foamCount = 0;
     this.wheelCount = 0;
@@ -360,13 +368,19 @@ export class EntityViews {
   }
 
   /** Figur im Stil der Gegend (Quaternius) oder prozeduraler Ersatz. */
-  private createFigure(id: number, outfit: number, x: number, z: number, player: boolean, role = 0): Figure {
+  private createFigure(id: number, outfit: number, x: number, z: number, player: boolean, role = 0, arch = -1): Figure {
     const cop = role === 1, gang = role === 2;
     const district = this.map.districtAt(x, z);
     const mood = moodFor(this.map.zoneAt(x, z), district?.style ?? null);
     const style = cop ? 'business' : player ? 'casual' : styleForMood(mood, ((id * 2654435761) >>> 0) / 4294967296);
     const shirt = cop ? 0x2850c8 : player || gang ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined;
     // Kenney Animated Characters (bevorzugt), sonst Quaternius-Packs, sonst prozedural
+    if (arch >= 0 && !cop && !gang && !player) {
+      // Archetyp-Outfit: Skin-Set und Oberteilfarbe aus der Archetyp-Tabelle
+      const def = archetypeOf(arch);
+      const ak = createKenneyCharacter(style, id, def.shirts ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined, def.skins);
+      if (ak) return ak;
+    }
     const k = createKenneyCharacter(cop ? 'cop' : gang ? 'gang' : player ? 'player' : style, id, cop ? undefined : shirt);
     if (k) return k;
     const q = createQuaterniusCharacter(style, id, shirt);
@@ -374,14 +388,15 @@ export class EntityViews {
   }
 
   // ------------------------------------------------------------------ Figuren
-  private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0) {
+  private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0) {
     let c = map.get(id);
     if (!c) {
-      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role), lastX: x, lastZ: z, seen: true, tumble: 0, held: null, heldIdx: -1, swing: 0, kick: 0 };
+      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch), lastX: x, lastZ: z, seen: true, tumble: 0, held: null, heldIdx: -1, swing: 0, kick: 0 };
       map.set(id, c);
       this.group.add(c.model.root);
     }
     c.seen = true;
+    (c.model as Partial<KenneyCharacter>).setAct?.(ragdoll ? 0 : act, (id % 97) / 97);
     const speed = dt > 0 ? Math.hypot(x - c.lastX, z - c.lastZ) / dt : 0;
     c.lastX = x; c.lastZ = z;
     const root = c.model.root;
@@ -469,7 +484,8 @@ export class EntityViews {
   }
 
   setPed(s: PedState, dt: number) {
-    const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0);
+    const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0);
+    this.updateDog(c, s);
     // Schimpfender Fahrer: Comic-Sprechblase
     if (s.angry && !c.bubble) {
       c.bubble = makeLabel(SWEAR[s.id % SWEAR.length], 0, true);
@@ -482,6 +498,46 @@ export class EntityViews {
       const p = c.model.root.position;
       c.bubble.position.set(p.x, p.y + 3.2 + Math.abs(Math.sin(this.clock * 10)) * 0.25, p.z);
     }
+  }
+
+  /** Hund an der Leine für Hundebesitzer (reine Deko, läuft clientseitig hinterher). */
+  private updateDog(c: CharView, s: PedState) {
+    const want = (s.arch ?? -1) >= 0 && archetypeOf(s.arch!).companion === 'dog' && !s.ragdoll;
+    if (!want) {
+      if (c.dog) { this.group.remove(c.dog, c.leash!); c.leash!.geometry.dispose(); c.dog = undefined; c.leash = undefined; }
+      return;
+    }
+    if (!c.dog) {
+      const body = merge([
+        box(0.3, 0.28, 0.7, 0, 0.3, 0, 0xc98a4a), box(0.24, 0.24, 0.26, 0, 0.45, 0.45, 0xb87838), box(0.1, 0.08, 0.12, 0, 0.47, 0.66, 0x3a2a20),
+        box(0.06, 0.12, 0.05, 0.1, 0.68, 0.42, 0x8a5a30), box(0.06, 0.12, 0.05, -0.1, 0.68, 0.42, 0x8a5a30), box(0.06, 0.06, 0.3, 0, 0.5, -0.45, 0xb87838, 0, 0.7),
+        ...[[-0.1, 0.25], [0.1, 0.25], [-0.1, -0.25], [0.1, -0.25]].map(([lx, lz]) => box(0.07, 0.3, 0.07, lx, 0, lz, 0x9a6a38)),
+      ]);
+      c.dog = new THREE.Mesh(body, toonVC);
+      c.dog.scale.setScalar(1.25);
+      addOutline(c.dog, LINE.prop);
+      c.dogX = s.x + 0.9; c.dogZ = s.z + 0.9; c.dogA = s.a;
+      c.leash = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xe0453a }));
+      c.leash.frustumCulled = false;
+      this.group.add(c.dog, c.leash);
+    }
+    // Zielplatz: vorn links neben dem Besitzer; der Hund folgt weich und schaut in Laufrichtung
+    const fx = Math.sin(s.a), fz = Math.cos(s.a);
+    const tx = s.x + fx * 1.0 + fz * 0.9, tz = s.z + fz * 1.0 - fx * 0.9;
+    const k = Math.min(1, 5 * (this.lastDt || 0.016));
+    const dx = tx - c.dogX!, dz = tz - c.dogZ!;
+    c.dogX! += dx * k; c.dogZ! += dz * k;
+    const moving = Math.hypot(dx, dz) > 0.05;
+    if (moving) c.dogA = Math.atan2(dx, dz);
+    const gy = this.groundY(c.dogX!, c.dogZ!);
+    const bob = moving ? Math.abs(Math.sin(this.clock * 14)) * 0.06 : 0;
+    c.dog.position.set(c.dogX!, gy + bob, c.dogZ!);
+    c.dog.rotation.y = c.dogA!;
+    const hand = c.model.root.position;
+    const pos = c.leash!.geometry.attributes.position as THREE.BufferAttribute;
+    pos.setXYZ(0, hand.x + fz * 0.45, hand.y + 1.05, hand.z - fx * 0.45);
+    pos.setXYZ(1, c.dogX!, gy + 0.7, c.dogZ!);
+    pos.needsUpdate = true;
   }
 
   // ------------------------------------------------------------------ Quest-Objekte
@@ -535,6 +591,7 @@ export class EntityViews {
         if (c.seen) continue;
         this.group.remove(c.model.root);
         c.model.dispose();
+        if (c.dog) { this.group.remove(c.dog, c.leash!); c.leash!.geometry.dispose(); }
         for (const sp of [c.label, c.bubble]) if (sp) { this.group.remove(sp); sp.material.map?.dispose(); sp.material.dispose(); }
         m.delete(id);
       }

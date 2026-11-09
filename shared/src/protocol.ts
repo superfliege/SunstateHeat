@@ -50,8 +50,8 @@ export type PlayerTuple = [number, string, number, number, number, number, numbe
 export type VehicleTuple = [number, number, number, number, number, number, number, number, number, number, number, number, number];
 /** Fahrzeug-Stammdaten (selten geändert): [id, kind, variant, color, driver (-1 frei, -2 NPC, sonst Spieler-ID)] */
 export type VehicleInfoTuple = [number, number, number, number, number];
-/** [id, x, z, angle, outfitColor, Zustand (0 geht, 1 rennt, 2 schimpft, 3 Polizist), höhe, ragdoll 0/1] */
-export type PedTuple = [number, number, number, number, number, number, number, number];
+/** [id, x, z, angle, outfitColor, Zustand (0 geht, 1 rennt, 2 schimpft, 3 Polizist), höhe, ragdoll 0/1, Archetyp (-1 keiner), Act (Animations-ID, siehe npc/scenarios)] */
+export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?];
 /** Verschobenes Prop: [id, x, y, z, qx, qy, qz, qw, flags (1 ruht, 2 Wasserfontäne)] */
 export type PropTuple = [number, number, number, number, number, number, number, number, number];
 

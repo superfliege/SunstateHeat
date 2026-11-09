@@ -44,6 +44,8 @@ import { BALANCE, levelFromXp } from '../../../shared/src/balance';
 import { logTransaction } from '../services/Ledger';
 import type { PlayerProfile, PlayerStore } from '../services/PlayerStore';
 import { Pedestrians, type Ped } from '../sim/Pedestrians';
+import { Population } from '../sim/Population';
+import { DAY_PARTS, DAY_PART_NAMES, type DayPart } from '../../../shared/src/npc/population';
 import { Traffic } from '../sim/Traffic';
 
 const CMD_BUDGET_MAX = 24;
@@ -74,6 +76,7 @@ export class WorldRoom {
   private startedAt = Date.now();
   private readonly traffic: Traffic;
   private readonly peds: Pedestrians;
+  private readonly pop: Population;
   private readonly quests: QuestEngine;
   private readonly gangs: Gangs;
   private readonly phones: PhoneDef[];
@@ -123,6 +126,7 @@ export class WorldRoom {
       });
     }
     this.peds = new Pedestrians(map, () => this.allocId());
+    this.pop = new Population(map, this.peds, () => this.dayPhase(), () => [...this.players.values()].map((p) => this.positionOf(p)));
     this.traffic = new Traffic({
       map, vehicles: this.vehicles,
       allocId: () => this.allocId(),
@@ -506,6 +510,13 @@ export class WorldRoom {
       if (current) { placeCar(this.map, current.sim.car, current.sim.prof, bx, bz, 0); current.dmgVer++; }
       else p.pawn = newPawn(bx, bz, 0);
       say(d.name);
+    } else if (cmd === 'ort' || cmd === 'pos') {
+      // Auf Koordinaten teleportieren: /ort <x> <z> (ohne Argument: aktuelle Position)
+      const [px, pz] = text.slice(1).split(/\s+/).slice(1).map(Number);
+      if (!Number.isFinite(px) || !Number.isFinite(pz)) { say(`Position: ${Math.round(this.positionOf(p).x)} ${Math.round(this.positionOf(p).z)}`); return; }
+      if (current) { placeCar(this.map, current.sim.car, current.sim.prof, px, pz, 0); current.dmgVer++; }
+      else p.pawn = newPawn(px, pz, 0);
+      say(`Ort ${px} ${pz}`);
     } else if (cmd === 'zeit' || cmd === 'time') {
       // Tageszeit setzen: /zeit 14 (Stunde 0–24)
       const h = Number(arg);
@@ -513,10 +524,18 @@ export class WorldRoom {
       const want = ((h / 24) % 1 + 1) % 1;
       this.startedAt = Date.now() - ((want - 0.35 + 1) % 1) * DAY_LENGTH_MS;
       say(`Uhrzeit: ${Math.floor(h)}:00`);
+    } else if (cmd === 'pop') {
+      // Population Tables prüfen: /pop morgen|mittag|nachmittag|abend|nacht erzwingt den Abschnitt, /pop auto = Spielzeit
+      const names: Record<string, DayPart> = { morgen: 'morning', mittag: 'noon', nachmittag: 'afternoon', abend: 'evening', nacht: 'night' };
+      const a = (arg ?? '').toLowerCase();
+      if (a === 'auto') this.pop.forcePart = null;
+      else if (a in names) this.pop.forcePart = names[a];
+      else if (a) { say('/pop <' + DAY_PARTS.map((d) => DAY_PART_NAMES[d].toLowerCase()).join('|') + '|auto>'); return; }
+      say(this.pop.describe());
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /tp <viertel>');
+      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /tp <viertel>');
     }
   }
 
@@ -743,8 +762,11 @@ export class WorldRoom {
   }
 
   // ------------------------------------------------------------------ Aufträge
+  /** Tagesphase 0–1 (0 = Mitternacht, 0,5 = Mittag). */
+  private dayPhase(): number { return (((Date.now() - this.startedAt) / DAY_LENGTH_MS) + 0.35) % 1; }
+
   private isNight(): boolean {
-    const day = (((Date.now() - this.startedAt) / DAY_LENGTH_MS) + 0.35) % 1;
+    const day = this.dayPhase();
     return day < 0.27 || day > 0.78;
   }
 
@@ -1089,6 +1111,7 @@ export class WorldRoom {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       if (v) { p.pawn.x = v.sim.car.x; p.pawn.z = v.sim.car.z; p.pawn.a = v.sim.car.a; }
     }
+    this.pop.update(dt);
     this.peds.update(dt, [...this.vehicles.values()].map((v) => ({ x: v.sim.car.x, z: v.sim.car.z, speed: v.sim.car.s })));
     this.updateProps(dt);
     this.updateFire(dt);
@@ -1293,7 +1316,7 @@ export class WorldRoom {
     const R2 = INTEREST * INTEREST;
     const pedStr = new Map<number, string>();
     for (const ped of this.peds.peds.values()) {
-      pedStr.set(ped.id, JSON.stringify([ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0]));
+      pedStr.set(ped.id, JSON.stringify([ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act]));
     }
     const propStr = new Map<number, string>();
     for (const b of this.props.values()) {

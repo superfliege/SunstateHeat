@@ -11,6 +11,8 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { addOutline, computeOutlineNormals, LINE, toonMaterial } from './materials/toon';
 import type { Style } from './characters';
+import { Act } from '../../../shared/src/npc/scenarios';
+import { NpcActs, SEATED_ACTS } from './npcActs';
 
 const DIR = 'assets/kenney/animated-characters/';
 
@@ -177,6 +179,9 @@ export class KenneyCharacter {
   private frame = Math.floor(Math.random() * 8);
   private hull: THREE.Object3D | null = null;
   private attackT = 0;
+  /** Szenario-Posen (NPCs): Animations-ID vom Server → Pose + Gegenstand */
+  readonly acts: NpcActs;
+  private lastDt = 0;
 
   constructor(material: THREE.Material) {
     const clone = SkeletonUtils.clone(base!);
@@ -194,8 +199,10 @@ export class KenneyCharacter {
     const inner = new THREE.Group();
     inner.scale.setScalar(s);
     inner.position.y = -baseMinY * s;
+    inner.userData.baseY = inner.position.y;
     inner.add(clone);
     this.root.add(inner);
+    this.acts = new NpcActs(clone, inner, this.root);
 
     this.mixer = new THREE.AnimationMixer(clone);
     for (const k of Object.keys(CLIPS) as ClipName[]) {
@@ -224,33 +231,44 @@ export class KenneyCharacter {
     this.play(this.actions.punch, 0.08);
   }
 
+  /** Animations-ID (npc/scenarios Act) setzen; seed = fester Phasenversatz je NPC. */
+  setAct(act: number, seed: number) { this.acts.setAct(act, seed); }
+
   /** speed in m/s; seated = sitzt (Motorrad/Boot); dist = Abstand zur Kamera (Animations-LOD). */
   animate(speed: number, dt: number, seated = false, dist = 0) {
     this.attackT = Math.max(0, this.attackT - dt);
+    const act = this.acts.act;
+    seated = seated || SEATED_ACTS.has(act);
     if (this.attackT <= 0) {
       const want = seated ? this.actions.sit ?? this.actions.idle
         : speed < 0.3 ? this.actions.idle : speed < 3.6 ? this.actions.walk : this.actions.run ?? this.actions.walk;
       this.play(want);
       if (this.current === this.actions.walk) this.current!.timeScale = Math.max(0.6, speed / 1.7);
-      else if (this.current === this.actions.run) this.current!.timeScale = Math.max(0.7, speed / 5.5);
+      else if (this.current === this.actions.run) this.current!.timeScale = act === Act.Jog ? 0.62 : Math.max(0.7, speed / 5.5);
     }
     // LOD: nah jedes Bild, weiter weg jedes 2./4./8. Bild (Zeit wird aufgesammelt)
     const skip = dist < 45 ? 1 : dist < 90 ? 2 : dist < 150 ? 4 : 8;
     this.acc += dt;
-    if (++this.frame % skip === 0) { this.mixer.update(this.acc); this.acc = 0; }
+    if (++this.frame % skip === 0) {
+      this.mixer.update(this.acc);
+      // Szenario-Posen nur für Figuren in Kamera-Nähe (Detailstufe Nah/Mittel)
+      if (act !== Act.None && dist < 70) this.acts.apply(this.acc);
+      this.acc = 0;
+    }
+    if (act !== Act.None) this.acts.syncProp();
     if (this.hull) this.hull.visible = dist < 140;
   }
 
-  dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); }
+  dispose() { this.acts.dispose(); this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); }
 }
 
 /**
  * Neue Figur. role = Stil der Gegend bzw. 'player' / 'gang' / 'cop'; shirt färbt das Oberteil
  * (Spieler- oder Gangfarbe). Gleiche id -> gleicher Skin (alle Clients sehen dieselbe Figur).
  */
-export function createKenneyCharacter(role: KenneyRole, id: number, shirt?: number): KenneyCharacter | null {
+export function createKenneyCharacter(role: KenneyRole, id: number, shirt?: number, skins?: readonly string[]): KenneyCharacter | null {
   if (!base) return null;
-  const list = SKINS[role].filter((n) => skinImages.has(n));
+  const list = (skins ?? SKINS[role]).filter((n) => skinImages.has(n));
   if (!list.length) return null;
   const h = (Math.imul(id + 1, 2654435761) >>> 0) / 4294967296;
   const name = list[Math.floor(h * list.length)];
