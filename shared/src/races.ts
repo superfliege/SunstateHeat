@@ -1,4 +1,4 @@
-// Straßenrennen: drei feste, beliebig oft wiederholbare Rennen. Die Strecken werden
+// Straßenrennen: dreizehn feste, beliebig oft wiederholbare Rennen. Die Strecken werden
 // deterministisch aus dem Straßengraph abgeleitet (Client und Server erhalten dieselben
 // Punkte): ein Zufallsweg ohne Wiederholungen, der möglichst geradeaus weiterfährt.
 // Am Ende hängt eine Auslaufstrecke, auf der KI-Fahrer nach dem Ziel ausrollen.
@@ -51,6 +51,66 @@ export const RACES: RaceDef[] = [
     intro: 'Sprint über Landstraße und Schotter rund um Cane Ridge. Wer hier bremst, verliert.',
     laps: 1, length: 1600, roads: [RoadType.Highway, RoadType.Main, RoadType.Side, RoadType.Dirt], skill: 1,
     prize: [2000, 1200, 700, 350, 150], xp: [340, 250, 180, 120, 70], seed: 37,
+  },
+  {
+    id: 'race_northgate', name: 'Northgate Freight Run', district: 'Northgate',
+    intro: 'Sprint durch das Industriegebiet von Northgate. Breite Lagerstraßen, wenig Platz zum Überholen.',
+    laps: 1, length: 1500, roads: [RoadType.Main, RoadType.Side], skill: 0.9,
+    prize: [1300, 780, 450, 220, 100], xp: [230, 170, 125, 85, 50], seed: 41,
+  },
+  {
+    id: 'race_havana', name: 'Havana Heights Circuit', district: 'Little Havana Heights',
+    intro: 'Zwei Runden durch die engen Gassen von Little Havana Heights. Kurz, schmutzig, laut.',
+    laps: 2, length: 1500, roads: [RoadType.Main, RoadType.Side], skill: 0.92,
+    prize: [1400, 840, 480, 240, 110], xp: [250, 180, 135, 90, 55], seed: 53,
+  },
+  {
+    id: 'race_portdist', name: 'Port District Sprint', district: 'Port District',
+    intro: 'Sprint durch das Hafenviertel, über Hauptstraßen und Nebenstrecken zwischen Containern und Kais.',
+    laps: 1, length: 1700, roads: [RoadType.Highway, RoadType.Main, RoadType.Side], skill: 0.97,
+    prize: [1700, 1000, 580, 290, 130], xp: [290, 210, 155, 105, 60], seed: 67,
+  },
+  {
+    id: 'race_strip', name: 'Ocean Strip Cruise', district: 'Ocean Strip',
+    intro: 'Zwei Runden an der Strandpromenade des Ocean Strip. Schnelle Geraden, Palmen links und rechts.',
+    laps: 2, length: 1800, roads: [RoadType.Main, RoadType.Side], skill: 0.95,
+    prize: [1800, 1080, 620, 310, 140], xp: [300, 220, 160, 110, 65], seed: 79,
+  },
+  {
+    id: 'race_refinery', name: 'Raffinerie Rush', district: 'Raffinerie',
+    intro: 'Langer Sprint rund um die Raffinerie, auch über Schotter. Staub, Hitze, keine Gnade.',
+    laps: 1, length: 1900, roads: [RoadType.Highway, RoadType.Main, RoadType.Side, RoadType.Dirt], skill: 1,
+    prize: [2200, 1320, 760, 380, 160], xp: [360, 260, 190, 125, 75], seed: 97,
+  },
+  {
+    id: 'race_sabal', name: 'Port Sabal Dash', district: 'Port Sabal',
+    intro: 'Kurzer Sprint durch Port Sabal an der Bucht. Enge Kurven zwischen Fischerhütten und Kai.',
+    laps: 1, length: 900, roads: [RoadType.Highway, RoadType.Main, RoadType.Side], skill: 0.93,
+    prize: [1100, 660, 380, 190, 90], xp: [200, 150, 110, 75, 45], seed: 5,
+  },
+  {
+    id: 'race_slag', name: 'Raffinerie Backroads', district: 'Raffinerie',
+    intro: 'Sprint über die Nebenwege der Raffinerie, zwischen Tanks und Rohrleitungen, auch über Schotter.',
+    laps: 1, length: 1000, roads: [RoadType.Highway, RoadType.Main, RoadType.Side, RoadType.Dirt], skill: 0.97,
+    prize: [1500, 900, 520, 260, 120], xp: [260, 190, 140, 95, 55], seed: 29,
+  },
+  {
+    id: 'race_midtown', name: 'Midtown Sprint', district: 'Downtown',
+    intro: 'Kurzer Sprint quer durch Downtown, ohne Runden – nur Gas und Nerven.',
+    laps: 1, length: 1200, roads: [RoadType.Main, RoadType.Side], skill: 0.98,
+    prize: [1650, 990, 570, 285, 130], xp: [275, 200, 148, 100, 58], seed: 201,
+  },
+  {
+    id: 'race_havana2', name: 'Havana Backstreets', district: 'Little Havana Heights',
+    intro: 'Sprint durch die Hinterhöfe von Little Havana Heights. Gassen, Kurven, Straßenmusik.',
+    laps: 1, length: 1000, roads: [RoadType.Main, RoadType.Side], skill: 0.94,
+    prize: [1350, 810, 470, 235, 110], xp: [240, 175, 130, 88, 52], seed: 201,
+  },
+  {
+    id: 'race_strip2', name: 'Ocean Strip Sprint', district: 'Ocean Strip',
+    intro: 'Sprint über die Promenade vom anderen Ende des Ocean Strip – kurz, schnell, Palmen im Augenwinkel.',
+    laps: 1, length: 900, roads: [RoadType.Highway, RoadType.Main, RoadType.Side, RoadType.Dirt], skill: 0.96,
+    prize: [1450, 870, 500, 250, 115], xp: [255, 185, 138, 92, 55], seed: 5,
   },
 ];
 export const RACE_BY_ID = new Map(RACES.map((r) => [r.id, r]));
