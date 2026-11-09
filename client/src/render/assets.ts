@@ -16,11 +16,39 @@ type UVRect = [number, number, number, number]; // u0, v0, u1, v1 (glTF: v=0 obe
  * glass = UV-Bereiche der Fensterscheiben im Atlas (nur bei Gebäuden). Ermittelt aus den Atlanten:
  * KayKit = Kachel mit Spiegelstreifen unten links, Kenney = dunkelgraue Kachel unten links (je 1–2 % der Fläche).
  */
-interface Source { dir: string; glass: UVRect[] }
+interface Source {
+  dir: string; glass: UVRect[];
+  /** Wandflächen (werden in der Gebäudefarbe umgefärbt) und Akzente (Dächer, Markisen …). */
+  wall?: UVRect[]; accent?: UVRect[];
+  /** Knoten, die nicht in die Geometrie kommen (zählen aber für die Ausdehnung), z. B. Räder. */
+  skip?: RegExp;
+}
 const KAYKIT: Source = { dir: 'kaykit/city-builder-bits/', glass: [] };
 const KAYKIT_BUILDINGS: Source = { dir: KAYKIT.dir, glass: [[0, 0.75, 0.25, 1]] };
 const KENNEY_CITY: Source = { dir: 'kenney/starter-kit-city-builder/models/', glass: [[0, 0.75, 0.125, 1]] };
 const KENNEY_RACING: Source = { dir: 'kenney/starter-kit-racing/models/', glass: [] };
+/**
+ * Kenney City Kits (Commercial/Suburban/Industrial) teilen ein Atlas-Layout (8x8 Kacheln):
+ * Zeilen 2–3 = Farbfelder (Spalte 5 hellblau = Fensterglas), Spalte 3 in Zeilen 4–5 = weiße Wand.
+ */
+const KENNEY_ATLAS = {
+  glass: [[0.625, 0.25, 0.75, 0.5]] as UVRect[],
+  wall: [[0.375, 0.5, 0.5, 0.75]] as UVRect[],
+  accent: [[0, 0.25, 0.625, 0.5], [0.75, 0.25, 1, 0.5]] as UVRect[],
+};
+const K_COMMERCIAL: Source = { dir: 'kenney/city-kit-commercial/', ...KENNEY_ATLAS };
+const K_SUBURBAN: Source = { dir: 'kenney/city-kit-suburban/', ...KENNEY_ATLAS };
+const K_INDUSTRIAL: Source = { dir: 'kenney/city-kit-industrial/', ...KENNEY_ATLAS };
+const K_ROADS: Source = { dir: 'kenney/city-kit-roads/', glass: [] };
+const K_CARS: Source = { dir: 'kenney/car-kit/', glass: [], skip: /^wheel/ };
+const K_WATER: Source = { dir: 'kenney/watercraft/', glass: [] };
+const K_BLASTER: Source = { dir: 'kenney/blaster-kit/', glass: [] };
+
+const A_N = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n'] as const;
+const A_U = [...A_N, 'o', 'p', 'q', 'r', 's', 't', 'u'] as const;
+/** Mehrere Modelle eines Kits: Name = prefix + x, Datei = file + x + '.glb'. */
+const kit = <P extends string, L extends string>(prefix: P, ls: readonly L[], src: Source, file: string = prefix) =>
+  Object.fromEntries(ls.map((l) => [`${prefix}${l}`, [src, `${file}${l}.glb`]])) as Record<`${P}${L}`, [Source, string]>;
 
 const MANIFEST = {
   car_sedan: [KAYKIT, 'car_sedan.gltf'],
@@ -49,6 +77,37 @@ const MANIFEST = {
   dumpster: [KAYKIT, 'dumpster.gltf'],
   trash: [KAYKIT, 'trash_A.gltf'],
   bush: [KAYKIT, 'bush.gltf'],
+  // Kenney City Kit Commercial / Suburban / Industrial
+  ...kit('building-', A_N, K_COMMERCIAL),
+  ...kit('building-skyscraper-', A_N.slice(0, 5) as readonly ('a' | 'b' | 'c' | 'd' | 'e')[], K_COMMERCIAL),
+  'detail-parasol-a': [K_COMMERCIAL, 'detail-parasol-a.glb'],
+  'detail-parasol-b': [K_COMMERCIAL, 'detail-parasol-b.glb'],
+  ...kit('building-type-', A_U, K_SUBURBAN),
+  fence: [K_SUBURBAN, 'fence.glb'],
+  planter: [K_SUBURBAN, 'planter.glb'],
+  ...kit('industrial-', A_U.slice(0, 20) as readonly (typeof A_U)[number][], K_INDUSTRIAL, 'building-'),
+  'chimney-large': [K_INDUSTRIAL, 'chimney-large.glb'],
+  'chimney-medium': [K_INDUSTRIAL, 'chimney-medium.glb'],
+  'detail-tank': [K_INDUSTRIAL, 'detail-tank.glb'],
+  // Kenney City Kit Roads: Laternen, Baustelle, Schilder
+  'light-curved': [K_ROADS, 'light-curved.glb'],
+  'construction-barrier': [K_ROADS, 'construction-barrier.glb'],
+  'construction-cone': [K_ROADS, 'construction-cone.glb'],
+  'construction-light': [K_ROADS, 'construction-light.glb'],
+  'sign-highway': [K_ROADS, 'sign-highway.glb'],
+  'sign-highway-wide': [K_ROADS, 'sign-highway-wide.glb'],
+  // Kenney Car Kit
+  ...kit('ck-', ['sedan', 'sedan-sports', 'hatchback-sports', 'suv', 'suv-luxury', 'taxi', 'police', 'ambulance', 'firetruck',
+    'garbage-truck', 'delivery', 'van', 'truck', 'race'] as const, K_CARS, ''),
+  // Kenney Watercraft
+  ...kit('wc-', ['boat-speed-a', 'boat-speed-b', 'boat-speed-c', 'boat-speed-d', 'boat-speed-e', 'boat-speed-f', 'boat-speed-g',
+    'boat-speed-h', 'boat-speed-j', 'boat-fan', 'boat-fishing-small', 'boat-row-small', 'boat-sail-a', 'boat-sail-b', 'boat-tug-a',
+    'boat-tow-a', 'ship-cargo-a', 'ship-cargo-b', 'ship-large', 'ship-ocean-liner-small', 'buoy', 'buoy-flag',
+    'cargo-container-a', 'cargo-container-b', 'cargo-container-c', 'cargo-pile-a', 'cargo-pile-b'] as const, K_WATER, ''),
+  // Kenney Blaster Kit
+  ...kit('blaster-', ['b', 'd', 'e', 'f', 'h'] as const, K_BLASTER),
+  'crate-medium': [K_BLASTER, 'crate-medium.glb'],
+  'crate-wide': [K_BLASTER, 'crate-wide.glb'],
 } satisfies Record<string, [Source, string]>;
 
 export type ModelName = keyof typeof MANIFEST;
@@ -62,6 +121,8 @@ export interface BakedModel {
   size: THREE.Vector3;
   /** Pro Dreieck von `body`: Original-Farbe (sRGB) – zum Umlackieren. */
   triColors: Uint32Array;
+  /** Pro Dreieck von `body`: 0 = sonstiges, 1 = Wand, 2 = Akzent (nur Kits mit Atlas-Layout). */
+  triClass: Uint8Array;
 }
 
 const baked = new Map<ModelName, BakedModel>();
@@ -109,13 +170,16 @@ const inRect = (u: number, v: number, r: UVRect) => u >= r[0] && u < r[2] && v >
 
 function bake(scene: THREE.Object3D, src: Source): BakedModel {
   scene.updateMatrixWorld(true);
-  const parts: { pos: number[]; nor: number[]; hex: number[] } = { pos: [], nor: [], hex: [] };
-  const glass: typeof parts = { pos: [], nor: [], hex: [] };
+  const parts: { pos: number[]; nor: number[]; hex: number[]; cls: number[] } = { pos: [], nor: [], hex: [], cls: [] };
+  const glass: typeof parts = { pos: [], nor: [], hex: [], cls: [] };
   const p = new THREE.Vector3(), n = new THREE.Vector3(), normalMat = new THREE.Matrix3();
+  const box = new THREE.Box3();
+  const skipped = (o: THREE.Object3D | null): boolean => !!o && (!!src.skip?.test(o.name) || skipped(o.parent));
 
   scene.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
+    if (skipped(mesh)) { box.expandByObject(mesh); return; }
     const g = mesh.geometry.index ? mesh.geometry.toNonIndexed() : mesh.geometry;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const pos = g.getAttribute('position'), nor = g.getAttribute('normal'), uv = g.getAttribute('uv');
@@ -129,6 +193,7 @@ function bake(scene: THREE.Object3D, src: Source): BakedModel {
         const hex = sampleColor(mat, u, v);
         const out = uv && src.glass.some((r) => inRect(u, v, r)) ? glass : parts;
         out.hex.push(hex);
+        out.cls.push(!uv ? 0 : src.wall?.some((r) => inRect(u, v, r)) ? 1 : src.accent?.some((r) => inRect(u, v, r)) ? 2 : 0);
         for (let k = i; k < i + 3; k++) {
           p.fromBufferAttribute(pos, k).applyMatrix4(mesh.matrixWorld);
           out.pos.push(p.x, p.y, p.z);
@@ -140,8 +205,7 @@ function bake(scene: THREE.Object3D, src: Source): BakedModel {
     }
   });
 
-  // Mitte unten auf den Ursprung legen
-  const box = new THREE.Box3();
+  // Mitte unten auf den Ursprung legen (übersprungene Räder zählen für die Bodenhöhe mit)
   for (let i = 0; i < parts.pos.length; i += 3) box.expandByPoint(p.set(parts.pos[i], parts.pos[i + 1], parts.pos[i + 2]));
   for (let i = 0; i < glass.pos.length; i += 3) box.expandByPoint(p.set(glass.pos[i], glass.pos[i + 1], glass.pos[i + 2]));
   const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2, y0 = box.min.y;
@@ -161,6 +225,7 @@ function bake(scene: THREE.Object3D, src: Source): BakedModel {
     glass: build(glass),
     size: box.getSize(new THREE.Vector3()),
     triColors: Uint32Array.from(parts.hex),
+    triClass: Uint8Array.from(parts.cls),
   };
 }
 

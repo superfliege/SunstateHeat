@@ -2,7 +2,8 @@
 
 Browser-Multiplayer-Open-World im Top-Down-Stil, angesiedelt im fiktiven US-Bundesstaat **Palmara**.
 Die meisten Grafiken werden im Code erzeugt (Low-Poly + Pixel-Texturen). Dazu kommen freie CC0-Modelle und -Sounds
-von KayKit und Kenney (Autos, Motorrad, Stadthäuser, Straßendeko, Motor- und Crash-Sounds) – siehe [CREDITS.md](CREDITS.md).
+von KayKit, Kenney und Quaternius (Kenney City Kits für Hochhäuser, Geschäfts-, Wohn- und Industriebauten, Car Kit,
+Watercraft, Blaster Kit, Nature Kit, Impact-/Interface-Sounds; Quaternius Stylized Nature) – siehe [CREDITS.md](CREDITS.md).
 
 ## Starten
 
@@ -16,7 +17,7 @@ npm run dev
 Danach öffnest du **http://localhost:5173**, gibst einen Namen ein und spielst.
 
 Die externen Assets liegen bereits unter `client/public/assets/`. Fehlen sie, lädt `npm run assets` sie neu aus
-den offiziellen GitHub-Repositories. Ohne sie läuft das Spiel trotzdem – dann mit prozeduralen Ersatzmodellen und ohne Sound.
+GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann mit prozeduralen Ersatzmodellen und ohne Sound.
 `npm run dev` startet zwei Prozesse gleichzeitig: den Spielserver (Port 2567) und den Vite-Client (Port 5173).
 
 ### Freunde beitreten lassen

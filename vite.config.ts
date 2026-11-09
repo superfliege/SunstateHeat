@@ -8,7 +8,7 @@ import { defineConfig, type Plugin } from 'vite';
 
 const ASSETS = join(__dirname, 'client', 'public', 'assets');
 
-/** Alle glTF/GLB-Dateien unter assets/quaternius (rekursiv), relativ zu assets/. */
+/** Alle glTF/GLB-Dateien unter assets/quaternius und assets/kenney/nature-kit (rekursiv), relativ zu assets/. */
 function scanModels(): string[] {
   const out: string[] = [];
   const walk = (dir: string) => {
@@ -21,11 +21,12 @@ function scanModels(): string[] {
     }
   };
   walk(join(ASSETS, 'quaternius'));
+  walk(join(ASSETS, 'kenney', 'nature-kit'));
   return out.sort();
 }
 
 /**
- * Liefert assets/manifest.json (Liste der Quaternius-Modelle) – im Dev-Server live,
+ * Liefert assets/manifest.json (Liste der Pflanzen-/Figurenmodelle) – im Dev-Server live,
  * beim Build als Datei. So reicht es, die Packs in den Ordner zu kopieren.
  */
 function assetManifest(): Plugin {

@@ -16,7 +16,9 @@ import * as THREE from 'three';
 import { VEHICLE_COLORS } from '../../../shared/src/constants';
 import { derive, HANDLING, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
 import { Part, PART_COUNT } from '../../../shared/src/sim/damage';
+import { getModel, type ModelName } from './assets';
 import { computeOutlineNormals } from './materials/toon';
+import { palmaraize } from './palette';
 
 // ------------------------------------------------------------------ Farben
 const DARK = 0x1c1c22, CHASSIS = 0x15151a, GLASS = 0x2a4a66, CHROME = 0xc9ccd6, PLASTIC = 0x2a2a30;
@@ -153,7 +155,13 @@ function buildTemplate(variant: number, colorIdx: number): CarTemplate {
   const info = variantInfo(variant);
   const p = profileFor(info.cls);
   if (info.cls === 'bike') return buildBike(p, VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length]);
-  const shape = SHAPES[modelKey(variant)] ?? SHAPES.car_sedan;
+  // Kenney Car Kit (Polizei nutzt das Kit-Polizeiauto, falls geladen)
+  const key = modelKey(variant);
+  const kitName = (key === 'police' ? 'ck-police' : key) as ModelName;
+  if (kitName.startsWith('ck-') && getModel(kitName)) {
+    return buildKitCar(p, kitName, KIT_FIXED_PAINT.has(kitName) ? null : VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length]);
+  }
+  const shape = SHAPES[key] ?? SHAPES[KIT_FALLBACK[info.cls] ?? 'car_sedan'] ?? SHAPES.car_sedan;
   const paint = shape.paintOverride ?? VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length];
   return buildCar(p, shape, paint);
 }
@@ -386,6 +394,142 @@ function buildCar(p: HandlingProfile, s: Shape, paint: number): CarTemplate {
     exhaust: [new THREE.Vector3(hw * 0.5, s.sillY + g0 + 0.05, -L / 2 - 0.1), ...(p.cylinders >= 8 ? [new THREE.Vector3(-hw * 0.5, s.sillY + g0 + 0.05, -L / 2 - 0.1)] : [])],
     seatY: 0,
     cell: [c0, c3, s.sillY + g0 + 0.1],
+    bike: false,
+  };
+}
+
+
+// ------------------------------------------------------------------ Kenney Car Kit
+/** Modelle mit Originallackierung (Einsatzfahrzeuge, Taxi). */
+const KIT_FIXED_PAINT = new Set<string>(['ck-police', 'ck-taxi', 'ck-ambulance', 'ck-firetruck', 'ck-garbage-truck']);
+/** Ersatzform je Klasse, falls die Kit-Datei fehlt. */
+const KIT_FALLBACK: Record<string, string> = { sport: 'proc_sport', suv: 'truck_red', truck: 'proc_boxtruck', muscle: 'proc_muscle', compact: 'car_hatchback' };
+
+function rgbOf(hex: number) { return [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255]; }
+
+/** Farbton (0–360) oder -1 für Grau/Schwarz/Weiß. */
+function hueOf(hex: number): number {
+  const [r, g, b] = rgbOf(hex);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max < 60 || max - min < 50) return -1;
+  const h = max === r ? (g - b) / (max - min) : max === g ? 2 + (b - r) / (max - min) : 4 + (r - g) / (max - min);
+  return ((h * 60) % 360 + 360) % 360;
+}
+
+/** Kit-Scheiben: hell, leicht bläulich, wenig gesättigt (Kenney: ~#cfe6f5). */
+function isKitGlass(hex: number) {
+  const [r, g, b] = rgbOf(hex);
+  return b > 170 && b >= g && b >= r + 12 && r > 120;
+}
+
+/**
+ * Car-Kit-Modell als Schadens-Vorlage: Geometrie auf das Fahrzeugprofil skaliert, lange Kanten
+ * unterteilt (damit Beulen weich ausfallen), Lackfläche umgefärbt, Scheiben je Seite erfasst
+ * (für Sprünge/Bruch) und Lichter als eigene Geometrie. Abtrennbare Teile gibt es hier nicht.
+ */
+function buildKitCar(p: HandlingProfile, name: ModelName, paint: number | null): CarTemplate {
+  const m = getModel(name)!;
+  const L = p.length, hw = p.width / 2;
+  const g0 = groundLocal(p);
+  const sx = p.width / m.size.x, sz = L / m.size.z;
+  const sy = (sx + sz) / 2 * 0.92; // Kenney-Autos sind etwas "spielzeughoch"
+  const H = m.size.y * sy;
+
+  // Lackfläche: stärkster Farbton nach Fläche (±28°)
+  const pos = m.body.getAttribute('position');
+  const tri = m.triColors;
+  const bins = new Float32Array(36), hues = new Float32Array(tri.length), area = new Float32Array(tri.length);
+  const a = new THREE.Vector3(), bb = new THREE.Vector3(), c = new THREE.Vector3();
+  for (let t = 0; t < tri.length; t++) {
+    a.fromBufferAttribute(pos, t * 3); bb.fromBufferAttribute(pos, t * 3 + 1); c.fromBufferAttribute(pos, t * 3 + 2);
+    area[t] = bb.sub(a).cross(c.sub(a)).length();
+    hues[t] = isKitGlass(tri[t]) ? -1 : hueOf(tri[t]);
+    if (hues[t] >= 0) bins[Math.floor(hues[t] / 10) % 36] += area[t];
+  }
+  let best = 0;
+  for (let k = 1; k < 36; k++) if (bins[k] > bins[best]) best = k;
+  let refLum = 0, refA = 0;
+  const isPaint = (t: number) => { if (hues[t] < 0) return false; const d = Math.abs(hues[t] - (best * 10 + 5)); return Math.min(d, 360 - d) <= 28; };
+  for (let t = 0; t < tri.length; t++) if (isPaint(t)) { const [r, g, b2] = rgbOf(tri[t]); refLum += area[t] * (r + g + b2) / 3; refA += area[t]; }
+  refLum = refA ? refLum / refA : 128;
+  const [pr, pg, pb] = paint === null ? [0, 0, 0] : rgbOf(paint);
+
+  const b = new Builder();
+  const glass: Range[][] = [[], [], [], []];
+  const P = (i: number) => [pos.getX(i) * sx, pos.getY(i) * sy + g0, pos.getZ(i) * sz];
+  const MAX_EDGE = 0.55;
+  /** Dreieck rekursiv unterteilen, bis keine Kante länger als MAX_EDGE ist. */
+  const emit = (v0: number[], v1: number[], v2: number[], color: number, shine: number, depth: number) => {
+    const d01 = Math.hypot(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]);
+    const d12 = Math.hypot(v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]);
+    const d20 = Math.hypot(v0[0] - v2[0], v0[1] - v2[1], v0[2] - v2[2]);
+    const mx = Math.max(d01, d12, d20);
+    if (mx <= MAX_EDGE || depth > 4) { b.tri(v0, v1, v2, color, shine); return; }
+    const mid = (p0: number[], p1: number[]) => [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2, (p0[2] + p1[2]) / 2];
+    if (mx === d01) { const mm = mid(v0, v1); emit(v0, mm, v2, color, shine, depth + 1); emit(mm, v1, v2, color, shine, depth + 1); }
+    else if (mx === d12) { const mm = mid(v1, v2); emit(v0, v1, mm, color, shine, depth + 1); emit(v0, mm, v2, color, shine, depth + 1); }
+    else { const mm = mid(v2, v0); emit(v0, v1, mm, color, shine, depth + 1); emit(mm, v1, v2, color, shine, depth + 1); }
+  };
+  const n = new THREE.Vector3();
+  for (let t = 0; t < tri.length; t++) {
+    const v0 = P(t * 3), v1 = P(t * 3 + 1), v2 = P(t * 3 + 2);
+    // Entartete Dreiecke (Fläche 0) weglassen: ihre Normale ist 0 – zieht eine Beule sie auf,
+    // liefert der Shader NaN, und der Bloom verteilt das schwarze Pixel übers ganze Bild
+    if (area[t] < 1e-7) continue;
+    const hex = tri[t];
+    let color: number, shine: number, zone = -1;
+    if (isKitGlass(hex)) {
+      color = GLASS; shine = SHINE.glass;
+      n.set(v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]).cross(a.set(v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]));
+      // Seite nach der dominanten horizontalen Normalen
+      zone = Math.abs(n.z) >= Math.abs(n.x) ? (n.z > 0 ? 0 : 1) : (n.x > 0 ? 2 : 3);
+    } else if (paint !== null && isPaint(t)) {
+      const [r, g, b2] = rgbOf(hex);
+      const k = Math.min(1.35, ((r + g + b2) / 3) / refLum);
+      const ch = (v: number) => Math.min(255, Math.round(v * k));
+      color = (ch(pr) << 16) | (ch(pg) << 8) | ch(pb); shine = SHINE.paint;
+    } else {
+      color = palmaraize(hex);
+      const [r, g, b2] = rgbOf(hex);
+      const max = Math.max(r, g, b2), min = Math.min(r, g, b2);
+      shine = max < 70 ? SHINE.rubber : max - min < 24 && max > 170 ? SHINE.chrome : SHINE.paint;
+    }
+    const start = b.count;
+    emit(v0, v1, v2, color, shine, 0);
+    if (zone >= 0) glass[zone].push({ start, count: b.count - start });
+  }
+  const body = b.geometry();
+  computeOutlineNormals(body);
+
+  // Lichter: Scheinwerfer vorne, Rück- und Rückfahrlichter hinten (wie bei den prozeduralen Autos)
+  const lb = new Builder();
+  const lightRanges: Range[] = [];
+  const hy = g0 + H * 0.36, ty = g0 + H * 0.4, lw = Math.min(0.42, hw * 0.4);
+  const zf = L / 2 + 0.015, zr = -L / 2 - 0.015;
+  for (const s of [1, -1]) {
+    const start = lb.count, x = s * hw * 0.6;
+    lb.quad([x - lw / 2, hy, zf], [x + lw / 2, hy, zf], [x + lw / 2, hy + 0.15, zf], [x - lw / 2, hy + 0.15, zf], HEAD, 0);
+    lightRanges.push({ start, count: 6 });
+  }
+  for (const s of [1, -1]) {
+    const start = lb.count, x = s * hw * 0.64;
+    lb.quad([x + lw / 2, ty, zr], [x - lw / 2, ty, zr], [x - lw / 2, ty + 0.14, zr], [x + lw / 2, ty + 0.14, zr], TAIL, 0);
+    lightRanges.push({ start, count: 6 });
+  }
+  for (const s of [1, -1]) {
+    const start = lb.count, x = s * hw * 0.3;
+    lb.quad([x + 0.08, ty + 0.02, zr - 0.001], [x - 0.08, ty + 0.02, zr - 0.001], [x - 0.08, ty + 0.12, zr - 0.001], [x + 0.08, ty + 0.12, zr - 0.001], 0x555560, 0);
+    lightRanges.push({ start, count: 6 });
+  }
+  const d = derive(p);
+  return {
+    body, lights: lb.geometry(), parts: new Array(PART_COUNT).fill(null), glass, lightRanges,
+    wheels: d.wheels.map(([x, z]) => ({ x, z, r: p.wheelRadius, w: Math.min(0.32, p.wheelRadius * 0.75) })),
+    wheelBaseY: d.mountY - d.rest,
+    engine: new THREE.Vector3(0, g0 + H * 0.55, L * 0.32),
+    exhaust: [new THREE.Vector3(hw * 0.5, g0 + 0.3, -L / 2 - 0.1)],
+    seatY: 0,
+    cell: [-L * 0.22, L * 0.18, g0 + 0.4],
     bike: false,
   };
 }

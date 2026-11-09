@@ -38,7 +38,11 @@ export class CarAudio {
   /** Zuletzt gemeldete Positionen, damit Hupen-Knoten abgebaut werden */
   private hornSeen = new Set<number>();
 
-  constructor(private ctx: AudioContext, private out: AudioNode, private impactBuf: () => AudioBuffer | undefined) {
+  constructor(
+    private ctx: AudioContext, private out: AudioNode, private impactBuf: () => AudioBuffer | undefined,
+    /** Kenney-Impact-Varianten (Metall, Glas, Blech …), siehe Sfx.GROUPS */
+    private sample: (group: 'metalHeavy' | 'metalLight' | 'glass' | 'plate' | 'soft') => AudioBuffer | undefined = () => undefined,
+  ) {
     const len = ctx.sampleRate * 2;
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = this.noise.getChannelData(0);
@@ -199,6 +203,16 @@ export class CarAudio {
     for (const f of [420, 610, 935, 1470, 2210]) this.tone(vol * (0.4 + Math.random() * 0.4), f * (0.9 + Math.random() * 0.2), f * 0.8, dur * (0.6 + Math.random() * 0.6), 'triangle', pan);
   }
 
+  /** Kenney-Impact-Sample als zusätzliche Schicht (leichte Tonhöhenstreuung). */
+  private layer(buf: AudioBuffer | undefined, vol: number, pan: number, rate = 1) {
+    if (!buf || vol < 0.01) return;
+    const src = this.ctx.createBufferSource(); src.buffer = buf;
+    src.playbackRate.value = rate * (0.92 + Math.random() * 0.16);
+    const g = this.ctx.createGain(); g.gain.value = vol;
+    const p = this.ctx.createStereoPanner(); p.pan.value = pan;
+    src.connect(g).connect(p).connect(this.out); src.start();
+  }
+
   /** Crash: Stärke aus der Aufprallgeschwindigkeit (3 Stufen), glass = Scheibe ging zu Bruch */
   crash(dv: number, volume: number, pan: number, glass = false) {
     if (volume < 0.02) return;
@@ -209,6 +223,9 @@ export class CarAudio {
     if (level >= 2) this.metal(v * 0.18, 0.35 + level * 0.2, pan);
     if (level >= 3) { this.burst(v * 0.6, 2200, 0.5, 'bandpass', pan, 0.8); this.tone(v * 0.6, 90, 30, 0.8, 'sine', pan); }
     if (glass || level >= 3) for (let k = 0; k < 6; k++) setTimeout(() => this.burst(v * 0.12, 5000 + Math.random() * 3000, 0.05 + Math.random() * 0.08, 'bandpass', pan, 6), k * 25 + Math.random() * 60);
+    // Blech und Glas aus dem Kenney Impact Pack
+    this.layer(this.sample(level >= 2 ? 'metalHeavy' : 'metalLight'), v * (level >= 2 ? 0.55 : 0.4), pan, level === 3 ? 0.8 : 1);
+    if (glass || level >= 3) this.layer(this.sample('glass'), v * 0.45, pan);
     // Kit-Aufprall als Bass-Schicht
     const buf = this.impactBuf();
     if (buf) {
@@ -220,8 +237,8 @@ export class CarAudio {
 
   /** Prop-Treffer (leicht: Plastik-Klong, schwer: Metall) */
   propHit(heavy: boolean, volume: number, pan: number) {
-    if (heavy) { this.metal(volume * 0.15, 0.6, pan); this.tone(volume * 0.4, 110, 50, 0.25, 'sine', pan); }
-    else { this.burst(volume * 0.3, 700, 0.1, 'bandpass', pan, 2); this.tone(volume * 0.2, 320, 180, 0.12, 'triangle', pan); }
+    if (heavy) { this.metal(volume * 0.1, 0.6, pan); this.tone(volume * 0.4, 110, 50, 0.25, 'sine', pan); this.layer(this.sample('metalHeavy'), volume * 0.5, pan, 0.9); }
+    else { this.burst(volume * 0.2, 700, 0.1, 'bandpass', pan, 2); this.layer(this.sample(Math.random() < 0.5 ? 'plate' : 'soft'), volume * 0.5, pan); }
   }
 
   explosion(volume: number, pan: number) {

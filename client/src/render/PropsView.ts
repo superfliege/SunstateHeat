@@ -51,8 +51,29 @@ export class PropsView {
 
   private buildTypes() {
     const lamp = getModel('streetlight');
+    const curved = getModel('light-curved');
     let lampGeo: THREE.BufferGeometry;
-    if (lamp) {
+    if (curved) {
+      // Kenney Roads: geschwungene Mastleuchte. Mast an den Ursprung, Ausleger nach +z (zur Fahrbahn)
+      const g = curved.body.clone();
+      const k = 7.6 / curved.size.y;
+      g.scale(k, k, k);
+      const pos = g.getAttribute('position');
+      const H = curved.size.y * k;
+      let mx = 0, mz = 0, mn = 0, tx = 0, tz = 0, tn = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const y = pos.getY(i);
+        if (y < H * 0.15) { mx += pos.getX(i); mz += pos.getZ(i); mn++; }
+        if (y > H * 0.85) { tx += pos.getX(i); tz += pos.getZ(i); tn++; }
+      }
+      mx /= mn || 1; mz /= mn || 1; tx /= tn || 1; tz /= tn || 1;
+      g.translate(-mx, 0, -mz);
+      // Ausleger-Richtung (tx-mx, tz-mz) auf +z drehen
+      g.rotateY(-Math.atan2(tx - mx, tz - mz));
+      lampGeo = g;
+      g.computeBoundingBox();
+      this.bulbLocal.set(0, H - 0.45, g.boundingBox!.max.z - 0.35);
+    } else if (lamp) {
       const w = lamp.size.x * LAMP_SCALE;
       // Mast an den Ursprung, Arm entlang +z (= Richtung Fahrbahn)
       lampGeo = lamp.body.clone().scale(LAMP_SCALE, LAMP_SCALE, LAMP_SCALE).translate(-w / 2, 0, 0).rotateY(Math.PI / 2);
@@ -68,7 +89,7 @@ export class PropsView {
     geos[PropType.Bench] = g(kit('bench', 5), () => merge([box(1.6, 0.08, 0.5, 0, 0.45, 0, 0x9a6a3a), box(1.6, 0.4, 0.08, 0, 0.5, -0.22, 0x9a6a3a), box(0.08, 0.45, 0.45, -0.7, 0, 0, 0x333333), box(0.08, 0.45, 0.45, 0.7, 0, 0, 0x333333)]));
     geos[PropType.Trash] = g(kit('trash', 5), () => cyl(0.32, 0.28, 0.9, 8, 0, 0, 0, 0x3f7a4a));
     geos[PropType.Newsbox] = merge([box(0.55, 1.0, 0.45, 0, 0.1, 0, 0x2a5bd8), box(0.45, 0.3, 0.02, 0, 0.6, 0.23, 0xd8e6f0), box(0.08, 0.12, 0.4, -0.2, 0, 0, 0x333333), box(0.08, 0.12, 0.4, 0.2, 0, 0, 0x333333)]);
-    geos[PropType.Cone] = merge([box(0.5, 0.05, 0.5, 0, 0, 0, 0x222222), cyl(0.04, 0.22, 0.7, 8, 0, 0.05, 0, 0xff6a1a), cyl(0.12, 0.15, 0.12, 8, 0, 0.36, 0, 0xf4f4f4)]);
+    geos[PropType.Cone] = kit('construction-cone', 0.75 / (getModel('construction-cone')?.size.y ?? 1)) ?? merge([box(0.5, 0.05, 0.5, 0, 0, 0, 0x222222), cyl(0.04, 0.22, 0.7, 8, 0, 0.05, 0, 0xff6a1a), cyl(0.12, 0.15, 0.12, 8, 0, 0.36, 0, 0xf4f4f4)]);
     geos[PropType.Lounger] = merge([box(0.65, 0.08, 1.7, 0, 0.3, 0, 0xf2f2ea), box(0.6, 0.06, 0.6, 0, 0.42, -0.65, 0x2ad4c9, 0, 0.6), box(0.06, 0.3, 0.06, 0.28, 0, 0.75, 0xcccccc), box(0.06, 0.3, 0.06, -0.28, 0, 0.75, 0xcccccc), box(0.06, 0.3, 0.06, 0.28, 0, -0.75, 0xcccccc), box(0.06, 0.3, 0.06, -0.28, 0, -0.75, 0xcccccc)]);
     for (const geo of geos) geo.computeBoundingSphere();
     // Kit-Modelle haben Vertex-Farben – alle mit dem Toon-Material

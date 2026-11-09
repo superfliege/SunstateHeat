@@ -20,6 +20,8 @@ export const CAMERA = {
   shakeDecay: 7, shakeMax: 1.6,
   /** Bremsen: Kamera rutscht nach vorne (m je m/s² Verzögerung) */
   brakePull: 0.12,
+  /** Abstands-Faktor (?camzoom=2 in der URL für Übersichts-Screenshots) */
+  zoomMul: Math.min(4, Math.max(1, Number(new URLSearchParams(globalThis.location?.search ?? '').get('camzoom')) || 1)),
 };
 
 export class CameraRig {
@@ -69,7 +71,7 @@ export class CameraRig {
     this.pull += (wantPull - this.pull) * (1 - Math.exp(-(wantPull > this.pull ? 6 : 2) * dt));
     const fx = Math.sin(a), fz = Math.cos(a);
     const tx = x + this.look.x + fx * this.pull, tz = z + this.look.z + fz * this.pull;
-    const wantDist = inVehicle ? VEHICLE_DISTANCE + Math.min(speed, CAMERA.maxSpeedZoom) * CAMERA.zoomPerSpeed : FOOT_DISTANCE;
+    const wantDist = (inVehicle ? VEHICLE_DISTANCE + Math.min(speed, CAMERA.maxSpeedZoom) * CAMERA.zoomPerSpeed : FOOT_DISTANCE) * CAMERA.zoomMul;
 
     if (!this.initialized) {
       this.focus.set(tx, y, tz);

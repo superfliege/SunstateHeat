@@ -218,6 +218,20 @@ export const CAR_VARIANTS: VehicleVariant[] = [
   { cls: 'suv', model: 'truck_red', name: 'Swamprunner', weight: 2 },
   { cls: 'suv', model: 'truck_yellow', name: 'Ranch Hauler', weight: 1.5 },
   { cls: 'truck', model: 'proc_boxtruck', name: 'Citrus Express', weight: 1 },
+  // Kenney Car Kit (Indizes ab 9 – die oberen bleiben stabil für /auto, Rennen und Spielstände)
+  { cls: 'sedan', model: 'ck-sedan', name: 'Coastline LX', weight: 3 },
+  { cls: 'sport', model: 'ck-sedan-sports', name: 'Riviera GT', weight: 1.2 },
+  { cls: 'sport', model: 'ck-hatchback-sports', name: 'Keys Hornet', weight: 1.2 },
+  { cls: 'suv', model: 'ck-suv', name: 'Everglade XT', weight: 2 },
+  { cls: 'suv', model: 'ck-suv-luxury', name: 'Brickell Prestige', weight: 1.2 },
+  { cls: 'suv', model: 'ck-van', name: 'Sunshine Van', weight: 1.8 },
+  { cls: 'truck', model: 'ck-delivery', name: 'Parcel Runner', weight: 0.8 },
+  { cls: 'truck', model: 'ck-garbage-truck', name: 'Coralia Sanitation', weight: 0.4 },
+  { cls: 'truck', model: 'ck-truck', name: 'Harbor Hauler', weight: 0.6 },
+  { cls: 'suv', model: 'ck-ambulance', name: 'Palmara Rescue', weight: 0.4 },
+  { cls: 'truck', model: 'ck-firetruck', name: 'Engine 7', weight: 0.25 },
+  { cls: 'sedan', model: 'ck-taxi', name: 'Sunshine Cab', weight: 1.5 },
+  { cls: 'sport', model: 'ck-race', name: 'Ocean Drive Racer', weight: 0.3 },
 ];
 export const BIKE_VARIANT = 100;
 export const BOAT_VARIANT = 101;

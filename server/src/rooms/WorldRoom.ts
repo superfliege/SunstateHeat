@@ -16,12 +16,13 @@ import {
   type CarCollision, type Impact,
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
-import { ASSISTS, derive, HANDLING, invalidateHandling, pickCarVariant } from '../../../shared/src/sim/handling';
+import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, variantInfo } from '../../../shared/src/sim/handling';
 import { findFootSpot, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
 import { carVsProps, createPropBody, PROP_RESPAWN, PROP_RESPAWN_RANGE, stepPropBody, type PropBody, type PropHit } from '../../../shared/src/sim/props';
 import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent } from '../../../shared/src/sim/stunts';
 import { createSimVehicle, defaultVariant, stepSimVehicle } from '../../../shared/src/sim/vehicle';
 import { VehicleKind, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
+import { centroid } from '../../../shared/src/world/geometry';
 import { generateProps, TRACK_SPAWN } from '../../../shared/src/world/features';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { DRIVER_COP, DRIVER_NONE, DRIVER_NPC, type ClientView, type Connection, type ServerPlayer, type ServerVehicle } from '../entities/types';
@@ -70,7 +71,7 @@ export class WorldRoom {
   readonly players = new Map<number, ServerPlayer>();
   readonly vehicles = new Map<number, ServerVehicle>();
   private nextId = 1;
-  private readonly startedAt = Date.now();
+  private startedAt = Date.now();
   private readonly traffic: Traffic;
   private readonly peds: Pedestrians;
   private readonly quests: QuestEngine;
@@ -99,7 +100,7 @@ export class WorldRoom {
     for (const sp of map.vehicleSpawns) {
       let variant = sp.variant ?? defaultVariant(sp.kind, pickCarVariant(rnd()));
       // Am Straßenrand keine Lkw (zu lang für die Parklücken)
-      if (variant === 8 && sp.variant === undefined) variant = 1;
+      if (sp.variant === undefined && variantInfo(variant).cls === 'truck') variant = 1;
       const sim = createSimVehicle(map, sp.kind, variant, sp.x, sp.z, sp.a);
       // Parklücken, die sich mit einem schon geparkten Fahrzeug überschneiden, bleiben leer
       const l = sim.prof.length, w = sim.prof.width;
@@ -442,8 +443,11 @@ export class WorldRoom {
       else p.pawn = newPawn(x, z, a);
       say('Willkommen im Testgelände: Drift-Pad, Slalom, Rampen, Untergründe, Crash-Wände. Werkstatt in der Ecke.');
     } else if (cmd === 'auto' || cmd === 'car') {
-      const names: Record<string, number> = { kompakt: 0, compact: 0, limousine: 1, sedan: 1, kombi: 2, taxi: 3, sport: 4, muscle: 5, suv: 6, pickup: 7, truck: 8, lkw: 8, bike: 100, motorrad: 100, polizei: 1 };
-      const variant = arg && arg in names ? names[arg] : Math.floor(Math.random() * 9);
+      const names: Record<string, number> = {
+        kompakt: 0, compact: 0, limousine: 1, sedan: 1, kombi: 2, taxi: 3, sport: 4, muscle: 5, suv: 6, pickup: 7, truck: 8, lkw: 8, bike: 100, motorrad: 100, polizei: 1,
+        coupe: 10, gt: 10, hornet: 11, jeep: 12, luxus: 13, van: 14, lieferwagen: 15, muellwagen: 16, kipper: 17, krankenwagen: 18, feuerwehr: 19, cab: 20, racer: 21,
+      };
+      const variant = arg && arg in names ? names[arg] : Math.floor(Math.random() * CAR_VARIANTS.length);
       const kind = variant === 100 ? VehicleKind.Bike : VehicleKind.Car;
       const pos = this.positionOf(p);
       if (current) { current.driver = DRIVER_NONE; current.buttons = 0; }
@@ -487,10 +491,32 @@ export class WorldRoom {
       if (current) { placeCar(this.map, current.sim.car, current.sim.prof, x, z, a); current.dmgVer++; }
       else p.pawn = newPawn(x, z, a);
       say(`${s.name} (${s.keeper.name})`);
+    } else if (cmd === 'tp') {
+      // Zu einem Viertel teleportieren: /tp havana (Teil des Namens), ohne Argument = Liste
+      const rest = text.slice(1).toLowerCase().split(/\s+/).slice(1).join(' ');
+      const d = rest ? this.map.districts.find((dd) => dd.name.toLowerCase().includes(rest)) : undefined;
+      if (!d) { say('/tp <' + this.map.districts.map((dd) => dd.name).join('|') + '>'); return; }
+      const [cx, cz] = centroid(d.poly);
+      // nächster Punkt auf einer Straße, damit man nicht in einem Gebäude landet
+      let bx = cx, bz = cz, bd = Infinity;
+      for (const e of this.map.edges) for (const q of e.pts) {
+        const dd = Math.hypot(q[0] - cx, q[1] - cz);
+        if (dd < bd) { bd = dd; bx = q[0]; bz = q[1]; }
+      }
+      if (current) { placeCar(this.map, current.sim.car, current.sim.prof, bx, bz, 0); current.dmgVer++; }
+      else p.pawn = newPawn(bx, bz, 0);
+      say(d.name);
+    } else if (cmd === 'zeit' || cmd === 'time') {
+      // Tageszeit setzen: /zeit 14 (Stunde 0–24)
+      const h = Number(arg);
+      if (!Number.isFinite(h)) { say('/zeit <0-24>'); return; }
+      const want = ((h / 24) % 1 + 1) % 1;
+      this.startedAt = Date.now() - ((want - 0.35 + 1) % 1) * DAY_LENGTH_MS;
+      say(`Uhrzeit: ${Math.floor(h)}:00`);
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad> · /rennen <1-3> · /reparieren · /feuer');
+      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /tp <viertel>');
     }
   }
 

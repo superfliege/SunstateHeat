@@ -151,7 +151,7 @@ export class Game {
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
-    this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.play('toggle', 0.5); };
+    this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.playGroup(open ? 'uiOpen' : 'uiClose', 0.5, 0, 0); };
     this.particles = new Particles(this.map);
     this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
@@ -270,12 +270,12 @@ export class Game {
         break;
       case 'notice':
         this.hud.toast(msg.text, msg.kind);
-        this.sfx.play('notice', 0.6);
+        this.sfx.playGroup(msg.kind === 'good' ? 'uiGood' : msg.kind === 'bad' ? 'uiBad' : 'uiInfo', 0.55, 0, 0);
         break;
       case 'bonus':
         this.drive.bonus(msg.kind, msg.points, msg.money, msg.info);
         this.drive.money(msg.total);
-        if (msg.money > 0) this.sfx.play('notice', 0.4, 1.4);
+        if (msg.money > 0) this.sfx.playGroup('money', 0.45, 0, 0.05);
         break;
       case 'tune':
         applyTune(msg.cls, msg.values, msg.assists);
@@ -622,6 +622,7 @@ export class Game {
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
     this.post.update(this.sky.mood, this.sky.night);
     this.ownCarAudio(rawDt);
+    this.footsteps(me.x, me.z, rawDt);
 
     this.updateHud(latest, vehicleStates, me);
     this.minimapTimer -= rawDt;
@@ -846,6 +847,24 @@ export class Game {
       if (d < reach && d < bestD) { best = v; bestD = d; }
     }
     return best;
+  }
+
+  /** Schritte des eigenen Spielers (Kenney Impact Sounds) – Takt aus der Laufgeschwindigkeit, Klang je Untergrund. */
+  private stepX = 0; private stepZ = 0; private stepT = 0;
+  private footsteps(x: number, z: number, dt: number) {
+    const d = Math.hypot(x - this.stepX, z - this.stepZ);
+    this.stepX = x; this.stepZ = z;
+    if (this.predictor.inVehicle || dt <= 0 || d > 3) { this.stepT = 0; return; }
+    const speed = d / dt;
+    if (speed < 0.8) return;
+    this.stepT += d;
+    const stride = speed > 5 ? 1.5 : 1.1;
+    if (this.stepT < stride) return;
+    this.stepT = 0;
+    const t = this.map.tileAt(x, z);
+    const group = t === Tile.GRASS || t === Tile.SAND || t === Tile.SWAMP || t === Tile.FIELD || t === Tile.FARM || t === Tile.DIRT ? 'stepGrass'
+      : t === Tile.DOCK || t === Tile.BRIDGE ? 'stepWood' : 'stepConcrete';
+    this.sfx.playGroup(group, speed > 5 ? 0.32 : 0.22, 0, 0.1);
   }
 
   private updateHud(latest: SnapshotMsg | null, vehicles: Map<number, VehicleViewState>, me: ReturnType<Predictor['view']>) {
