@@ -53,7 +53,7 @@ import { Perception } from '../sim/Perception';
 import { NpcEv } from '../../../shared/src/npc/reactions';
 import { DAY_PARTS, DAY_PART_NAMES, type DayPart, type Weather } from '../../../shared/src/npc/population';
 import { Traffic } from '../sim/Traffic';
-import { Scenes, SCENE_NAMES } from '../sim/Scenes';
+import { Scenes, SCENE_NAMES, STREET_NAMES } from '../sim/Scenes';
 
 const CMD_BUDGET_MAX = 24;
 const CMD_REFILL_PER_TICK = (1 / SIM_DT / SERVER_TICK_HZ) * 1.15; // 15 % Toleranz für Jitter
@@ -311,7 +311,12 @@ export class WorldRoom {
       driverOut: (v, angry) => this.npcDriverOut(v, angry),
       emit: (x, z, ev) => this.emit(x, z, ev),
       scare: (x, z, r) => this.peds.scare(x, z, r),
-    });
+      perceive: (ev, x, z) => this.perception.event(ev, x, z, -1),
+      hurtPlayer: (p, dmg) => this.hurtPlayer(p, dmg),
+      blood: (x, z, amount, dx, dz, kind) => this.blood(x, z, amount, dx, dz, kind),
+      busy: (p) => this.races.has(p.id) || this.hunt.has(p.id),
+      toTraffic: (v) => this.traffic.adopt(v),
+    }, () => this.isNight());
     this.timer = setInterval(() => this.tick(1 / SERVER_TICK_HZ), 1000 / SERVER_TICK_HZ);
   }
 
@@ -597,6 +602,12 @@ export class WorldRoom {
       const n = Number(arg);
       if (arg && !(n >= 1 && n <= SCENE_NAMES.length)) { say('/szene <' + SCENE_NAMES.map((s, i) => `${i + 1}=${s}`).join(' · ') + '>'); return; }
       say(this.scenes.startFor(p, arg ? n - 1 : undefined));
+    } else if (cmd === 'ereignis' || cmd === 'event') {
+      // Straßenereignis sofort: streife | verfolgung | bandenkrieg | razzia | anquatscher (oder 1–5)
+      const names = STREET_NAMES.map((s) => s.toLowerCase());
+      const n = arg ? (Number(arg) >= 1 ? Number(arg) - 1 : names.indexOf(arg)) : Math.floor(Math.random() * names.length);
+      if (!(n >= 0 && n < names.length)) { say('/ereignis <' + names.join('|') + '>'); return; }
+      say(this.scenes.startEventFor(p, n));
     } else if (cmd === 'fahndung' || cmd === 'wanted') {
       p.wanted = Math.max(0, Math.min(3, Number(arg) || 0)); p.searchT = 0;
     } else if (cmd === 'rennen' || cmd === 'race') {
@@ -678,7 +689,7 @@ export class WorldRoom {
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /szene <1-5> · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel>');
+      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /szene <1-5> · /ereignis <streife|verfolgung|bandenkrieg|razzia|anquatscher> · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel>');
     }
   }
 
@@ -1114,7 +1125,7 @@ export class WorldRoom {
       this.blood(t.x, t.z, Math.min(1, dmg / 40) + (defeated ? 0.5 : 0), dx, dz, 0);
       if (ped.gang) this.gangs.provoke(ped, p);
       if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
-      if (ped.cop) this.police.raise(p, defeated ? 3 : 2); // Polizisten angreifen: sofort bekannt
+      if (ped.cop || ped.police) this.police.raise(p, defeated ? 3 : 2); // Polizisten angreifen: sofort bekannt
       else this.police.crime(p, defeated ? 2 : 1, ped.x, ped.z);
       if (defeated && !ped.cop) this.addMoney(p, 5 + Math.floor(Math.random() * 36), 'loot');
     } else if (t.ref.veh) {
@@ -1557,7 +1568,7 @@ export class WorldRoom {
     const R2 = INTEREST * INTEREST;
     const pedStr = new Map<number, string>();
     for (const ped of this.peds.peds.values()) {
-      const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
+      const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop || ped.police ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
       // Kurzzeitgedächtnis: Spieler, den der NPC ängstlich im Blick behält (Kopfdrehung rechnet der Client)
       if (ped.mind?.fear || ped.wpn !== undefined) tup.push(ped.mind?.fear?.pid ?? -1);
       if (ped.wpn !== undefined) tup.push(ped.wpn);

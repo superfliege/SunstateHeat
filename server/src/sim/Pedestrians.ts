@@ -73,6 +73,8 @@ export interface Ped {
   mind: Mind | null;
   /** Waffe in der Hand (Index in WEAPONS, fehlt = Standard: Polizei/Gang Pistole, sonst keine). */
   wpn?: number;
+  /** Uniformierter Polizist aus einem Straßenereignis (sieht aus wie Polizei, gehört nicht zur Fahndung). */
+  police?: boolean;
 }
 
 /** Steuerung für verwaltete NPCs (NpcBrain): übernimmt Bewegung und Entscheidungen. */
