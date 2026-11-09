@@ -464,11 +464,7 @@ export class Game {
         if (b) this.sfx.murmur(b, ev[1] as number, b.len); // Gemurmel zur Sprechblase
         break;
       }
-      case 'honk': {
-        const r = this.recs.get(ev[1] as number);
-        if (r) r.hornUntil = this.clock + 0.35 + Math.random() * 0.3;
-        break;
-      }
+      case 'honk': break; // NPC-Hupen werden nicht mehr abgespielt
       case 'eject':
         if (ev[1] === this.myId) { this.rig.kick(0.8); this.input.rumble(1, 1, 400); this.hitStop = HITSTOP_MAX; }
         break;
@@ -824,12 +820,13 @@ export class Game {
       this.views.setVehicle(s, dt);
       this.syncDamage(id, rec, isNew, s);
       this.vehicleFx(s, rec, dt, id === myVehicle);
-      // Hupe (Spieler gedrückt oder NPC-Hupen)
+      // Hupe (nur von Spielern gedrückt)
       const car = this.sfx.car;
       if (car) {
         const own = id === myVehicle;
         const pos = { x: s.x, y: s.y, z: s.z };
-        if (s.flags & VehFlag.HORN || rec.hornUntil > this.clock) car.horn(id, variantInfo(variant).cls, own ? null : pos);
+        // Nur Spieler hupen (NPC-/Verkehrs-Hupen sind aus)
+        if (s.flags & VehFlag.HORN && driver >= 0) car.horn(id, variantInfo(variant).cls, own ? null : pos);
         if (rec.dmg.burn > 0 && !own) car.fire(id, pos, 1, dt);
         // Sirene: Streifenwagen bei Einsatzfahrt oder solange nach mir gefahndet wird
         if (driver === DRIVER_COP_ID && variant !== TANK_VARIANT && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
