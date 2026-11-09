@@ -85,6 +85,42 @@
           "r": 10
         }
       ]
+    },
+    {
+      "id": "tiles",
+      "name": "Kachel-Plattform (Fallout)",
+      "center": [
+        1740,
+        760
+      ],
+      "floor": {
+        "shape": "grid",
+        "y": 3.2,
+        "cell": 4,
+        "cols": 12,
+        "rows": 12
+      },
+      "bounds": 55,
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.6
+      },
+      "spectate": [
+        1618,
+        760
+      ]
     }
   ]
 }

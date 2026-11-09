@@ -10,12 +10,15 @@ import { MG_MARK, type Minigame, type MinigameHost, type MinigameOptions } from 
 import { Sumo } from './modes/Sumo';
 import { Derby } from './modes/Derby';
 import { HotPotato } from './modes/HotPotato';
+import { Fallout } from './modes/Fallout';
 
 type Factory = (h: MinigameHost, opts: MinigameOptions) => Minigame;
 const FACTORIES: Record<MinigameId, Factory> = {
   sumo: (h, o) => new Sumo(h, o),
   derby: (h, o) => new Derby(h, o),
   hotpotato: (h, o) => new HotPotato(h, o),
+  fallout: (h, o) => new Fallout(h, 'fallout', o),
+  fallout_fuss: (h, o) => new Fallout(h, 'fallout_fuss', o),
 };
 
 export class MinigameManager {

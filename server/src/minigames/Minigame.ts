@@ -79,6 +79,8 @@ export interface Participant {
   /** Sekunden seit dem Ausscheiden. */
   outT: number;
   flipT: number;
+  /** Sekunden mit der Fahrzeugmitte neben dem Arena-Boden (Absicherung, falls kein Physikschritt kommt). */
+  offT: number;
   /** Letzter Kontakt mit einem anderen Teilnehmer (für „von X ins Wasser geschoben“). */
   lastHit: { by: number; t: number } | null;
 }
@@ -147,6 +149,8 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     const r = this.arena.deathReason(v.sim.car);
     if (r) return r;
     if (this.cfg.flipTimeout > 0 && p.flipT > this.cfg.flipTimeout) return 'liegt auf dem Dach';
+    // Mitte neben dem Boden (z. B. Spieler ohne Eingaben: sein Auto wird nicht simuliert und fiele nie)
+    if (this.arena.floor && p.offT > 1.5) return 'ist von der Plattform gestürzt';
     return '';
   }
   /** Siegbedingung, Standard: höchstens einer übrig. */
@@ -337,7 +341,7 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
       const part: Participant = {
         key: this.nextKey++, pid: p ? p.id : -1, name: p ? p.name : names[i % names.length], vid: -1, ped: -1,
         bot: p ? null : new BotDriver(BOT_DIFFICULTIES[this.botDifficulty()]), role: '',
-        alive: true, place: 0, score: 0, outT: 0, flipT: 0, lastHit: null,
+        alive: true, place: 0, score: 0, outT: 0, flipT: 0, offT: 0, lastHit: null,
       };
       if (this.onFoot) {
         if (p) this.h.placeOnFoot(p, s.x, s.z, s.a);
@@ -406,6 +410,7 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
       if (!p.alive) continue;
       const v = this.vehicle(p);
       p.flipT = v && upVector(v.sim.car)[1] < 0.35 ? p.flipT + dt : 0;
+      p.offT = v && !this.h.map.onFloor(v.sim.car.x, v.sim.car.z) ? p.offT + dt : 0;
       const human = p.pid >= 0 ? this.h.players.get(p.pid) : undefined;
       let why = '';
       if (human && !this.onFoot && human.vehicleId !== p.vid) why = 'ist ausgestiegen';

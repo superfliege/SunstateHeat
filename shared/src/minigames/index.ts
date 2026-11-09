@@ -6,12 +6,14 @@ import botData from './config/bots.json';
 import sumoConfig from './config/sumo.json';
 import derbyConfig from './config/derby.json';
 import hotPotatoConfig from './config/hotpotato.json';
+import falloutConfig from './config/fallout.json';
+import falloutFootConfig from './config/fallout_fuss.json';
 
 /** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
 export const MG_PHONE_ID = 'minigames';
 export const MG_PREFIX = 'mg:';
 
-export type MinigameId = 'sumo' | 'derby' | 'hotpotato';
+export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss';
 
 // ------------------------------------------------------------------ Arenen
 export type DeathZone =
@@ -88,6 +90,16 @@ export interface HotPotatoConfig extends BaseModeConfig {
   damageScale: number;
 }
 
+export interface FalloutConfig extends BaseModeConfig {
+  variant: 'random' | 'trail' | 'mixed';
+  grace: number;
+  warnTime: number;
+  random: { interval: number; minInterval: number; accel: number; batch: number };
+  trail: { delay: number; chance: number };
+  keepMin: number;
+  damageScale: number;
+}
+
 export interface MinigameMeta { id: MinigameId; name: string; icon: string; intro: string[]; config: BaseModeConfig }
 
 export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
@@ -114,6 +126,22 @@ export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
       'Läuft der Zünder ab, fliegt der Träger in die Luft. Nach dem Weitergeben bist du kurz geschützt. Letzter Überlebender gewinnt.',
     ],
     config: hotPotatoConfig as unknown as HotPotatoConfig,
+  },
+  fallout: {
+    id: 'fallout', name: 'Fallout', icon: '🟦',
+    intro: [
+      'Kachelboden über dem Meer – die Platten verschwinden nach und nach!',
+      'Rot blinkende Platten fallen gleich weg. Wer auf einer fehlenden Platte steht, fällt ins Wasser. Letzter oben gewinnt.',
+    ],
+    config: falloutConfig as unknown as FalloutConfig,
+  },
+  fallout_fuss: {
+    id: 'fallout_fuss', name: 'Fallout (zu Fuß)', icon: '🏃',
+    intro: [
+      'Kachelboden über dem Meer, diesmal zu Fuß – jede Platte, über die du läufst, fällt kurz danach weg!',
+      'Rot blinkende Platten fallen gleich weg. Bleib in Bewegung, aber pass auf, wohin du läufst. Letzter oben gewinnt.',
+    ],
+    config: falloutFootConfig as unknown as FalloutConfig,
   },
 };
 export const isMinigame = (s: string): s is MinigameId => s in MINIGAMES;
