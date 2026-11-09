@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mulberry32 } from '../../../shared/src/math';
-import { addOutline, computeOutlineNormals, LINE, toonMaterial } from './materials/toon';
+import { addOutline, computeOutlineNormals, LINE, toonMaterial, U } from './materials/toon';
 import { palmaraize, type MoodId } from './palette';
 import { characterFiles, type CharacterFile } from './quaternius';
 
@@ -274,6 +274,30 @@ const TARGET_HEIGHT = 1.8 * 1.25; // wie die prozeduralen Figuren: etwas größe
 /** Quaternius-Figuren schauen entlang +z; falls ein Pack anders exportiert ist, hier drehen. */
 const FACING = 0;
 
+/**
+ * Feste, großzügige Hüllkugel für eine animierte Figur (und ihre Umrisshülle). Vorher waren Figuren vom
+ * Sichtfeld-Culling ausgenommen (die automatisch berechnete Kugel passt nicht zu allen Posen) – so wurden
+ * alle NPCs im Umkreis jedes Bild gezeichnet und gehäutet, auch hinter der Kamera. Die Kugel der
+ * Bind-Pose (Geometrie-Raum = lokaler Raum des SkinnedMesh) wird vergrößert, damit Laufen, Szenario-Posen,
+ * Ragdoll-Flug und Liegen sicher innerhalb bleiben.
+ */
+export function setFigureBounds(mesh: THREE.SkinnedMesh, hull: THREE.Object3D | null) {
+  const g = mesh.geometry;
+  if (!g.userData.figureSphere) {
+    if (!g.boundingSphere) g.computeBoundingSphere();
+    const sp = g.boundingSphere!.clone();
+    sp.radius *= 1.6;
+    g.userData.figureSphere = sp;
+  }
+  const sphere = g.userData.figureSphere as THREE.Sphere;
+  mesh.frustumCulled = true;
+  mesh.boundingSphere = sphere;
+  if (hull && (hull as THREE.SkinnedMesh).isSkinnedMesh) {
+    hull.frustumCulled = true;
+    (hull as THREE.SkinnedMesh).boundingSphere = sphere;
+  }
+}
+
 export class AnimatedCharacter {
   readonly root = new THREE.Group();
   private mixer: THREE.AnimationMixer;
@@ -294,11 +318,10 @@ export class AnimatedCharacter {
     rigClone.traverse((o) => { if ((o as THREE.Bone).isBone) boneByName.set(o.name, o as THREE.Bone); });
     const bones = r.bones.map((n) => boneByName.get(n) ?? new THREE.Bone());
     const mesh = new THREE.SkinnedMesh(geometry, sharedMat ??= toonMaterial({ vertexColors: true, nightTint: 0.35 }));
-    mesh.frustumCulled = false; // Bounding-Box passt bei Animation nicht
     rigClone.add(mesh);
     mesh.bind(new THREE.Skeleton(bones, r.boneInverses), new THREE.Matrix4());
     this.hull = addOutline(mesh, LINE.character);
-    this.hull.frustumCulled = false;
+    setFigureBounds(mesh, this.hull);
 
     const bb = geometry.boundingBox!;
     const s = TARGET_HEIGHT / Math.max(0.1, bb.max.y - bb.min.y);
@@ -333,7 +356,8 @@ export class AnimatedCharacter {
     const skip = dist < 45 ? 1 : dist < 90 ? 2 : dist < 150 ? 4 : 8;
     this.acc += dt;
     if (++this.frame % skip === 0) { this.mixer.update(this.acc); this.acc = 0; }
-    if (this.hull) this.hull.visible = dist < 140;
+    // Umriss nur in der Nähe – und nur, wenn Umrisslinien eingeschaltet sind (Grafikstufe „niedrig“)
+    if (this.hull) this.hull.visible = dist < 140 && U.uOutlineScale.value > 0;
   }
 
   dispose() { this.mixer.stopAllAction(); }

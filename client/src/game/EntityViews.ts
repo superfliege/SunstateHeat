@@ -21,6 +21,7 @@ import { CharacterModel, fanGeometry, lightsMat, toonVC, vehicleGeometry, vehicl
 import { moodFor } from '../render/palette';
 import { createWeaponMesh } from '../render/weaponModels';
 import { createKenneyCharacter, type KenneyCharacter } from '../render/kenneyCharacters';
+import type { RagdollFrame } from '../render/ragdoll';
 import { archetypeOf } from '../../../shared/src/npc/archetypes';
 import { Act } from '../../../shared/src/npc/scenarios';
 import { BARK_DURATION, barkText } from '../../../shared/src/npc/barks';
@@ -43,20 +44,52 @@ export interface PedState { id: number; x: number; z: number; a: number; color: 
   fear?: number }
 
 /** Gemeinsame Schnittstelle: Quaternius-Figur (animiert) oder prozeduraler Ersatz. */
-interface Figure { root: THREE.Group; animate(speed: number, dt: number, seated?: boolean, dist?: number): void; dispose(): void }
+interface Figure {
+  root: THREE.Group; animate(speed: number, dt: number, seated?: boolean, dist?: number): void; dispose(): void;
+  /** Ragdoll-Glieder (nur Kenney-Figuren); vor animate() */
+  ragdoll?(f: RagdollFrame | null): void;
+}
+/**
+ * Ragdoll-Darstellung einer Figur (lokal): Ausrichtung des ganzen Körpers (Überschlag in Flugrichtung,
+ * auf Rücken/Bauch einpendeln, wieder aufrichten) + Zustand für die Glieder.
+ */
+interface RagState {
+  q: THREE.Quaternion;
+  /** Drehachse (waagerecht) und -rate des Überschlags */
+  axis: THREE.Vector3; rate: number; twist: number;
+  /** geglättete waagerechte Geschwindigkeit (aus den Positionen) */
+  vx: number; vz: number;
+  lastH: number; vy: number; air: boolean;
+  /** Kopfrichtung am Boden (waagerecht) und Lage (1 Rücken, -1 Bauch) */
+  head: THREE.Vector3; side: number;
+  /** Aufstehen: Fortschritt 0..1 (-1 = noch nicht) und Startlage */
+  getup: number; from: THREE.Quaternion; fromY: number;
+  frame: RagdollFrame;
+}
 interface CharView {
-  model: Figure; lastX: number; lastZ: number; label?: THREE.Sprite; bubble?: THREE.Sprite; seen: boolean; tumble: number;
+  model: Figure; lastX: number; lastZ: number; label?: THREE.Sprite; bubble?: THREE.Sprite; seen: boolean;
+  /** Ragdoll-Zustand (null = steht normal) */
+  rag: RagState | null;
+  /** Bezugspunkt für Namen, Sprechblasen, Leine: Fußpunkt bzw. Sitzposition (unabhängig vom Überschlag) */
+  anchor: THREE.Vector3;
   /** Gehaltene Waffe (Index in WEAPONS, -1 = keine), Schwung-/Rückstoß-Zeit in Sekunden */
   held: THREE.Mesh | null; heldIdx: number; swing: number; kick: number;
   /** Hund an der Leine (Hundebesitzer): Mesh + Leine */
   dog?: THREE.Mesh; leash?: THREE.Line; dogX?: number; dogZ?: number; dogA?: number;
   arch: number;
 }
+/** Abstand, der für Figuren außerhalb des Bildes an die Animation gemeldet wird (seltene Updates, keine Details). */
+const OFFSCREEN_DIST = 1000;
+const smoothstep = (e0: number, e1: number, x: number) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+const lerpAngleRad = (from: number, to: number, t: number) => from + wrapAngle(to - from) * t;
 /** Comic-Sprechblase (Bark) über einem NPC. */
 interface Bubble { sprite: THREE.Sprite; t: number; w: number; h: number }
 /** Höchstens so viele Sprechblasen gleichzeitig sichtbar (die nächsten zur Kamera). */
 const MAX_BUBBLES = 4;
 const SWING_TIME = 0.28, KICK_TIME = 0.12;
+/** Ragdoll: Höhe des Körperschwerpunkts über den Füßen (aufrecht) bzw. liegend, Dauer des Aufstehens */
+const RAG_CENTER = 1.12, RAG_LIE = 0.24, GETUP_TIME = 0.95;
 interface VehView {
   root: THREE.Group; car: CarModel | null; legacy: THREE.Mesh | null; lights?: THREE.Mesh; fan?: THREE.Mesh;
   kind: number; variant: number; color: number; seen: boolean;
@@ -68,6 +101,7 @@ const MAX_SHADOWS = 160, MAX_WHEELS = 480;
 const UP = new THREE.Vector3(0, 1, 0), FWD = new THREE.Vector3(0, 0, 1), XAX = new THREE.Vector3(1, 0, 0);
 const tmpPos = new THREE.Vector3(), tmpScale = new THREE.Vector3(), tmpV = new THREE.Vector3();
 const tmpQuat = new THREE.Quaternion(), tmpQ2 = new THREE.Quaternion(), tmpMat = new THREE.Matrix4();
+const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3(), tmpSphere = new THREE.Sphere();
 const SWEAR = ['#@!%&!', '$%#@!!', '&*!#?!', '@#$%!!', '!!#*&%'];
 
 /** Sprechblase im DS-Stil: weiße Blase, dicke dunkle Kontur, harter Schatten, Zipfel nach unten. */
@@ -180,6 +214,8 @@ export class EntityViews {
   private foamCount = 0;
   /** Kamera-Fokus für Animations-LOD. */
   private focus = new THREE.Vector3();
+  private frustum = new THREE.Frustum();
+  private frustumValid = false;
   /** Nachtwert für Scheinwerfer */
   night = 0;
   hooks: VehicleHooks = { debris: () => {} };
@@ -445,16 +481,17 @@ export class EntityViews {
   private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0) {
     let c = map.get(id);
     if (!c) {
-      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch), lastX: x, lastZ: z, seen: true, tumble: 0, held: null, heldIdx: -1, swing: 0, kick: 0, arch };
+      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch), lastX: x, lastZ: z, seen: true, rag: null, anchor: new THREE.Vector3(x, 0, z), held: null, heldIdx: -1, swing: 0, kick: 0, arch };
       map.set(id, c);
       this.group.add(c.model.root);
     }
     c.seen = true;
     (c.model as Partial<KenneyCharacter>).setAct?.(ragdoll ? 0 : act, (id % 97) / 97);
-    const speed = dt > 0 ? Math.hypot(x - c.lastX, z - c.lastZ) / dt : 0;
+    const mvx = dt > 0 ? (x - c.lastX) / dt : 0, mvz = dt > 0 ? (z - c.lastZ) / dt : 0;
+    const speed = Math.hypot(mvx, mvz);
     c.lastX = x; c.lastZ = z;
     const root = c.model.root;
-    const dist = Math.hypot(x - this.focus.x, z - this.focus.z);
+    let dist = Math.hypot(x - this.focus.x, z - this.focus.z);
     if (seatedOn) {
       const veh = this.vehicles.get(seatedOn.id);
       const tpl = veh?.car?.tpl;
@@ -466,26 +503,156 @@ export class EntityViews {
         root.position.copy(tmpPos);
         root.quaternion.copy(veh.root.quaternion);
       }
+      c.anchor.copy(root.visible ? root.position : tmpPos.set(x, this.groundY(x, z), z));
+      c.rag = null;
+      c.model.ragdoll?.(null);
+      if (!this.showIfOnScreen(c)) dist = OFFSCREEN_DIST;
       c.model.animate(0, dt, true, dist);
-      c.tumble = 0;
     } else {
       root.visible = true;
-      root.position.set(x, this.groundY(x, z) + h, z);
-      if (ragdoll) {
-        // Comic-Flug: Überschlag, dann flach liegen
-        c.tumble += dt * (h > 0.05 ? 11 : 0);
-        root.quaternion.setFromAxisAngle(UP, a).multiply(tmpQ2.setFromAxisAngle(XAX, h > 0.05 ? c.tumble : -Math.PI / 2));
-        if (h <= 0.05) root.position.y += 0.25;
+      const gy = this.groundY(x, z);
+      c.anchor.set(x, gy + h, z);
+      // Außerhalb des Bildes: Animation nur selten weiterrechnen (wie weit entfernte Figuren)
+      if (!this.showIfOnScreen(c)) dist = OFFSCREEN_DIST;
+      if (ragdoll || c.rag) {
+        const f = this.updateRagdoll(c, ragdoll, x, gy, z, h, a, mvx, mvz, dt);
+        c.model.ragdoll?.(f);
         c.model.animate(0, dt, false, dist);
       } else {
-        c.tumble = 0;
+        root.position.set(x, gy + h, z);
         root.quaternion.setFromAxisAngle(UP, a);
+        c.model.ragdoll?.(null);
         c.model.animate(Math.min(speed, 12), dt, false, dist);
       }
-      this.addShadow(x, this.groundY(x, z), z, 1.05);
+      this.addShadow(x, gy, z, 1.05);
     }
-    this.updateHeld(c, weapon, dt, !seatedOn && !ragdoll);
+    this.updateHeld(c, weapon, dt, !seatedOn && !ragdoll && !c.rag);
     return c;
+  }
+
+  /**
+   * Figur außerhalb des Sichtfelds (letztes Bild, großzügiger Rand) ausblenden und aus dem Matrix-Update
+   * jedes Bildes nehmen (~70 Knochen je Figur). Figuren werfen keine Schatten (Blob-Schatten separat),
+   * daher ändert sich am Bild nichts. Rückgabe: sichtbar?
+   */
+  private showIfOnScreen(c: CharView) {
+    const p = c.anchor, root = c.model.root;
+    let on = true;
+    if (this.frustumValid) {
+      // Mittelpunkt 1 m über dem Fußpunkt; Radius deckt auch liegende/fliegende Figuren ab (bis ~2,3 m)
+      tmpSphere.center.set(p.x, p.y + 1, p.z);
+      tmpSphere.radius = 3.2;
+      on = this.frustum.intersectsSphere(tmpSphere);
+    }
+    if (!on) root.visible = false;
+    root.matrixWorldAutoUpdate = on;
+    return on;
+  }
+
+  /** Sichtfeld der Kamera (nach dem Kamera-Update aufrufen; gilt für das nächste Bild). */
+  setCamera(cam: THREE.Camera) {
+    cam.updateMatrixWorld();
+    tmpMat.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(tmpMat);
+    this.frustumValid = true;
+  }
+
+  /**
+   * Ragdoll-Körper: im Flug Überschlag um die Achse quer zur Flugrichtung (Tempo aus den Positionen),
+   * am Boden auf Rücken- oder Bauchlage einpendeln, danach aufrichten (Drehpunkt = Körpermitte, damit die
+   * Figur nicht um die Füße kreiselt). Liefert den Zustand für die Glieder.
+   */
+  private updateRagdoll(c: CharView, ragdoll: boolean, x: number, gy: number, z: number, h: number, a: number, mvx: number, mvz: number, dt: number): RagdollFrame | null {
+    const root = c.model.root;
+    let r = c.rag;
+    if (!r) {
+      r = c.rag = {
+        q: new THREE.Quaternion().setFromAxisAngle(UP, a), axis: new THREE.Vector3(1, 0, 0), rate: 0,
+        twist: ((c.lastX * 7.31 + c.lastZ * 3.17) % 1 + 1) % 1 - 0.5,
+        vx: mvx, vz: mvz, lastH: h, vy: 0, air: h > 0.05,
+        head: new THREE.Vector3(), side: 1, getup: -1, from: new THREE.Quaternion(), fromY: 0,
+        frame: { air: 1, side: 1, getup: 0, impact: 0, spin: 0 },
+      };
+    }
+    const f = r.frame;
+    f.impact = 0;
+    if (dt <= 0) return f;
+    // Geschwindigkeit glätten (Interpolation liefert leicht ruckelige Positionen)
+    const k = Math.min(1, dt * 10);
+    r.vx += (Math.max(-40, Math.min(40, mvx)) - r.vx) * k;
+    r.vz += (Math.max(-40, Math.min(40, mvz)) - r.vz) * k;
+    const vy = (h - r.lastH) / dt;
+    r.lastH = h;
+    const hs = Math.hypot(r.vx, r.vz);
+
+    if (ragdoll) {
+      r.getup = -1;
+      const air = h > 0.05;
+      if (air) {
+        // Überschlag: Achse = oben × Flugrichtung (Kopf voran in Flugrichtung), Tempo ~ Geschwindigkeit
+        if (hs > 0.8) r.axis.set(r.vz / hs, 0, -r.vx / hs);
+        const want = Math.min(13, Math.max(4.5, hs * 0.85));
+        r.rate += (want - r.rate) * Math.min(1, dt * 6);
+        tmpQ2.setFromAxisAngle(r.axis, r.rate * dt);
+        r.q.premultiply(tmpQ2);
+        // etwas Schraube um die Körperachse, je Figur verschieden
+        r.q.multiply(tmpQ2.setFromAxisAngle(UP, r.twist * 5 * dt));
+        r.vy = vy;
+      } else {
+        if (r.air) f.impact = Math.min(1, 0.35 + Math.abs(r.vy) / 14); // Landung
+        r.rate *= Math.max(0, 1 - dt * 8);
+        // Lage am Boden: Kopfrichtung = waagerechter Anteil der Körperachse, Rücken- oder Bauchlage
+        const bodyUp = tmpA.set(0, 1, 0).applyQuaternion(r.q);
+        const front = tmpB.set(0, 0, 1).applyQuaternion(r.q);
+        const hd = tmpC.set(bodyUp.x, 0, bodyUp.z);
+        if (hd.lengthSq() < 0.01) hd.set(-front.x, 0, -front.z); // stand senkrecht: nach hinten umkippen
+        if (hd.lengthSq() < 0.01) hd.set(-Math.sin(a), 0, -Math.cos(a));
+        hd.normalize();
+        r.head.copy(hd);
+        if (r.air || f.getup > 0) r.side = front.y >= -0.05 ? 1 : -1;
+        // Zielbasis: y' = Kopfrichtung, z' = ±oben (Gesicht), x' = y' × z'
+        const zA = tmpB.set(0, r.side, 0);
+        const xA = tmpA.crossVectors(hd, zA);
+        tmpMat.makeBasis(xA, hd, zA);
+        tmpQuat.setFromRotationMatrix(tmpMat);
+        r.q.slerp(tmpQuat, 1 - Math.exp(-dt * (hs > 3 ? 5 : 10)));
+        // Rutscht der Körper noch schnell über den Boden: leicht mitrollen
+        if (hs > 4) {
+          r.q.premultiply(tmpQ2.setFromAxisAngle(tmpA.set(r.vz / hs, 0, -r.vx / hs), Math.min(4, hs * 0.3) * dt * 0.4));
+        }
+      }
+      f.air = air ? 1 : 0;
+      r.air = air;
+      f.side = r.side;
+      f.getup = 0;
+      f.spin = r.rate;
+    } else {
+      // Aufstehen: von der Liegelage zur aufrechten Haltung (Blick wie der Server sie vorgibt)
+      if (r.getup < 0) { r.getup = 0; r.from.copy(r.q); }
+      // Läuft die Figur schon los (NPC flieht), schneller aufstehen
+      r.getup = Math.min(1, r.getup + dt / GETUP_TIME * (1 + Math.min(1.2, hs / 3)));
+      const p = r.getup;
+      // Natürliche Richtung beim Aufrichten: aus Rückenlage Richtung Füße, aus Bauchlage Richtung Kopf
+      const fx = r.side > 0 ? -r.head.x : r.head.x, fz = r.side > 0 ? -r.head.z : r.head.z;
+      const natural = Math.atan2(fx, fz);
+      const yaw = lerpAngleRad(natural, a, smoothstep(0.55, 1, p));
+      tmpQuat.setFromAxisAngle(UP, yaw);
+      r.q.copy(r.from).slerp(tmpQuat, easeInOut(smoothstep(0.12, 0.95, p)));
+      f.air = 0; f.side = r.side; f.getup = Math.max(0.001, p); f.spin = 0;
+      if (p >= 1) {
+        c.rag = null;
+        root.quaternion.setFromAxisAngle(UP, a);
+        root.position.set(x, gy + h, z);
+        return null;
+      }
+    }
+    // Körpermitte: aufrecht auf Schwerpunkthöhe, liegend knapp über dem Boden; Figur um die Mitte drehen
+    const up = Math.abs(tmpA.set(0, 1, 0).applyQuaternion(r.q).y);
+    const cy = gy + h + RAG_LIE + (RAG_CENTER - RAG_LIE) * up;
+    tmpPos.set(0, RAG_CENTER, 0).applyQuaternion(r.q);
+    root.position.set(x - tmpPos.x, cy - tmpPos.y, z - tmpPos.z);
+    root.quaternion.copy(r.q);
+    return f;
   }
 
   /** Waffe in der Hand: Modell wechseln, Schlag-Schwung bzw. Rückstoß animieren. */
@@ -532,7 +699,7 @@ export class EntityViews {
       this.group.add(c.label);
     }
     if (c.label) {
-      const p = c.model.root.position;
+      const p = c.anchor;
       c.label.position.set(p.x, p.y + (seatedOn && !c.model.root.visible ? 4 : 3.6), p.z);
     }
   }
@@ -550,7 +717,7 @@ export class EntityViews {
       this.group.remove(c.bubble); c.bubble.material.map?.dispose(); c.bubble.material.dispose(); c.bubble = undefined;
     }
     if (c.bubble) {
-      const p = c.model.root.position;
+      const p = c.anchor;
       c.bubble.position.set(p.x, p.y + 3.2 + Math.abs(Math.sin(this.clock * 10)) * 0.25, p.z);
     }
   }
@@ -566,7 +733,7 @@ export class EntityViews {
     const fear = s.fear ?? -1;
     const feared = fear >= 0 ? this.players.get(fear) : undefined;
     if (feared && !s.ragdoll) {
-      tx = feared.model.root.position.x; tz = feared.model.root.position.z; w = 1; anx = true;
+      tx = feared.anchor.x; tz = feared.anchor.z; w = 1; anx = true;
     } else if (!s.ragdoll && !s.cop && this.local.onFoot && this.local.speed < 2.8) {
       const d = Math.hypot(this.local.x - s.x, this.local.z - s.z);
       if (d < 6.5) { tx = this.local.x; tz = this.local.z; w = Math.min(1, (6.5 - d) / 2); }
@@ -607,7 +774,7 @@ export class EntityViews {
       b.t += dt;
       const c = this.peds.get(id);
       if (!c || b.t > BARK_DURATION) { this.removeBubble(id); continue; }
-      const p = c.model.root.position;
+      const p = c.anchor;
       order.push([id, Math.hypot(p.x - this.focus.x, p.z - this.focus.z)]);
     }
     order.sort((a, b) => a[1] - b[1]);
@@ -616,7 +783,7 @@ export class EntityViews {
       const vis = i < MAX_BUBBLES && d < 70;
       b.sprite.visible = vis;
       if (!vis) return;
-      const p = c.model.root.position;
+      const p = c.anchor;
       const pop = b.t < 0.18 ? 0.4 + (b.t / 0.18) * 0.8 : b.t < 0.3 ? 1.2 - ((b.t - 0.18) / 0.12) * 0.2 : 1; // Überschwinger
       const k = 1.25 * pop;
       b.sprite.scale.set(b.w * k, b.h * k, 1);
@@ -658,7 +825,7 @@ export class EntityViews {
     const bob = moving ? Math.abs(Math.sin(this.clock * 14)) * 0.06 : 0;
     c.dog.position.set(c.dogX!, gy + bob, c.dogZ!);
     c.dog.rotation.y = c.dogA!;
-    const hand = c.model.root.position;
+    const hand = c.anchor;
     const pos = c.leash!.geometry.attributes.position as THREE.BufferAttribute;
     pos.setXYZ(0, hand.x + fz * 0.45, hand.y + 1.05, hand.z - fx * 0.45);
     pos.setXYZ(1, c.dogX!, gy + 0.7, c.dogZ!);
@@ -705,7 +872,7 @@ export class EntityViews {
   private carrierAnchor(playerId: number): THREE.Vector3 | null {
     const c = this.players.get(playerId);
     if (!c) return null;
-    const p = c.model.root.position;
+    const p = c.anchor;
     return new THREE.Vector3(p.x, p.y + (c.model.root.visible ? 3.0 : 2.6), p.z);
   }
 

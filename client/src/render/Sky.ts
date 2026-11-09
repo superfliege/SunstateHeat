@@ -12,6 +12,7 @@ function mixHex(a: number, b: number, t: number, out: THREE.Color) {
 
 /** Schattenbereich um den Fokus (m) – deckt den sichtbaren Ausschnitt ab. */
 const SHADOW_EXTENT = 110;
+const sunDir = new THREE.Vector3();
 
 export class Sky {
   readonly sun = new THREE.DirectionalLight(0xffffff, 1);
@@ -112,7 +113,7 @@ export class Sky {
     const ang = (day - 0.25) * Math.PI * 2;
     const height = Math.sin(ang);
     const az = height >= -0.05 ? ang : ang + Math.PI;
-    const dir = new THREE.Vector3(Math.cos(az) * Math.cos(elev), Math.sin(elev), 0.35 * Math.cos(elev)).normalize();
+    const dir = sunDir.set(Math.cos(az) * Math.cos(elev), Math.sin(elev), 0.35 * Math.cos(elev)).normalize();
     // Schattenkamera auf Texelraster einrasten -> kein Flimmern beim Fahren
     const snap = (SHADOW_EXTENT * 2) / this.sun.shadow.mapSize.x;
     const fx = Math.round(focus.x / snap) * snap, fz = Math.round(focus.z / snap) * snap;

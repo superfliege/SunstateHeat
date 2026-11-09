@@ -47,6 +47,25 @@ const propGeo = new Map<PropId, THREE.BufferGeometry>();
 const tmpQ = new THREE.Quaternion(), tmpM = new THREE.Quaternion(), tmpR = new THREE.Quaternion(), tmpE = new THREE.Euler();
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 
+/**
+ * Rotation `x, y, z` (Euler YXZ im Figurenraum: x = links, y = oben, z = vorn) auf einen Knochen anwenden,
+ * unabhängig von den Achsen des FBX-Skeletts. `inner` = Figurenraum. Nach jedem Mixer-Update aufrufen.
+ */
+export function rotBone(b: THREE.Bone, inner: THREE.Object3D, x: number, y: number, z: number) {
+  if (!b.parent) return;
+  // M = Ausrichtung des Eltern-Knochens relativ zum Figurenraum (inner)
+  tmpM.identity();
+  let n = 0;
+  for (let o: THREE.Object3D | null = b.parent; o && o !== inner; o = o.parent) chain[n++] = o;
+  for (let i = n - 1; i >= 0; i--) tmpM.multiply(chain[i].quaternion);
+  tmpR.setFromEuler(tmpE.set(x, y, z, 'YXZ'));
+  // new = M⁻¹ · R · M · old
+  tmpQ.copy(tmpM).invert().multiply(tmpR).multiply(tmpM);
+  b.quaternion.premultiply(tmpQ);
+}
+/** Wiederverwendetes Array für die Knochenkette (keine Allokation pro Aufruf). */
+const chain: THREE.Object3D[] = [];
+
 export class NpcActs {
   private bones: Partial<Record<BoneName, THREE.Bone>> = {};
   act = 0;
@@ -99,16 +118,7 @@ export class NpcActs {
   /** Rotation `x, y, z` (Figurenraum) auf einen Knochen anwenden – nach jedem Mixer-Update aufrufen. */
   private rot(name: BoneName, x: number, y: number, z: number) {
     const b = this.bones[name];
-    if (!b || !b.parent) return;
-    // M = Ausrichtung des Eltern-Knochens relativ zum Figurenraum (inner)
-    tmpM.identity();
-    const chain: THREE.Object3D[] = [];
-    for (let n: THREE.Object3D | null = b.parent; n && n !== this.inner; n = n.parent) chain.push(n);
-    for (let i = chain.length - 1; i >= 0; i--) tmpM.multiply(chain[i].quaternion);
-    tmpR.setFromEuler(tmpE.set(x, y, z, 'YXZ'));
-    // new = M⁻¹ · R · M · old
-    tmpQ.copy(tmpM).invert().multiply(tmpR).multiply(tmpM);
-    b.quaternion.premultiply(tmpQ);
+    if (b) rotBone(b, this.inner, x, y, z);
   }
 
   /**
