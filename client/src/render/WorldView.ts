@@ -160,7 +160,7 @@ function pastel(hex: number, amount: number): THREE.Color {
 export class WorldView {
   readonly group = new THREE.Group();
   readonly waterMaterial: THREE.ShaderMaterial;
-  private surface = surfaceMaterial();
+  private surface = (() => { const m = surfaceMaterial(); m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; return m; })(); // Straßen/Gehwege gewinnen sicher gegen das Gelände darunter (kein Z-Fighting)
   private solidMat = surfaceMaterial({ fade: true });
   private decalMat = surfaceMaterial({ decal: true });
   private neonMat = neonMaterial();

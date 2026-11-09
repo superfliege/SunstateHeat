@@ -7,6 +7,8 @@ import { archetypeOf, type ArchetypeId } from './archetypes';
 export const BARK_SITS = [
   'bumped', 'near_miss', 'car_stolen', 'rain', 'heat', 'police', 'greet', 'night_alone',
   'scold', 'gunfire', 'film', 'call', 'fear', 'wanted', 'idle', 'crash', 'intervene', 'dodge',
+  // Tätigkeiten (Bark passend zu dem, was der NPC gerade tut) und Gang-Sprüche
+  'act_phone', 'act_talk', 'act_eat', 'act_smoke', 'act_dance', 'act_fish', 'act_read', 'act_drink', 'act_wait', 'act_atm', 'act_photo', 'act_sit', 'act_busk', 'act_jog', 'gang',
 ] as const;
 export type BarkSit = (typeof BARK_SITS)[number];
 export const BARK_INDEX = Object.fromEntries(BARK_SITS.map((s, i) => [s, i])) as Record<BarkSit, number>;
@@ -83,6 +85,29 @@ export const BARKS: Record<BarkSit, Lines> = {
   crash: { '*': ['Oh! Das hat gekracht!', 'Uff, Blechschaden!', 'Fahren lernt man hier wohl nicht.', 'Hat jemand die Nummer?'] },
   intervene: { '*': ['Hey! Lass das!', 'Hör sofort auf!', 'Ich hab schon die Polizei gerufen!', 'Nicht mit mir!'], gang: ['Das ist unser Revier!'] },
   dodge: { '*': ['Hoppla!', 'Wow, langsam!', 'Huch!'] },
+  act_phone: { '*': ['Ja, ich bin gleich da!', 'Nein, DU hast aufgelegt!', 'Kannst du mich hören? Hallo?', 'Der Empfang hier ist furchtbar.', 'Ich ruf dich zurück!'], businessman: ['Wir telefonieren später, ich bin im Termin.'] },
+  act_talk: { '*': ['Und dann sagt er zu mir…', 'Nein, echt jetzt?!', 'Das glaub ich dir nicht!', 'Haha, genau das meine ich!', 'Hast du das gehört?'] },
+  act_eat: { '*': ['Mmh, die Tacos sind der Hammer!', 'Zu scharf. Mehr davon!', 'Noch eine Portion bitte.', 'Das tropft überall hin…'] },
+  act_smoke: { '*': ['Nur eine, dann hör ich auf.', 'Die Pause muss sein.', 'Hat jemand Feuer?'] },
+  act_dance: { '*': ['Yeah! Das ist mein Song!', 'Lauter!', 'Wuhuu!', 'Ich fühl den Beat!'], partygoer: ['Die Nacht ist jung!'] },
+  act_fish: { '*': ['Komm schon, beiß an…', 'Da zuckt was!', 'Heute wird\'s ein Fang.', 'Psst, du verscheuchst sie!'], fisher: ['Der Große kommt gleich, ich spür\'s.'] },
+  act_read: { '*': ['Interessant…', 'Schon wieder Politik.', 'Die Sportseite zuerst.', 'Das wird alles teurer.'] },
+  act_drink: { '*': ['Ahh, genau das brauchte ich.', 'Auf dein Wohl!', 'Der Eistee ist Gold wert.'] },
+  act_wait: { '*': ['Wo bleibt der Bus?', 'Der Fahrplan ist ein Märchen.', 'Zehn Minuten Verspätung. Wie immer.', 'Ich warte schon ewig.'] },
+  act_atm: { '*': ['Wie viel?! Gestern war da noch mehr.', 'Bitte, bitte, spuck Geld aus.', 'Die Gebühren sind ein Witz.'] },
+  act_photo: { '*': ['Warte, nochmal! Lächeln!', 'Das gibt ein tolles Bild.', 'Noch einen Schritt nach links!', 'Ist die Sonne zu grell?'] },
+  act_sit: { '*': ['Ahh, endlich sitzen.', 'Schön hier in der Sonne.', 'Meine Füße…'] },
+  act_busk: { '*': ['Danke fürs Zuhören!', 'Noch ein Lied!', 'Trinkgeld hilft der Kunst!'] },
+  act_jog: { '*': ['Puh, noch ein Kilometer…', 'Fast geschafft!', 'Schneller, schneller!'] },
+  gang: {
+    '*': ['Das ist unser Block.', 'Was guckst du?', 'Wir haben hier das Sagen.', 'Verschwinde, wenn du Ärger meidest.', 'Jeder zahlt hier seinen Zoll.', 'Behalt die Straße im Auge.'],
+  },
+};
+
+/** Welche Bark-Situation passt zu einer Tätigkeit (Act-ID aus npc/scenarios)? */
+export const ACT_BARK: Record<number, BarkSit> = {
+  1: 'act_sit', 4: 'act_phone', 5: 'act_smoke', 6: 'act_talk', 7: 'act_photo', 8: 'act_eat', 9: 'act_fish', 10: 'act_dance',
+  11: 'act_busk', 14: 'act_read', 15: 'act_atm', 16: 'act_wait', 18: 'act_jog', 20: 'act_drink',
 };
 
 /** Variantenliste für Situation + Archetyp (Archetyp-Sprüche zuerst, dann allgemeine). */
@@ -99,6 +124,6 @@ export function barkText(sit: number, arch: number, variant: number): string {
 }
 
 /** Abklingzeit pro NPC (s) und globale Obergrenze gleichzeitiger Barks pro Spieler-Umkreis (30 m). */
-export const BARK_COOLDOWN: [number, number] = [12, 22];
-export const BARK_MAX_NEAR = 3;
+export const BARK_COOLDOWN: [number, number] = [9, 17];
+export const BARK_MAX_NEAR = 5;
 export const BARK_DURATION = 3.2;

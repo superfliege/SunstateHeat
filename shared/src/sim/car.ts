@@ -95,7 +95,16 @@ export function setYaw(c: CarState, a: number) {
 // ------------------------------------------------------------------ Boden & Hindernisse
 /** Höhe der befahrbaren Oberfläche (Gelände, Brücke, Bordstein, Sumpf, Rampen). */
 export function groundHeight(map: WorldMap, x: number, z: number): number {
+  if (map.tileAt(x, z) === Tile.WATER) return CAR_WATER_FLOOR;
   return map.surfaceY(x, z) + rampAt(map, x, z);
+}
+
+/** Landfahrzeuge im Wasser sinken bis etwa zur Hälfte ein (Höhe des „Wasserbodens“ für die Räder). */
+export const CAR_WATER_FLOOR = -1.05;
+
+/** Steht das Landfahrzeug im tiefen Wasser (Motor aus, Auto säuft ab)? */
+export function carInWater(map: WorldMap, c: { x: number; z: number }): boolean {
+  return map.tileAt(c.x, c.z) === Tile.WATER;
 }
 
 /** Glatte Höhe (ohne Bordsteinstufen) für die Bodennormale. */
@@ -107,7 +116,7 @@ function smoothHeight(map: WorldMap, x: number, z: number): number {
 
 /** Kacheln, die für Autos eine Wand sind. */
 export function blocksCar(t: number): boolean {
-  return t === Tile.BUILDING || t === Tile.ROCK || t === Tile.VOID || t === Tile.WATER;
+  return t === Tile.BUILDING || t === Tile.ROCK || t === Tile.VOID;
 }
 
 // ------------------------------------------------------------------ Quaternion-Helfer
@@ -304,6 +313,15 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
   } else {
     if (ay > 0.05) throttle = ay;
     if (ay < -0.05) { if (vLongBody > 0.8) brake = -ay; else { c.gear = -1; throttle = -ay; } }
+  }
+  // Im tiefen Wasser: Motor aus, das Auto säuft ab und kommt schnell zum Stehen
+  if (map.tileAt(c.x, c.z) === Tile.WATER) {
+    throttle = 0; brake = 0;
+    const k = Math.exp(-1.6 * h);
+    c.vx *= k; c.vz *= k;
+    const kr = Math.exp(-3 * h);
+    c.wx *= kr; c.wy *= kr; c.wz *= kr; c.vy *= Math.exp(-1.5 * h); // Wasser dämpft Wippen und Drehen
+    if (c.nitro > 0) c.nitro = Math.max(0, c.nitro - h * 0.5);
   }
   c.thr = throttle; c.brk = brake; c.hb = handbrake; c.rev = c.gear < 0;
 

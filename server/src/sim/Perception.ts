@@ -7,7 +7,7 @@
 import { dist2 } from '../../../shared/src/math';
 import { archetypeOf } from '../../../shared/src/npc/archetypes';
 import {
-  BARK_COOLDOWN, BARK_DURATION, BARK_INDEX, BARK_MAX_NEAR, barkLines, type BarkSit,
+  ACT_BARK, BARK_COOLDOWN, BARK_DURATION, BARK_INDEX, BARK_MAX_NEAR, barkLines, type BarkSit,
 } from '../../../shared/src/npc/barks';
 import { NEED_IDS, STEP_NAMES } from '../../../shared/src/npc/intents';
 import type { DayPart, Weather } from '../../../shared/src/npc/population';
@@ -232,14 +232,19 @@ export class Perception {
   private ambient() {
     const part = this.h.part(), night = this.h.isNight(), weather = this.h.weather();
     for (const pl of this.h.players.values()) {
-      if (Math.random() > 0.16) continue; // ~1 Umgebungs-Spruch alle 3 s je Spieler (Obergrenze greift zusätzlich)
+      if (Math.random() > 0.42) continue; // ~1 Umgebungs-Spruch pro Sekunde je Spieler (Obergrenze greift zusätzlich)
       const pos = this.h.positionOf(pl);
       const cands: Ped[] = [];
       for (const p of this.h.peds.peds.values()) {
         if (!p.mind || p.mind.react || p.mind.barkCd > 0 || p.rt > 0 || p.mind.exitT > 0) continue;
         const d2 = dist2(p.x, p.z, pos.x, pos.z);
-        if (d2 < 2.5 * 2.5 || d2 > 14 * 14) continue;
+        if (d2 < 2.5 * 2.5 || d2 > 24 * 24) continue;
         cands.push(p);
+      }
+      // Gang-Mitglieder (ohne Kopf-Logik) rufen gelegentlich Revier-Sprüche
+      for (const g of this.h.peds.peds.values()) {
+        if (!g.gang || g.rt > 0 || g.hp <= 0 || dist2(g.x, g.z, pos.x, pos.z) > 22 * 22) continue;
+        if (Math.random() < 0.12) this.bark(g, 'gang');
       }
       if (!cands.length) continue;
       const p = cands[Math.floor(Math.random() * cands.length)];
@@ -247,6 +252,7 @@ export class Perception {
       const r = Math.random();
       let sit: BarkSit = 'idle';
       if (p.mind!.fear?.pid === pl.id) sit = 'fear';
+      else if (ACT_BARK[p.act] && r < 0.7) sit = ACT_BARK[p.act]; // spricht passend zu dem, was er gerade tut
       else if (this.copNear(p.x, p.z, 25) && r < 0.6) sit = 'police';
       else if (weather === 'rain' && r < 0.6) sit = 'rain';
       else if (night && !pos.inVehicle && d < 9 && this.alone(p) && r < 0.7) sit = 'night_alone';

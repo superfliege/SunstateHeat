@@ -251,7 +251,7 @@ export class WorldMap {
       case Tile.BRIDGE: return BRIDGE_DECK;
       case Tile.DOCK: return 0.4;
       case Tile.SWAMP: return -0.45; // man watet im Wasser
-      case Tile.WATER: return 0;
+      case Tile.WATER: return -0.55; // Schwimmer ragen etwa bis zur Brust heraus
       case Tile.SIDEWALK: case Tile.PLAZA: return Math.max(0.05, this.terrainHeight(x, z)) + CURB_TOP; // Bordsteinhöhe
       default: return Math.max(0, this.terrainHeight(x, z));
     }
