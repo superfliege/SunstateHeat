@@ -1,0 +1,53 @@
+import type { DistrictDNA } from './types';
+
+export const CORAL_KEYS: DistrictDNA = {
+  id: 'coral_keys',
+  name: 'Coral Keys',
+  mapDistricts: ['Sunset Village'],
+  mapZones: ['Coral Keys'],
+  motto: 'Langsam leben.',
+  philosophy: 'Auf den Inseln tickt die Uhr nach Gezeiten. Eile ist unhöflich, Schuhe sind optional, und jedes Problem lässt sich bis morgen vertagen.',
+  values: ['Gelassenheit', 'Meer', 'Fisch', 'Barfuß-Kultur', 'Sonnenuntergänge (gemeinsam angeschaut)'],
+  residents: [
+    { id: 'angler', name: 'Angler', base: 'fisher', weight: 24, attitude: 'Wartet seit zwanzig Jahren auf „den Großen“.' },
+    { id: 'beach_bum', name: 'Lebenskünstler', base: 'beachgoer', weight: 16, attitude: 'Arbeitet saisonal, die Saison hat noch nicht angefangen.' },
+    { id: 'yacht_crew', name: 'Yacht-Crew', base: 'worker', weight: 10, attitude: 'Putzt Boote, die schöner wohnen als er.' },
+    { id: 'vacationer', name: 'Ferienhaus-Gast', base: 'tourist', weight: 20, attitude: 'Hat die Uhr abgelegt und weiß nicht mehr, welcher Tag ist.' },
+    { id: 'bar_owner', name: 'Strandbar-Wirt', base: 'vendor', weight: 8, attitude: 'Philosoph mit Zapfhahn.' },
+    { id: 'fish_seller', name: 'Fischverkäuferin', base: 'vendor', weight: 8, attitude: 'Riecht nach Meer und Wahrheit.' },
+    { id: 'retired_captain', name: 'Pensionierter Kapitän', base: 'retiree', weight: 10, attitude: 'Vertraut Möwen mehr als Menschen.' },
+  ],
+  activities: ['Angeln am Steg', 'In der Hängematte liegen', 'Fische verkaufen', 'Boote putzen', 'Sonnenuntergänge applaudieren', 'Leguane beobachten'],
+  hangouts: ['Marina „Blue Hook“', 'Leuchtturm „Sandbar Light“', 'Fischmarkt am Steg', 'Strandbar „Low Tide“', 'Seven Spans Bridge (Aussichtsbucht)'],
+  worries: ['Hurrikansaison', 'Der Fang wird kleiner', 'Leguane auf der Brücke', 'Der Marlin Club kauft alles auf', 'Touristen, die hupen'],
+  topics: {
+    fish: 'Der legendäre Fisch Bernhard.',
+    storms: 'Der Sturm von 1989 (oder 1998, je nach Erzähler).',
+    iguanas: 'Leguane, die die Brücke blockieren.',
+    yachts: 'Die Partys auf den Marlin-Club-Yachten.',
+    sunsets: 'Ob der gestrige Sonnenuntergang Applaus verdient hatte.',
+  },
+  look: {
+    graffiti: 'Gemalte Fische und Wellen auf Bootsschuppen; türkis-weiße Marlin-Club-Wimpel an Stegen.',
+    posters: ['„Angelwettbewerb – Bernhard bleibt ungeschlagen“', '„Bootsparade am Sonntag“', '„Schuhpflicht? Nicht hier.“'],
+    shops: ['Köderladen', 'Fischmarkt', 'Strandbar', 'Bootsverleih', 'Muschel-Souvenirs', 'Eisdiele'],
+    windowMusic: 'Steel-Drums, Ukulele, Reggae-artige Inselklänge aus Strandbars.',
+    vehicles: ['Golfwagen', 'rostige Pick-ups mit Bootsanhänger', 'Mopeds', 'Yachten', 'Fischerboote'],
+    pets: ['Leguane (wild)', 'Pelikane', 'Hauskatzen auf Booten'],
+    clothing: 'Shorts, Fischerhüte, verwaschene Hemden, Segelschuhe ohne Socken, Barfuß.',
+    palette: [0x2ad4c9, 0xffffff, 0xffd36e, 0x1e88e5],
+  },
+  sound: { ambience: ['Wellenplätschern', 'Takelage-Klirren', 'Pelikane', 'Steel-Drums aus der Ferne'], music: 'Insel-Klänge, Steel-Drums' },
+  homeGang: 'marlin',
+  mood: { safety: 72, wealth: 58, gang: 40 },
+  calendar: [
+    { name: 'Bootsparade', days: 'Sonntag', part: 'afternoon', desc: 'Geschmückte Boote ziehen an der Marina vorbei, die Leute klatschen vom Steg.' },
+  ],
+  sampleLines: [
+    'Eile? Hab ich mal gehört. Klang anstrengend.',
+    'Bernhard war heute wieder da. Hat mich angesehen. Mitleidig.',
+    'Uhrzeit? Es ist Flut. Mehr musst du nicht wissen.',
+    'Schuhe sind was für Leute, die irgendwo hinmüssen.',
+    'Der Leguan war zuerst auf der Brücke. Ich respektiere das.',
+  ],
+};

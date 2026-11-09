@@ -1,0 +1,52 @@
+import type { DistrictDNA } from './types';
+
+export const NORTHGATE: DistrictDNA = {
+  id: 'northgate',
+  name: 'Northgate',
+  mapDistricts: ['Northgate', 'Raffinerie'],
+  motto: 'Durchhalten.',
+  philosophy: 'Werkstätten, Motels und Truckstops: Hier wird repariert, was woanders weggeworfen wird – Autos und Träume. Man jammert viel und gibt trotzdem nie auf.',
+  values: ['Zähigkeit', 'Schrauberehre', 'Nachbarschaftshilfe mit Werkzeug', 'Laute Motoren', 'Morgen wird alles besser'],
+  residents: [
+    { id: 'mechanic', name: 'Mechaniker', base: 'worker', weight: 20, attitude: 'Hört am Motorgeräusch, ob du lügst.' },
+    { id: 'tuner', name: 'Tuner', base: 'partygoer', weight: 14, attitude: 'Investiert alles in Neonunterböden, isst Nudeln aus der Packung.' },
+    { id: 'motel_guest', name: 'Motel-Dauergast', base: 'local', weight: 14, attitude: 'Wohnt „nur übergangsweise“ hier, seit vier Jahren.' },
+    { id: 'trucker', name: 'Fernfahrer', base: 'worker', weight: 14, attitude: 'Kennt jede Raststätte und jedes Schlagloch beim Namen.' },
+    { id: 'shift_worker', name: 'Schichtarbeiter', base: 'worker', weight: 14, attitude: 'Weiß nicht mehr, ob es Abend oder Morgen ist.' },
+    { id: 'dreamer', name: 'Pläneschmied', base: 'local', weight: 10, attitude: 'Wird nächste Woche reich. Garantiert.' },
+    { id: 'drifter', name: 'Gestrandeter', base: 'homeless', weight: 8, attitude: 'Hat Theorien über alles, vor allem über Ampeln.' },
+  ],
+  activities: ['Autos aufmotzen', 'Motoren aufheulen lassen', 'Im Motelzimmer streiten', 'Kaffee am Truckstop', 'Ersatzteile tauschen', 'Nachtrennen'],
+  hangouts: ['Werkstatt „Bolt Brothers“', 'Motel „Starlite Inn“', 'Truckstop „Big Mug“', 'Waschanlage „Bubble Bath“', 'Parkplatz hinter dem Baumarkt'],
+  worries: ['Die Rechnung von der Werkstatt', 'Kündigung im Werk', 'Polizeikontrollen bei Nachtrennen', 'Lärm (von den anderen)', 'Die Miete fürs Motelzimmer'],
+  topics: {
+    cars: 'PS, Turbos und wer gestern wen abgezogen hat.',
+    jobs: 'Wer im Werk entlassen wurde.',
+    races: 'Das nächste Nachtrennen auf dem Baumarktparkplatz.',
+    dreams: 'Der große Plan (diesmal wirklich).',
+    police: 'Wo heute die Blitzer stehen.',
+  },
+  look: {
+    graffiti: 'Wildstyle-Pieces an Werkstattwänden, Reifenspuren als Kunstform, Dustline- und Syndicate-Tags im Wechsel.',
+    posters: ['„Ölwechsel + Gebet: 49,99 $“', '„Zimmer frei – fast alle Insekten ausgezogen“', '„Nachtrennen? Wir wissen von nichts. – PCP“'],
+    shops: ['Werkstatt', 'Reifenhandel', 'Motel', 'Pfandhaus', 'Truckstop-Diner', 'Waschanlage'],
+    windowMusic: 'Heavy Rock aus Werkstatttoren, Country aus Motelzimmern, Bass aus getunten Autos.',
+    vehicles: ['getunte Kompaktwagen', 'Pick-ups', 'Sattelschlepper', 'Abschleppwagen', 'Muscle Cars mit Grundierung'],
+    pets: ['Werkstatthund „Kardan“', 'streunende Katzen', 'ein Leguan im Motel'],
+    clothing: 'Overalls, Ölflecken, Trucker-Caps, Lederjacken, Flanellhemden.',
+    palette: [0x5a5a5a, 0xb5532c, 0xff2fd0, 0xffcc00],
+  },
+  sound: { ambience: ['Schlagschrauber', 'Motorenaufheulen', 'Lkw-Bremsen', 'Neonröhren-Summen'], music: 'Rock, Country, Bass' },
+  contestedBy: ['dustline', 'neon'],
+  mood: { safety: 38, wealth: 30, gang: 55 },
+  calendar: [
+    { name: 'Nachtrennen', days: 'Freitag & Samstag', part: 'night', desc: 'Tuner-Treff auf dem Baumarktparkplatz, Starter mit Taschenlampe.' },
+  ],
+  sampleLines: [
+    'Läuft nicht? Hast du draufgehauen? Dann hau fester.',
+    'Ich wohne nicht im Motel. Ich residiere übergangsweise.',
+    'Mein Auto hat mehr Lichter als mein Wohnzimmer.',
+    'Hier wird nichts weggeworfen. Höchstens weggeschweißt.',
+    'Nächste Woche, Kumpel. Nächste Woche ändert sich alles.',
+  ],
+};

@@ -1,0 +1,53 @@
+import type { DistrictDNA } from './types';
+
+export const DOWNTOWN: DistrictDNA = {
+  id: 'downtown',
+  name: 'Downtown',
+  mapDistricts: ['Downtown'],
+  motto: 'Zeit ist Geld.',
+  philosophy: 'Zwischen Glas und Beton zählt nur, wer schneller, größer und beschäftigter wirkt. Pausen sind etwas für Leute ohne Kalender.',
+  values: ['Karriere', 'Status', 'Hektik', 'Effizienz', 'Networking'],
+  residents: [
+    { id: 'banker', name: 'Banker', base: 'businessman', weight: 22, attitude: 'Denkt in Quartalen, träumt in Prozenten.' },
+    { id: 'startup', name: 'Start-up-Gründer', base: 'businessman', weight: 12, attitude: 'Disruptiert gerade das Konzept „Mittagessen“.' },
+    { id: 'office_drone', name: 'Büroangestellter', base: 'local', weight: 22, attitude: 'Zählt die Minuten bis Freitag, seit Montag.' },
+    { id: 'courier', name: 'Fahrradkurier', base: 'jogger', weight: 8, attitude: 'Rote Ampeln sind Empfehlungen.' },
+    { id: 'food_vendor', name: 'Food-Truck-Betreiber', base: 'vendor', weight: 10, attitude: 'Füttert die Elite und weiß dafür alle Geheimnisse.' },
+    { id: 'preacher', name: 'Straßenprediger', base: 'homeless', weight: 4, attitude: 'Predigt gegen Montagsmeetings – mit Megafon.' },
+    { id: 'security', name: 'Wachmann', base: 'worker', weight: 8, attitude: 'Bewacht Drehtüren, die niemand stehlen will.' },
+    { id: 'lawyer', name: 'Anwalt', base: 'businessman', weight: 8, attitude: 'Rechnet im Sechs-Minuten-Takt ab, auch beim Small Talk.' },
+  ],
+  activities: ['Telefonieren im Gehen', 'Kaffee to go jonglieren', 'Geld abheben', 'Rauchpause am Hintereingang', 'Taxi heranwinken', 'Food-Truck-Schlange'],
+  hangouts: ['Platz vor dem „Sunbank Tower“', 'Food-Truck-Meile an der Vierten', 'Brunnen vor dem Polizeihauptquartier', 'Rooftop-Bar „Altitude Adjustment“', 'Kaffeebar „Grind & Hustle“'],
+  worries: ['Der Aktienkurs', 'Der Chef', 'Burn-out (aber produktiv)', 'Parkplatzsuche', 'Die nächste Umstrukturierung'],
+  topics: {
+    market: 'Was der Markt heute macht (niemand weiß es).',
+    meetings: 'Meetings, die eine Mail hätten sein können.',
+    promotion: 'Wer befördert wurde und wen er dafür unter den Bus geworfen hat.',
+    traffic: 'Der Stau auf der Bayfront Avenue.',
+    crypto: 'Eine neue Digitalwährung namens „PalmCoin“, die nur fällt.',
+  },
+  look: {
+    graffiti: 'Kaum Graffiti, schnell weggeputzt; wenn doch, dann magentafarbene Neon-Tags des Syndicate an Hintereingängen.',
+    posters: ['„Sunbank – Wir sind zu groß, um nett zu sein“', '„Coworking jetzt mit Schlafkapseln“', '„Seminar: Reich werden durch Seminare“'],
+    shops: ['Bankfiliale', 'Kaffeebar', 'Anzugschneider', 'Elektronikladen', 'Salat-Bar mit Warteliste'],
+    windowMusic: 'Kaum Musik – höchstens Fahrstuhl-Jazz aus Lobbys und Telefonwarteschleifen.',
+    vehicles: ['Limousinen', 'graue Firmenlimousinen', 'Taxis', 'Fahrradkuriere', 'Food-Trucks', 'Leih-Scooter'],
+    pets: ['Bürohunde mit Namensschild', 'Tauben, die Croissant-Krümel bevorzugen'],
+    clothing: 'Anzüge, Hemden mit hochgekrempelten Ärmeln, Laufschuhe zum Anzug, Headsets.',
+    palette: [0x2e3a4f, 0x9fb6cc, 0xffffff, 0xd4af37],
+  },
+  sound: { ambience: ['Hupen', 'Absätze auf Granit', 'Telefonate', 'Baustellen-Presslufthammer'], music: 'Fahrstuhl-Jazz' },
+  homeGang: 'neon',
+  mood: { safety: 70, wealth: 82, gang: 35 },
+  calendar: [
+    { name: 'Afterwork-Rooftop', days: 'Donnerstag', part: 'evening', desc: 'Anzugträger trinken auf Dächern und reden übers Kündigen.' },
+  ],
+  sampleLines: [
+    'Ich hab keine Zeit für ein Hallo, schick mir ein Memo.',
+    'Ich bin nicht gestresst, ich bin „hochperformant“.',
+    'Mein Kaffee hat mehr Termine als ich.',
+    'Lass uns das offline nehmen. Also… hier. Auf dem Gehweg.',
+    'Wer hier stehen bleibt, wird von einem Kurier überfahren. Das ist Physik.',
+  ],
+};

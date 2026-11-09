@@ -1,0 +1,53 @@
+import type { DistrictDNA } from './types';
+
+export const PORT_DISTRICT: DistrictDNA = {
+  id: 'port_district',
+  name: 'Port District',
+  mapDistricts: ['Port District', 'Port District (Hafeninsel)'],
+  motto: 'Ehrliche Arbeit, krumme Geschäfte.',
+  philosophy: 'Tagsüber wird geschleppt, gehoben und geflucht, nachts wechseln Kisten den Besitzer. Keiner fragt, was drin ist – das ist hier Höflichkeit.',
+  values: ['Schwielen an den Händen', 'Schweigen', 'Kollegialität', 'Pünktlicher Schichtwechsel', 'Ein Auge zudrücken'],
+  residents: [
+    { id: 'dockworker', name: 'Hafenarbeiter', base: 'worker', weight: 30, attitude: 'Hebt alles, fragt nichts, isst drei Sandwiches.' },
+    { id: 'crane_operator', name: 'Kranführer', base: 'worker', weight: 8, attitude: 'Sieht von oben alles und erzählt die Hälfte.' },
+    { id: 'harbor_master', name: 'Hafenmeister-Gehilfe', base: 'businessman', weight: 5, attitude: 'Hat ein Klemmbrett und damit Macht.' },
+    { id: 'old_sailor', name: 'Alter Seemann', base: 'fisher', weight: 8, attitude: 'Jede Geschichte beginnt mit „Damals, im Sturm von …“.' },
+    { id: 'trucker', name: 'Container-Trucker', base: 'worker', weight: 12, attitude: 'Wartet seit Stunden auf eine Unterschrift.' },
+    { id: 'fence', name: 'Händler „für alles“', base: 'vendor', weight: 6, attitude: 'Hat genau das, was du brauchst. Frag nicht woher.' },
+    { id: 'night_watch', name: 'Nachtwächter', base: 'worker', weight: 6, attitude: 'Schläft mit offenen Augen, sieht trotzdem nichts.' },
+    { id: 'drifter', name: 'Hafen-Herumtreiber', base: 'homeless', weight: 6, attitude: 'Schläft in Container 47, nennt ihn „das Penthouse“.' },
+  ],
+  activities: ['Kisten stapeln', 'Gabelstapler fahren', 'Mittagspause auf Paletten', 'Möwen verscheuchen', 'Nachts Kisten übergeben', 'Angeln an der Kaimauer'],
+  hangouts: ['Imbiss „Kombüse 9“', 'Kran Nummer 3', 'Schrottplatz „Rust in Peace“', 'Werft „Kiel & Kies“', 'Kaimauer am Leuchtfeuer'],
+  worries: ['Automatisierung', 'Der Zoll', 'Wer im Spind die Sandwiches klaut', 'Fehlende Ladepapiere', 'Gerald die Möwe'],
+  topics: {
+    cargo: 'Was angeblich in Container 12 war.',
+    union: 'Die Schichtpläne und wer immer Nachtschicht bekommt.',
+    smuggling: 'Die „goldene Ware“, über die alle flüstern.',
+    seagull: 'Gerald, die Möwe, die den Hafen regiert.',
+    sea: 'Stürme, die mit jeder Erzählung größer werden.',
+  },
+  look: {
+    graffiti: 'Schablonen-Nummern auf Containern, rostrote Dustline-Kürzel an Lagerhallen, magentafarbene Syndicate-Pfeile am Kai.',
+    posters: ['„Unfallfrei seit 3 Tagen“', '„Ladepapiere sind keine Vorschläge“', '„Hafenfest – Fisch für alle (solange der Fisch reicht)“'],
+    shops: ['Imbiss', 'Ersatzteilhandel', 'Schiffsausrüster', 'Pfandleihe', 'Arbeitskleidung'],
+    windowMusic: 'Alte Seemannslieder aus Kofferradios, dazu Rock aus Gabelstaplerkabinen.',
+    vehicles: ['Gabelstapler', 'Containerzugmaschinen', 'Pick-ups', 'Lieferwagen ohne Aufschrift', 'Schlepper'],
+    pets: ['Hafenkatzen', 'Möwen (feindlich)', 'ein Hund namens „Anker“'],
+    clothing: 'Warnwesten, Arbeitshosen, Strickmützen auch bei 30 Grad, Gummistiefel.',
+    palette: [0xff8c1a, 0x3a5f7d, 0x8b8b8b, 0xc0392b],
+  },
+  sound: { ambience: ['Kranhupen', 'Kettenrasseln', 'Schiffshorn', 'Möwengeschrei', 'Rückfahrwarner'], music: 'Seemannslieder, Kofferradio-Rock' },
+  contestedBy: ['neon', 'marlin', 'dustline'],
+  mood: { safety: 44, wealth: 40, gang: 58 },
+  calendar: [
+    { name: 'Gabelstapler-Cup', days: 'Mittwoch', part: 'noon', desc: 'Inoffizielles Rennen in der Mittagspause; Einsatz: Sandwiches.' },
+  ],
+  sampleLines: [
+    'Was in der Kiste ist? Kiste ist in der Kiste.',
+    'Ich hab nichts gesehen. Ich hab auch nicht hingesehen. Ich weiß nicht mal, wo „hin“ ist.',
+    'Gerald hat wieder meinen Kaffee geklaut. Ich schwör’s, die Möwe trinkt.',
+    'Ehrliche Arbeit bis 18 Uhr. Danach ist Ehrlichkeit Verhandlungssache.',
+    'Wenn der Kran pfeift, rennst du. Fragen stellst du hinterher.',
+  ],
+};
