@@ -43,7 +43,11 @@ export class ArenaView {
     for (const f of floors) {
       let v = this.views.get(f.id);
       if (v && v.kind === 'grid' && v.key !== `${f.cols}x${f.rows}x${f.cell}`) { this.group.remove(v.g); this.views.delete(f.id); v = undefined; }
-      if (!v) { v = f.shape === 'disc' ? this.buildDisc(f) : this.buildGrid(f); this.views.set(f.id, v); this.group.add(v.g); }
+      if (!v) {
+        v = f.shape === 'disc' ? this.buildDisc(f) : this.buildGrid(f);
+        if (f.wall > 0) v.g.add(this.buildWall(f));
+        this.views.set(f.id, v); this.group.add(v.g);
+      }
       if (v.kind === 'disc') this.sizeDisc(v, f);
       else v.cells = f.cells;
     }
@@ -77,6 +81,34 @@ export class ArenaView {
     const v: DiscView = { kind: 'disc', g, top, rim, glow, r: 0, stripes };
     this.sizeDisc(v, f);
     return v;
+  }
+
+  /** Bande (Leitplanke mit Rot-Weiß-Streifen) rund um den Boden. Bei Scheiben: feste Größe (schrumpft nicht). */
+  private buildWall(f: ArenaFloor): THREE.Object3D {
+    const H = 1.6;
+    const tex = stripeTexture();
+    const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 });
+    const g = new THREE.Group();
+    if (f.shape === 'disc') {
+      const r = f.r + f.wall / 2;
+      tex.repeat.set(Math.max(4, Math.round((r * Math.PI * 2) / 3 / 16)), 1);
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(r + f.wall / 2, r + f.wall / 2, H, 72, 1, true), mat);
+      const inner = new THREE.Mesh(new THREE.CylinderGeometry(f.r, f.r, H, 72, 1, true), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6, side: THREE.BackSide }));
+      const top = new THREE.Mesh(new THREE.RingGeometry(f.r, f.r + f.wall, 72), new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+      top.rotation.x = -Math.PI / 2; top.position.y = H / 2;
+      g.add(ring, inner, top);
+      g.position.y = H / 2;
+      return g;
+    }
+    // Raster: Position relativ zur Gruppe (grid-Gruppe liegt im Ursprung)
+    const w = f.cols * f.cell, d = f.rows * f.cell, t = f.wall;
+    tex.repeat.set(4, 1);
+    for (const [x, z, sx, sz] of [[0, -(d + t) / 2, w + 2 * t, t], [0, (d + t) / 2, w + 2 * t, t], [-(w + t) / 2, 0, t, d], [(w + t) / 2, 0, t, d]]) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, H, sz), mat);
+      m.position.set(f.cx + x, f.y + H / 2, f.cz + z);
+      g.add(m);
+    }
+    return g;
   }
 
   private sizeDisc(v: DiscView, f: ArenaFloor) {

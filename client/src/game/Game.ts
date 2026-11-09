@@ -647,6 +647,7 @@ export class Game {
       let buttons = s.buttons;
       // Rennstart: Fahrzeug steht bis zum Countdown-Ende (Server erzwingt dasselbe)
       if (this.questState?.freeze && this.predictor.inVehicle) { s.ax = 0; s.ay = 0; buttons = Btn.BRAKE; }
+      else if (this.questState?.freeze && this.questState.mg) { s.ax = 0; s.ay = 0; buttons = 0; } // Minispiel zu Fuß: Countdown
       if (this.unflipFrames > 0) { buttons |= Btn.UNFLIP; this.unflipFrames--; }
       // Catch the Taxi: unendlich Nitro (Server setzt dasselbe)
       if (this.questState?.hunt === 'taxi' && this.predictor.sim) { const sim = this.predictor.sim; sim.prof = taxiProfile(sim.prof); sim.car.nitro = 1; }

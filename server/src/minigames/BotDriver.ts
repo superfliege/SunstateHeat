@@ -87,6 +87,15 @@ export class BotDriver {
     if (d < this.ramDist) { this.ram = true; this.ramDist = d; this.ramAngle = Math.atan2(tx - c.x, tz - c.z); }
   }
 
+  /** Seek: einen Punkt anfahren (Wegpunkt, Zone, Straßensperre). */
+  seek(x: number, z: number, w: number) {
+    const c = this.car!;
+    this.addInterest(Math.atan2(x - c.x, z - c.z), w, 2);
+  }
+
+  /** Wunschtempo nachträglich setzen (z. B. Vollbremsung an der Straßensperre). */
+  setSpeed(v: number) { this.speedWant = v; }
+
   /** Flee: von einer Bedrohung wegfahren (stärker, je näher sie ist). */
   flee(tx: number, tz: number, w: number, range = 40) {
     const c = this.car!;

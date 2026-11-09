@@ -380,3 +380,8 @@ body.touch .pn-close { font-size: 17px; }
 #mg-results td { padding: 3px 8px; } #mg-results td:last-child { text-align: right; opacity: 0.8; font-size: 12px; }
 #mg-results tr.me { background: rgba(255, 79, 154, 0.25); color: #fff; font-weight: bold; }
 @keyframes race-pop-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%); } }
+#mg-alert {
+  position: fixed; left: 50%; top: 24%; transform: translateX(-50%); z-index: 31; pointer-events: none; white-space: nowrap;
+  font: bold 46px/1 'Trebuchet MS', sans-serif; color: #ff3b3b; letter-spacing: 2px;
+  text-shadow: 0 0 18px rgba(255, 40, 40, 0.8), 0 4px 0 #4a0000; animation: mg-blink 0.6s steps(2) infinite;
+}

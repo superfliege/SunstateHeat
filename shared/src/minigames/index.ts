@@ -4,12 +4,13 @@
 import arenaData from './arenas.json';
 import botData from './config/bots.json';
 import sumoConfig from './config/sumo.json';
+import derbyConfig from './config/derby.json';
 
 /** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
 export const MG_PHONE_ID = 'minigames';
 export const MG_PREFIX = 'mg:';
 
-export type MinigameId = 'sumo';
+export type MinigameId = 'sumo' | 'derby';
 
 // ------------------------------------------------------------------ Arenen
 export type DeathZone =
@@ -21,7 +22,8 @@ export interface ArenaDef {
   id: string;
   name: string;
   center: [number, number];
-  floor?: { shape: 'disc' | 'grid'; y: number; r?: number; cell?: number; cols?: number; rows?: number };
+  /** wall: Bande rundherum (Dicke in m, 0/fehlt = offen, Sturz möglich). */
+  floor?: { shape: 'disc' | 'grid'; y: number; r?: number; cell?: number; cols?: number; rows?: number; wall?: number };
   bounds: number;
   death: DeathZone[];
   spawns: { type: 'ring'; radius: number } | { type: 'list'; points: [number, number, number][] };
@@ -57,6 +59,8 @@ export interface BaseModeConfig {
   abortWithoutHumans: boolean;
   /** Sekunden auf dem Dach, bis man ausscheidet (0 = nie). */
   flipTimeout: number;
+  /** Zu Fuß statt im Fahrzeug (Fallout-Variante). */
+  onFoot?: boolean;
   rewards: [number, number][];
   participation: [number, number];
 }
@@ -66,6 +70,13 @@ export interface SumoConfig extends BaseModeConfig {
   pushBoost: number;
   damageScale: number;
   timeUp: 'center' | 'tie';
+}
+
+export interface DerbyConfig extends BaseModeConfig {
+  damage: { scale: number; front: number; rear: number; side: number; wall: number };
+  engineDead: number;
+  botAI: { fleeBelow: number; opportunisticRange: number };
+  tieGap: number;
 }
 
 export interface MinigameMeta { id: MinigameId; name: string; icon: string; intro: string[]; config: BaseModeConfig }
@@ -78,6 +89,14 @@ export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
       'Wer die Plattform verlässt, ist raus. Nach einer Weile schrumpft sie – der Letzte auf der Plattform gewinnt.',
     ],
     config: sumoConfig as unknown as SumoConfig,
+  },
+  derby: {
+    id: 'derby', name: 'Destruction Derby', icon: '💥',
+    intro: [
+      'Geschlossene Crash-Bowl, alle gegen alle: Fahr die anderen zu Schrott!',
+      'Heck und Seite sind empfindlich, die Front hält am meisten aus. Wer kein fahrbares Auto mehr hat, ist raus.',
+    ],
+    config: derbyConfig as unknown as DerbyConfig,
   },
 };
 export const isMinigame = (s: string): s is MinigameId => s in MINIGAMES;
@@ -98,6 +117,8 @@ export interface MgHud {
   warn?: boolean;
   /** Modusspezifischer Balken 0..1 (Tempo, Bomben-Timer …). */
   bar?: { label: string; value: number; warn: boolean };
+  /** Große Warnung in der Bildmitte (z. B. „ZU LANGSAM! 0,8 s“, „DU HAST DIE BOMBE“). */
+  alert?: string;
   /** Eliminierungs-Feed, neueste zuerst. */
   feed: string[];
   /** Ergebnis-Bildschirm (nur in der Endphase). */

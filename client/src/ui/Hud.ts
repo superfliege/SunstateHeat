@@ -23,6 +23,7 @@ export class Hud {
   private countEl: HTMLDivElement | null = null;
   private lastCount: number | undefined = undefined;
   private resultsEl: HTMLDivElement | null = null;
+  private alertEl: HTMLDivElement | null = null;
   private lastResults = '';
 
   /** Zone (mit Banner beim Wechsel) und, falls vorhanden, das Viertel davor. */
@@ -82,6 +83,7 @@ export class Hud {
   setQuestState(q: QuestState | null) {
     this.setCountdown(q?.count);
     this.setResults(q?.mg);
+    this.setAlert(q?.mg?.alert);
     const sig = q ? JSON.stringify([q.id, q.stage, q.prog, q.timer, q.race, q.mg && { ...q.mg, results: undefined }]) : '';
     if (sig === this.lastQuestHtml) return;
     this.lastQuestHtml = sig;
@@ -145,6 +147,18 @@ export class Hud {
       out.push(b);
     }
     return out;
+  }
+
+  /** Große Warnung in der Bildmitte (Minispiele: Bombe, zu langsam …). */
+  private setAlert(text: string | undefined) {
+    if (!this.alertEl) {
+      if (!text) return;
+      this.alertEl = document.createElement('div');
+      this.alertEl.id = 'mg-alert';
+      document.body.append(this.alertEl);
+    }
+    this.alertEl.classList.toggle('hidden', !text);
+    if (text && this.alertEl.textContent !== text) this.alertEl.textContent = text;
   }
 
   /** Ergebnis-Bildschirm am Rundenende (Minispiele). */

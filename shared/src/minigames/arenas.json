@@ -4,13 +4,87 @@
     {
       "id": "sumo_pier",
       "name": "Sumo-Plattform vor dem Spawn-Strand",
-      "center": [1730, 968],
-      "floor": { "shape": "disc", "y": 3.2, "r": 24 },
+      "center": [
+        1730,
+        968
+      ],
+      "floor": {
+        "shape": "disc",
+        "y": 3.2,
+        "r": 24
+      },
       "bounds": 60,
-      "death": [{ "type": "below", "margin": 1.2 }, { "type": "water" }, { "type": "outside" }],
-      "spawns": { "type": "ring", "radius": 0.62 },
-      "spectate": [1636, 968],
-      "zones": [{ "id": "center", "x": 0, "z": 0, "r": 8 }]
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.62
+      },
+      "spectate": [
+        1636,
+        968
+      ],
+      "zones": [
+        {
+          "id": "center",
+          "x": 0,
+          "z": 0,
+          "r": 8
+        }
+      ]
+    },
+    {
+      "id": "bowl",
+      "name": "Crash-Bowl (Plattform mit Bande)",
+      "center": [
+        1740,
+        1090
+      ],
+      "floor": {
+        "shape": "disc",
+        "y": 3.2,
+        "r": 30,
+        "wall": 3
+      },
+      "bounds": 60,
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.75
+      },
+      "spectate": [
+        1620,
+        1090
+      ],
+      "zones": [
+        {
+          "id": "center",
+          "x": 0,
+          "z": 0,
+          "r": 10
+        }
+      ]
     }
   ]
 }

@@ -6,10 +6,10 @@
 import { clamp } from '../../../../shared/src/math';
 import { applyImpulse, type CarCollision } from '../../../../shared/src/sim/car';
 import { derive } from '../../../../shared/src/sim/handling';
-import type { MgHud, SumoConfig } from '../../../../shared/src/minigames';
+import type { SumoConfig } from '../../../../shared/src/minigames';
 import type { ServerVehicle } from '../../entities/types';
 import type { BotDriver } from '../BotDriver';
-import { MG_MARK, Minigame, type MinigameHost, type MinigameOptions, type Participant } from '../Minigame';
+import { MG_MARK, Minigame, type HudExtra, type MinigameHost, type MinigameOptions, type Participant } from '../Minigame';
 
 export class Sumo extends Minigame<SumoConfig> {
   private r0 = 0;
@@ -29,7 +29,7 @@ export class Sumo extends Minigame<SumoConfig> {
     if (k > 0 && this.elapsed - _dt < s.after) { this.log('⚠ Die Plattform schrumpft!'); this.say('Die Plattform schrumpft!', 'bad'); }
   }
 
-  damageScale(victim: ServerVehicle, _other: ServerVehicle | null) {
+  damageScale(victim: ServerVehicle) {
     return victim.race === MG_MARK ? this.cfg.damageScale : 1;
   }
 
@@ -84,7 +84,7 @@ export class Sumo extends Minigame<SumoConfig> {
     this.finish(groups, win.length > 1 ? 'Zeit abgelaufen – Gleichstand in der Mitte!' : `Zeit abgelaufen – ${win[0].name} steht der Mitte am nächsten!`);
   }
 
-  protected hudInfo(): Pick<MgHud, 'info' | 'warn' | 'bar'> {
+  protected hudInfo(): HudExtra {
     const s = this.cfg.shrink;
     if (this.phase !== 'run' || !this.r0) return {};
     const left = s.after - this.elapsed;

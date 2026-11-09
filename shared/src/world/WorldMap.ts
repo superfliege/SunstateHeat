@@ -7,7 +7,7 @@ import { pointInPolygon } from './geometry';
 import { Tile } from './tiles';
 import type { Ramp } from './features';
 import type { ShopDef } from '../shops';
-import { floorHeight, floorSolid, type ArenaFloor } from './arenaFloor';
+import { floorHeight, floorSolid, floorWall, type ArenaFloor } from './arenaFloor';
 
 export const BuildingStyle = {
   Tower: 0,
@@ -167,6 +167,11 @@ export class WorldMap {
 
   /** Untergrund an Zellkoordinate (außerhalb = VOID). */
   tile(cx: number, cz: number): number {
+    // Bande einer Minispiel-Arena (Zellmitte) – für Fahrzeuge und Fußgänger massiv
+    if (this.floors.length) {
+      const x = cx * CELL + CELL / 2, z = cz * CELL + CELL / 2;
+      for (const f of this.floors) if (floorWall(f, x, z) && !floorSolid(f, x, z)) return Tile.BUILDING;
+    }
     if (cx < 0 || cz < 0 || cx >= GRID_SIZE || cz >= GRID_SIZE) return Tile.VOID;
     return this.tiles[cz * GRID_SIZE + cx];
   }

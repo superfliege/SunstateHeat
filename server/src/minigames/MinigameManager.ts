@@ -8,10 +8,12 @@ import { packFloor } from '../../../shared/src/world/arenaFloor';
 import type { ServerPlayer, ServerVehicle } from '../entities/types';
 import { MG_MARK, type Minigame, type MinigameHost, type MinigameOptions } from './Minigame';
 import { Sumo } from './modes/Sumo';
+import { Derby } from './modes/Derby';
 
 type Factory = (h: MinigameHost, opts: MinigameOptions) => Minigame;
 const FACTORIES: Record<MinigameId, Factory> = {
   sumo: (h, o) => new Sumo(h, o),
+  derby: (h, o) => new Derby(h, o),
 };
 
 export class MinigameManager {
@@ -39,9 +41,12 @@ export class MinigameManager {
   }
 
   /** Schadensfaktor für Aufprall/Kollision eines Minispiel-Fahrzeugs. */
-  damageScale(victim: ServerVehicle, other: ServerVehicle | null) {
-    return this.gameOfVehicle(victim)?.damageScale(victim, other) ?? 1;
+  damageScale(victim: ServerVehicle, other: ServerVehicle | null, x: number, z: number) {
+    return this.gameOfVehicle(victim)?.damageScale(victim, other, x, z) ?? 1;
   }
+
+  /** Aufprall an Wand/Hindernis (WorldRoom.worldImpact). */
+  onImpact(v: ServerVehicle, dv: number) { this.gameOfVehicle(v)?.impact(v, dv); }
 
   /** Nach dem Zusammenstoß zweier Fahrzeuge (WorldRoom.carCrash). */
   onCrash(a: ServerVehicle, b: ServerVehicle, col: CarCollision) {
