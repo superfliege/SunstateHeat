@@ -49,6 +49,9 @@ const COP_WITNESS_RANGE = 40;
 const ARREST_TIME = 3;
 const ARREST_RANGE = 2.6;
 const GRACE = 5;
+/** Spieler langsamer als das (m/s) = „fährt nicht“: Streifenwagen in DISMOUNT_RANGE m halten an, die Besatzung steigt aus. */
+const DISMOUNT_SPEED = 2;
+const DISMOUNT_RANGE = 24;
 const PISTOL_IDX = Object.keys(WEAPONS).indexOf('pistol');
 
 export interface PoliceHost {
@@ -73,7 +76,7 @@ export interface PoliceHost {
   exempt?(p: ServerPlayer): boolean;
 }
 
-interface CarBrain { stuck: number; reverse: number; /** Panzer: Sekunden bis zur nächsten Rakete */ fire: number }
+interface CarBrain { stuck: number; reverse: number; /** Panzer: Sekunden bis zur nächsten Rakete */ fire: number; /** Besatzung ist ausgestiegen: Wagen steht still */ parked?: boolean }
 
 export const levelOfHeat = (heat: number) => HEAT_LEVELS.filter((h) => heat >= h).length;
 const isTank = (v: ServerVehicle) => v.sim.variant === TANK_VARIANT;
@@ -212,7 +215,7 @@ export class Police {
     const pos = this.h.positionOf(p);
     const foot = [...this.h.peds.peds.values()].filter((c) => c.cop === p.id && c.hp > 0);
     const own = [...this.h.vehicles.values()].filter((v) => v.cop === p.id);
-    const cars = own.filter((v) => !isTank(v)), tanks = own.filter(isTank);
+    const cars = own.filter((v) => !isTank(v) && !this.cars.get(v.id)?.parked), tanks = own.filter(isTank);
 
     // Nachschub
     if (this.spawnT <= 0) {
@@ -239,7 +242,15 @@ export class Police {
       if (p.arrestT >= ARREST_TIME) { p.arrestT = 0; this.h.arrest(p); this.clearOwned(p); return; }
     } else p.arrestT = Math.max(0, p.arrestT - dt * 2);
 
-    for (const v of cars) this.driveCar(v, pos, dt);
+    for (const v of cars) this.driveCar(v, pos, dt, speed < DISMOUNT_SPEED);
+    // Besatzung ausgestiegene Wagen: stehen lassen, bremsen, weit entfernte wegräumen
+    for (const v of own) {
+      const br = this.cars.get(v.id);
+      if (!br?.parked) continue;
+      const c = v.sim.car;
+      if (dist2(c.x, c.z, pos.x, pos.z) > 150 * 150) { this.removeCar(v.id); continue; }
+      this.h.stepCar(v, 0, Math.hypot(c.vx, c.vz) > 1.5 ? -0.6 : 0);
+    }
     for (const v of tanks) this.driveTank(v, p, pos, dt);
 
     // Abschütteln: ohne Polizeikontakt in Sichtweite
@@ -297,6 +308,16 @@ export class Police {
     if (hit) this.h.hurtPlayer(p, 6);
   }
 
+  /** Zwei Polizisten steigen seitlich aus dem Streifenwagen aus (und laufen/schießen/ziehen dann wie Fußstreifen). */
+  private dismount(v: ServerVehicle, brain: CarBrain) {
+    const c = v.sim.car, side = v.sim.prof.width / 2 + 1;
+    brain.parked = true;
+    for (const sgn of [1, -1]) {
+      const spot = findFootSpot(this.h.map, c.x + Math.cos(c.a) * side * sgn, c.z - Math.sin(c.a) * side * sgn, 6);
+      if (spot && v.cop !== undefined) this.h.peds.spawnCop(spot.x, spot.z, v.cop);
+    }
+  }
+
   private spawnFoot(p: ServerPlayer, pos: { x: number; z: number }) {
     for (let t = 0; t < 12; t++) {
       const a = Math.random() * Math.PI * 2, r = 60 + Math.random() * 30;
@@ -320,7 +341,7 @@ export class Police {
   }
 
   /** Einfache Verfolgung: auf den Spieler zulenken, Gas geben, bei Festklemmen zurücksetzen. */
-  private driveCar(v: ServerVehicle, pos: { x: number; z: number }, dt: number) {
+  private driveCar(v: ServerVehicle, pos: { x: number; z: number }, dt: number, playerStill = false) {
     const c = v.sim.car;
     if (v.sim.dmg.wreck) return;
     const brain = this.cars.get(v.id) ?? { stuck: 0, reverse: 0, fire: 3 };
@@ -328,6 +349,12 @@ export class Police {
     const dx = pos.x - c.x, dz = pos.z - c.z, d = Math.hypot(dx, dz);
     const diff = wrapAngle(Math.atan2(dx, dz) - c.a);
     const speed = Math.hypot(c.vx, c.vz);
+    // Spieler fährt nicht und der Wagen ist nah: abbremsen, dann steigen die Polizisten aus
+    if (playerStill && d < DISMOUNT_RANGE) {
+      if (speed > 4) { this.h.stepCar(v, 0, -0.6); return; }
+      this.dismount(v, brain);
+      return;
+    }
     if (speed < 1.5 && d > 8) brain.stuck += dt; else brain.stuck = Math.max(0, brain.stuck - dt);
     if (brain.stuck > 2) { brain.reverse = 1.4; brain.stuck = 0; }
     let ax = clamp(-diff * 1.8, -1, 1);
