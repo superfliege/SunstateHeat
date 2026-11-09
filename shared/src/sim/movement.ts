@@ -24,13 +24,12 @@ type SurfaceFn = (tile: number) => number;
 
 /** Prüft 5 Punkte eines Kreises gegen unbegehbare Kacheln (und zu Fuß gegen Ladeneinrichtung). */
 function blocked(map: WorldMap, x: number, z: number, r: number, surface: SurfaceFn): boolean {
+  const foot = surface === footSurface;
+  // Ladenkacheln zählen zu Fuß nicht, dort gelten die exakten Wände (furniture)
+  const solid = (px: number, pz: number) => surface(map.tileAt(px, pz)) === 0 && !(foot && map.storeTileAt(px, pz));
   return (
-    (surface === footSurface && map.furnitureHit(x, z, r)) ||
-    surface(map.tileAt(x, z)) === 0 ||
-    surface(map.tileAt(x + r, z)) === 0 ||
-    surface(map.tileAt(x - r, z)) === 0 ||
-    surface(map.tileAt(x, z + r)) === 0 ||
-    surface(map.tileAt(x, z - r)) === 0
+    (foot && map.furnitureHit(x, z, r)) ||
+    solid(x, z) || solid(x + r, z) || solid(x - r, z) || solid(x, z + r) || solid(x, z - r)
   );
 }
 

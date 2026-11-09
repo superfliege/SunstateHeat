@@ -4,10 +4,10 @@ import { CELL, GRID_SIZE } from './constants';
 import { findFootSpot } from './sim/movement';
 import { ITEMS } from './items';
 import { WEAPONS, type WeaponId } from './weapons';
-import { centroid, orientedRect, rasterizePolygon, type Vec2 } from './world/geometry';
+import { centroid, distToSegment, orientedRect, pointAt, rasterizePolygon, type Vec2 } from './world/geometry';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
-import { BuildingStyle, LotUse, Zone } from './world/WorldMap';
+import { BuildingStyle, LotUse, RoadType, Zone } from './world/WorldMap';
 
 export type ShopType = 'sunmart' | 'ammo' | 'gas' | 'paint';
 /** Verkäufer bzw. Mechaniker: Weltposition und Blickrichtung (vorwärts = sin a, cos a). */
@@ -45,9 +45,9 @@ export const REPAIR_PRICE = 100;
 /**
  * Läden sind begehbare Gebäude aus 7x5 Zellen (14x10 m, Zelle = 2 m): Außenring = Wände (Kachel
  * BUILDING), innen und in der 1 Zelle breiten Tür Boden (PLAZA). Lokal: i = Breite, j = Tiefe, +j = Front.
- * Nur die vier Himmelsrichtungen, damit die Wände genau auf dem Kollisionsraster liegen.
+ * Frei drehbar (parallel zur Straße); Wände und Einrichtung kollidieren als gedrehte Rechtecke.
  */
-const SHOP_CW = 7, SHOP_CD = 5;
+const SHOP_CW = 7, SHOP_CD = 5; // in Zellen (2 m)
 /** Innenraum (lokal, ohne Wände): |x| < STORE_IN_X, |z| < STORE_IN_Z; Tür bei z = +3 … +5, |x| < 1. */
 export const STORE_IN_X = 5, STORE_IN_Z = 3;
 /**
@@ -99,17 +99,21 @@ const SHOP_W = SHOP_CW * CELL, SHOP_D = SHOP_CD * CELL, SHOP_H = 4.5;
 const SHOP_BUILD_COLOR = 0xf4e9d8;
 /** Bodenarten, auf denen ein Laden stehen darf (keine Straße, kein Wasser, kein Gebäude). */
 const SHOP_GROUND = new Set<number>([Tile.GRASS, Tile.PLAZA, Tile.SIDEWALK, Tile.SAND, Tile.DIRT]);
-/** Mindestabstand der Ladenmitte zum Spawn (damit man nicht im Gebäude startet). */
-const SPAWN_CLEAR = 11;
+/** Mindestabstand des Spawns zu den Ladenwänden (m). */
+const SPAWN_CLEAR = 3;
 /** Mindestabstand der Ladenmitte zur Werkstatt-/Tankplatzmitte. */
 const WORKSHOP_CLEAR = 12;
-
-/** Weltposition der Zellmitte (i, j) eines Ladens mit Mitte (cx, cz), Himmelsrichtung k (0..3). */
-function shopCell(cx: number, cz: number, k: number, i: number, j: number): Vec2 {
-  const s = Math.round(Math.sin((k * Math.PI) / 2)), c = Math.round(Math.cos((k * Math.PI) / 2));
-  const lx = i * CELL, lz = j * CELL;
-  return [cx + lx * c + lz * s, cz - lx * s + lz * c];
-}
+/** Abstand der Ladenfront zur Gehwegkante (kleiner Vorplatz vor der Tür). */
+const FRONT_GAP = 1.5;
+/** Die fünf Wandstücke (lokal: Mitte x, z, Breite, Tiefe): Rückwand, Seiten, Front links/rechts der Tür. */
+const hw0 = SHOP_W / 2, hd0 = SHOP_D / 2;
+export const STORE_WALLS: [number, number, number, number][] = [
+  [0, -(hd0 - 1), SHOP_W, 2],
+  [-(hw0 - 1), 0, 2, SHOP_D - 4],
+  [hw0 - 1, 0, 2, SHOP_D - 4],
+  [-(hw0 + 1) / 2, hd0 - 1, hw0 - 1, 2],
+  [(hw0 + 1) / 2, hd0 - 1, hw0 - 1, 2],
+];
 
 /** Lokaler Punkt (lx, lz) eines Ladens mit Mitte (cx, cz) und Frontrichtung rot -> Welt. */
 export function storeToWorld(shop: { x: number; z: number; rot: number }, lx: number, lz: number): Vec2 {
@@ -130,88 +134,114 @@ export function insideStore(shop: ShopDef, x: number, z: number, margin = 0): bo
   return Math.abs(lx) < STORE_IN_X + margin && lz > -STORE_IN_Z - margin && lz < STORE_IN_Z + 1 + margin;
 }
 
-/** Gebäudefläche plus Vorplatz vor der Tür muss freier Boden sein. */
-function shopSiteFree(map: WorldMap, cx: number, cz: number, k: number): boolean {
-  const hi = (SHOP_CW - 1) / 2, hj = (SHOP_CD - 1) / 2;
-  for (let j = -hj; j <= hj + 2; j++) {
-    for (let i = -hi; i <= hi; i++) {
-      if (j > hj && Math.abs(i) > 1) continue; // Vorplatz nur vor der Tür
-      const [x, z] = shopCell(cx, cz, k, i, j);
-      if (!SHOP_GROUND.has(map.tileAt(x, z))) return false;
+/** Gebäudefläche (mit Rand) und Vorplatz vor der Tür müssen freier Boden sein. */
+function shopSiteFree(map: WorldMap, cx: number, cz: number, rot: number): boolean {
+  const at = { x: cx, z: cz, rot };
+  for (let lz = -hd0 - 0.6; lz <= hd0 + 0.61; lz += 1) {
+    for (let lx = -hw0 - 0.6; lx <= hw0 + 0.61; lx += 1) {
+      const [x, z] = storeToWorld(at, lx, lz);
+      if (!SHOP_GROUND.has(map.tileAt(x, z)) || map.storeTileAt(x, z)) return false;
     }
+  }
+  for (const lz of [hd0 + 1, hd0 + 2.5]) for (const lx of [-1, 0, 1]) { // Vorplatz
+    const [x, z] = storeToWorld(at, lx, lz);
+    if (!SHOP_GROUND.has(map.tileAt(x, z)) || map.storeTileAt(x, z)) return false;
   }
   return true;
 }
 
 /**
  * Erzeugt die Läden als begehbare Gebäude (BuildingStyle.Store) und legt sie in map.shops ab.
- * Die Front (Tür) zeigt möglichst zum Ziel `toward` (Spawn bzw. Werkstatt). Findet sich kein
- * freier Platz, entfällt der Laden. Eingekauft wird beim Verkäufer hinter der Theke (F).
- * Tankstellen-Shops (Gas & Go) ersetzen das massive Shop-Gebäude der Tankstelle.
- * Paint & Pray ist ein Werkstattdienst: ein Mechaniker steht am Werkstattplatz, kein Gebäude.
- * Läuft am Ende von generateWorld (danach wird der Chunk-Index neu gebaut).
+ * Läden stehen an der Straße: Tür zur Fahrbahn, Front parallel zum Straßenverlauf (frei gedreht).
+ * Unter dem Laden sind die Kacheln für Fahrzeuge massiv; zu Fuß gelten die exakten Wände und die
+ * Einrichtung (map.furniture). Findet sich kein freier Platz, entfällt der Laden. Eingekauft wird
+ * beim Verkäufer hinter der Theke (F). Tankstellen-Shops (Gas & Go) ersetzen das massive
+ * Shop-Gebäude der Tankstelle. Paint & Pray ist ein Werkstattdienst: ein Mechaniker steht am
+ * Werkstattplatz, kein Gebäude. Läuft am Ende von generateWorld (danach wird der Chunk-Index neu gebaut).
  */
 export function placeShops(map: WorldMap) {
   const sp = map.spawn;
-  /** Gewünschter Standort plus Ausweichpositionen im Umkreis (9 m und 14 m). */
-  const anchors: [number, number][] = [[0, 0]];
-  for (const r of [9, 14]) for (let k = 0; k < 8; k++) anchors.push([Math.cos((k / 8) * Math.PI * 2) * r, Math.sin((k / 8) * Math.PI * 2) * r]);
-
   const keeperName = (type: ShopType) => {
     const names = KEEPER_NAMES[type];
     return names[map.shops.filter((x) => x.type === type).length % names.length];
   };
   /** replace >= 0: vorhandenes Gebäude (Tankstellen-Shop) an diesem Index ersetzen. */
-  const tryPlace = (type: ShopType, cx: number, cz: number, toward: Vec2, replace = -1, avoid?: [number, number, number]): boolean => {
-    if (Math.hypot(cx - sp.x, cz - sp.z) < SPAWN_CLEAR) return false;
+  const tryPlace = (type: Exclude<ShopType, 'paint'>, cx: number, cz: number, rot: number, replace = -1, avoid?: [number, number, number]): boolean => {
+    // Spawn nicht im oder direkt am Gebäude
+    const [slx, slz] = worldToStore({ x: cx, z: cz, rot }, sp.x, sp.z);
+    if (Math.abs(slx) < hw0 + SPAWN_CLEAR && Math.abs(slz) < hd0 + SPAWN_CLEAR) return false;
     // Werkstattplatz (Zapfsäulen, Reparatur-Zone) frei lassen: [x, z, Mindestabstand]
     if (avoid && Math.hypot(cx - avoid[0], cz - avoid[1]) < avoid[2]) return false;
-    // Himmelsrichtungen nach Nähe zur Zielrichtung sortieren (k: 0 = +z, 1 = +x, 2 = -z, 3 = -x)
-    const base = Math.atan2(toward[0] - cx, toward[1] - cz);
-    const diff = (k: number) => Math.abs(Math.atan2(Math.sin((k * Math.PI) / 2 - base), Math.cos((k * Math.PI) / 2 - base)));
-    for (const k of [0, 1, 2, 3].sort((a, b) => diff(a) - diff(b))) {
-      if (!shopSiteFree(map, cx, cz, k)) continue;
-      const hi = (SHOP_CW - 1) / 2, hj = (SHOP_CD - 1) / 2;
-      for (let j = -hj; j <= hj; j++) for (let i = -hi; i <= hi; i++) {
-        const [x, z] = shopCell(cx, cz, k, i, j);
-        const idx = Math.floor(z / CELL) * GRID_SIZE + Math.floor(x / CELL);
-        const wall = Math.abs(i) === hi || Math.abs(j) === hj;
-        const door = i === 0 && j === hj;
-        if (wall && !door) map.tiles[idx] = Tile.BUILDING;
-        else { map.tiles[idx] = Tile.PLAZA; map.ground[idx] = Tile.PLAZA; }
+    if (map.shops.some((s) => s.building && Math.hypot(s.x - cx, s.z - cz) < 16)) return false;
+    if (!shopSiteFree(map, cx, cz, rot)) return false;
+    const at = { x: cx, z: cz, rot };
+    // Kacheln: ganz im Innenraum begehbar (PLAZA), sonst für Fahrzeuge massiv (Ladenkachel)
+    rasterizePolygon(orientedRect(cx, cz, hw0 + 0.7, hd0 + 0.7, rot), CELL, GRID_SIZE, (tx, tz) => {
+      const i = tz * GRID_SIZE + tx;
+      let inner = true;
+      for (const [ox, oz] of [[0, 0], [CELL, 0], [0, CELL], [CELL, CELL]]) {
+        const [lx, lz] = worldToStore(at, tx * CELL + ox, tz * CELL + oz);
+        if (Math.abs(lx) > STORE_IN_X || Math.abs(lz) > STORE_IN_Z) inner = false;
       }
-      const rot = (k * Math.PI) / 2;
-      const def = { x: cx, z: cz, w: SHOP_W, d: SHOP_D, h: SHOP_H, rot, color: SHOP_BUILD_COLOR, style: BuildingStyle.Store };
-      if (replace >= 0) map.buildings[replace] = def; else map.buildings.push(def);
-      map.clearAreas.push([cx - 10, cz - 10, cx + 10, cz + 10]); // keine Bäume
-      map.vehicleSpawns = map.vehicleSpawns.filter((v) => Math.abs(v.x - cx) > 10 || Math.abs(v.z - cz) > 10);
-      const t = type as Exclude<ShopType, 'paint'>;
-      for (const [fx, fz, fw, fd] of STORE_FURNITURE[t]) {
-        const [ax, az] = storeToWorld({ x: cx, z: cz, rot }, fx - fw / 2, fz - fd / 2);
-        const [bx, bz] = storeToWorld({ x: cx, z: cz, rot }, fx + fw / 2, fz + fd / 2);
-        map.addFurniture(ax, az, bx, bz);
-      }
-      const [kl, kz, ka] = STORE_KEEPER[t];
-      const [kx, kzw] = storeToWorld({ x: cx, z: cz, rot }, kl, kz);
-      map.shops.push({
-        id: `${type}${map.shops.length}`, type, name: SHOP_NAMES[type], x: cx, z: cz, rot, building: true,
-        keeper: { x: kx, z: kzw, a: ka + rot, name: keeperName(type) },
-      });
-      return true;
+      map.ground[i] = Tile.PLAZA;
+      if (inner) map.tiles[i] = Tile.PLAZA;
+      else { map.tiles[i] = Tile.BUILDING; map.storeTiles.add(i); }
+    });
+    const def = { x: cx, z: cz, w: SHOP_W, d: SHOP_D, h: SHOP_H, rot, color: SHOP_BUILD_COLOR, style: BuildingStyle.Store };
+    if (replace >= 0) map.buildings[replace] = def; else map.buildings.push(def);
+    map.clearAreas.push([cx - 10, cz - 10, cx + 10, cz + 10]); // keine Bäume
+    map.vehicleSpawns = map.vehicleSpawns.filter((v) => Math.hypot(v.x - cx, v.z - cz) > 10);
+    for (const [fx, fz, fw, fd] of [...STORE_WALLS, ...STORE_FURNITURE[type]]) {
+      const [x, z] = storeToWorld(at, fx, fz);
+      map.addFurniture(x, z, fw / 2, fd / 2, rot);
     }
+    const [kl, kz, ka] = STORE_KEEPER[type];
+    const [kx, kzw] = storeToWorld(at, kl, kz);
+    map.shops.push({
+      id: `${type}${map.shops.length}`, type, name: SHOP_NAMES[type], x: cx, z: cz, rot, building: true,
+      keeper: { x: kx, z: kzw, a: ka + rot, name: keeperName(type) },
+    });
+    return true;
+  };
+
+  /**
+   * Bauplätze an Straßen nahe (ax, az): auf der Straßenseite des Ankers (farSide: gegenüber),
+   * Front zur Fahrbahn, hinter dem Gehweg, mit Abstand zu Kreuzungen; nach Entfernung sortiert.
+   */
+  const roadSites = (ax: number, az: number, farSide = false, maxD = 45) => {
+    const out: { cx: number; cz: number; rot: number; d: number }[] = [];
+    for (const e of map.edges) {
+      if (e.type === RoadType.Pier || e.type === RoadType.Highway) continue;
+      let bd = maxD, bs = -1;
+      for (let i = 0; i < e.pts.length - 1; i++) {
+        const a = e.pts[i], b = e.pts[i + 1];
+        const r = distToSegment(ax, az, a[0], a[1], b[0], b[1]);
+        if (r.d < bd) { bd = r.d; bs = e.cum[i] + (e.cum[i + 1] - e.cum[i]) * r.t; }
+      }
+      if (bs < 0) continue;
+      for (let k = 0; k < 17; k++) {
+        const off = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 3; // 0, ±3, ±6 … ±24
+        const s = bs + off;
+        if (s < e.trimA + hw0 + 2 || s > e.len - e.trimB - hw0 - 2) continue; // nicht in die Kreuzung
+        const q = pointAt(e.pts, e.cum, s);
+        let nx = -q.dz, nz = q.dx;
+        if (((ax - q.x) * nx + (az - q.z) * nz < 0) !== farSide) { nx = -nx; nz = -nz; }
+        const back = e.width / 2 + e.sidewalk + FRONT_GAP + hd0;
+        const cx = q.x + nx * back, cz = q.z + nz * back;
+        out.push({ cx, cz, rot: Math.atan2(-nx, -nz), d: Math.hypot(cx - ax, cz - az) });
+      }
+    }
+    return out.sort((p, q) => p.d - q.d);
+  };
+  const addAtRoad = (type: Exclude<ShopType, 'paint'>, ax: number, az: number, avoid?: [number, number, number], farSide = false) => {
+    for (const site of roadSites(ax, az, farSide)) if (tryPlace(type, site.cx, site.cz, site.rot, -1, avoid)) return true;
     return false;
   };
-  const add = (type: ShopType, ax: number, az: number, toward: Vec2, replace = -1, avoid?: [number, number, number]): boolean => {
-    for (const [dx, dz] of anchors) {
-      // Mitte auf Zellmitte einrasten (7 und 5 Zellen sind ungerade)
-      const cx = Math.floor((ax + dx) / CELL) * CELL + CELL / 2, cz = Math.floor((az + dz) / CELL) * CELL + CELL / 2;
-      if (tryPlace(type, cx, cz, toward, replace, avoid)) return true;
-    }
-    return false;
-  };
-  // Beim Start (Spawn): beide Läden links und rechts, Türen zum Spawn
-  add('sunmart', sp.x + 15, sp.z, [sp.x, sp.z]);
-  add('ammo', sp.x - 15, sp.z, [sp.x, sp.z]);
+
+  // Beim Start (Spawn): Supermarkt und Waffenladen auf der anderen Seite der nächsten Straße,
+  // Türen zur Straße – man sieht vom Start aus direkt auf die Ladenfronten
+  addAtRoad('sunmart', sp.x + 10, sp.z, undefined, true) || addAtRoad('sunmart', sp.x + 10, sp.z);
+  addAtRoad('ammo', sp.x - 10, sp.z, undefined, true) || addAtRoad('ammo', sp.x - 10, sp.z);
   // Tankstellen: der bisherige (massive) Shop wird zum begehbaren „Gas & Go“ mit Tankwart
   const gasStores = new Set<number>(); // Index der Werkstatt mit eigenem Tankstellen-Shop
   for (const l of map.lots) {
@@ -224,11 +254,21 @@ export function placeShops(map: WorldMap) {
       const i = z * GRID_SIZE + x;
       if (map.tiles[i] === Tile.BUILDING) { saved.push([i, map.tiles[i]]); map.tiles[i] = Tile.PLAZA; }
     });
-    // vom Tankplatz (Lot-Mitte) weg nach hinten schieben, damit Zapfsäulen und Werkstatt frei bleiben
+    // gleiche Ausrichtung wie der alte Shop (Front zur Straße), etwas nach hinten bzw. zur Seite
+    // gerückt, damit Zapfsäulen und Werkstatt (Lot-Mitte) frei bleiben
     const c = centroid(l.poly);
-    const dl = Math.hypot(old.x - c[0], old.z - c[1]) || 1, push = Math.max(dl, WORKSHOP_CLEAR + 1) / dl;
-    const placed = add('gas', c[0] + (old.x - c[0]) * push, c[1] + (old.z - c[1]) * push, c, l.building, [c[0], c[1], WORKSHOP_CLEAR])
-      || add('gas', old.x, old.z, c, l.building, [c[0], c[1], 8]); // enges Grundstück: näher ran
+    const fx = Math.sin(old.rot), fz = Math.cos(old.rot), rx = Math.cos(old.rot), rz = -Math.sin(old.rot);
+    let placed = false;
+    for (const clear of [WORKSHOP_CLEAR, 8, 6]) {
+      for (const back of [1, 3, 5, 7]) {
+        for (const side of [0, 4, -4, 8, -8, 12, -12, 16, -16]) {
+          const x = old.x - fx * back + rx * side, z = old.z - fz * back + rz * side;
+          if ((placed = tryPlace('gas', x, z, old.rot, l.building, [c[0], c[1], clear]))) break;
+        }
+        if (placed) break;
+      }
+      if (placed) break;
+    }
     if (placed) {
       const wi = map.workshops.findIndex((w) => Math.hypot(w.x - c[0], w.z - c[1]) < 1);
       if (wi >= 0) gasStores.add(wi);
@@ -240,7 +280,6 @@ export function placeShops(map: WorldMap) {
   // Waffenladen in den Hauptzonen
   const ammoZones = new Set<number>([Zone.PortCoralia, Zone.CoralKeys, Zone.DryPine, Zone.PortSabal]);
   map.workshops.forEach((w, wi) => {
-    const c: Vec2 = [w.x, w.z];
     let spot = findFootSpot(map, w.x, w.z + 3, 10);
     if (spot && storeAt(map.shops, spot.x, spot.z, 1)) spot = findFootSpot(map, w.x, w.z, 10);
     if (spot) {
@@ -248,8 +287,9 @@ export function placeShops(map: WorldMap) {
       const a = Math.atan2(w.x - x, w.z - z); // schaut zur Werkstatt
       map.shops.push({ id: `paint${map.shops.length}`, type: 'paint', name: SHOP_NAMES.paint, x, z, rot: a, building: false, keeper: { x, z, a, name: keeperName('paint') } });
     }
-    if (!gasStores.has(wi)) add('sunmart', w.x + 14, w.z, c, -1, [w.x, w.z, WORKSHOP_CLEAR]);
-    if (ammoZones.has(map.zoneAt(w.x, w.z))) add('ammo', w.x - 14, w.z, c, -1, [w.x, w.z, WORKSHOP_CLEAR]);
+    const avoid: [number, number, number] = [w.x, w.z, WORKSHOP_CLEAR];
+    if (!gasStores.has(wi)) addAtRoad('sunmart', w.x + 14, w.z, avoid);
+    if (ammoZones.has(map.zoneAt(w.x, w.z))) addAtRoad('ammo', w.x - 14, w.z, avoid);
   });
 }
 

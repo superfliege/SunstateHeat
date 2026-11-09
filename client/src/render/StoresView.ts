@@ -7,7 +7,7 @@
 // Der feste Teil (Wandsockel bis STORE_CUT_H) liegt in den Chunk-Geometrien von WorldView.
 import * as THREE from 'three';
 import { mulberry32 } from '../../../shared/src/math';
-import { SHOP_COLORS, STORE_FURNITURE, storeAt, type ShopDef, type ShopType } from '../../../shared/src/shops';
+import { SHOP_COLORS, STORE_FURNITURE, STORE_WALLS, storeAt, type ShopDef, type ShopType } from '../../../shared/src/shops';
 import { BuildingStyle, CURB_TOP, type BuildingDef, type WorldMap } from '../../../shared/src/world/WorldMap';
 import { createQuaterniusCharacter, type Style } from './characters';
 import { GeoBuilder } from './GeoBuilder';
@@ -25,19 +25,13 @@ const localOf = (b: { x: number; z: number; rot: number }): Local => {
   return (lx, lz) => [b.x + lx * c + lz * s, b.z - lx * s + lz * c];
 };
 
-/** Die fünf Wandstücke eines Ladens (Rückwand, Seiten, Front links/rechts der Tür) ab Höhe y. */
+/** Die fünf Wandstücke eines Ladens (STORE_WALLS: Rückwand, Seiten, Front neben der Tür) ab Höhe y. */
 export function storeWalls(g: GeoBuilder, b: BuildingDef, y: number, h: number) {
   const local = localOf(b);
-  const hw = b.w / 2, hd = b.d / 2;
-  const box = (lx: number, lz: number, w: number, d: number) => {
+  for (const [lx, lz, w, d] of STORE_WALLS) {
     const [x, z] = local(lx, lz);
     g.box(x, y, z, w, h, d, b.rot, b.color);
-  };
-  box(0, -(hd - 1), b.w, 2);
-  box(-(hw - 1), 0, 2, b.d - 4);
-  box(hw - 1, 0, 2, b.d - 4);
-  box(-(hw + 1) / 2, hd - 1, hw - 1, 2);
-  box((hw + 1) / 2, hd - 1, hw - 1, 2);
+  }
 }
 
 /** Leuchtschild mit dem Ladennamen (Canvas-Textur). */
