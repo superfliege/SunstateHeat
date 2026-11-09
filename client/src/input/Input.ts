@@ -24,6 +24,12 @@ export class Input {
   mouseX = 0;
   mouseY = 0;
   fire = false;
+  /** Bildschirm-Steuerung (TouchControls) schreibt hierhin; wird in sample() mit Tastatur/Pad gemischt. */
+  touch = { ax: 0, ay: 0, buttons: 0 };
+  private lastTouchAt = -1e9;
+  /** Kam die Maus-Nachricht von einer Berührung (Browser feuert sie nach Taps nach)? */
+  private fromTouch() { return performance.now() - this.lastTouchAt < 900; }
+  pressUse() { this.usePressed = true; }
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -40,9 +46,11 @@ export class Input {
       if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
       this.keys.add(e.code);
     });
-    window.addEventListener('mousemove', (e) => { this.mouseX = e.clientX; this.mouseY = e.clientY; });
+    window.addEventListener('touchstart', () => { this.lastTouchAt = performance.now(); }, { passive: true, capture: true });
+    window.addEventListener('touchend', () => { this.lastTouchAt = performance.now(); }, { passive: true, capture: true });
+    window.addEventListener('mousemove', (e) => { if (this.fromTouch()) return; this.mouseX = e.clientX; this.mouseY = e.clientY; });
     window.addEventListener('mousedown', (e) => {
-      if (e.button !== 0 || this.blocked || (e.target as HTMLElement).tagName !== 'CANVAS') return;
+      if (e.button !== 0 || this.blocked || this.fromTouch() || (e.target as HTMLElement).tagName !== 'CANVAS') return;
       this.fire = true;
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.fire = false; });
@@ -63,7 +71,9 @@ export class Input {
     if (this.blocked) return { ax: 0, ay: 0, buttons: 0 };
     let ax = (this.down('KeyD', 'ArrowRight') ? 1 : 0) - (this.down('KeyA', 'ArrowLeft') ? 1 : 0);
     let ay = (this.down('KeyW', 'ArrowUp') ? 1 : 0) - (this.down('KeyS', 'ArrowDown') ? 1 : 0);
-    let buttons = 0;
+    let buttons = this.touch.buttons;
+    if (Math.abs(this.touch.ax) > Math.abs(ax)) ax = this.touch.ax;
+    if (Math.abs(this.touch.ay) > Math.abs(ay)) ay = this.touch.ay;
     if (this.down('ShiftLeft', 'ShiftRight')) buttons |= Btn.SPRINT;
     if (this.down('Space')) buttons |= Btn.BRAKE;
     if (this.down('KeyH')) buttons |= Btn.HORN;
