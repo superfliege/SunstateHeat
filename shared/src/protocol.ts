@@ -38,7 +38,9 @@ export type ClientMsg =
   /** F gedrückt gehalten (Interaktion mit Haltedauer, z. B. Leuchtfeuer). */
   | { t: 'hold'; on: boolean }
   /** Nur Dev-Modus: Handling-Werte live ändern (Server übernimmt sie, damit die Prediction passt). */
-  | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> };
+  | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }
+  /** Nur Dev-Modus: NPC-Debugdaten (F3 → NPC-Tab) an-/abbestellen. */
+  | { t: 'npcDebug'; on: boolean };
 
 // ---------- Server -> Client ----------
 /** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll), ragdoll 0/1, Waffenindex] */
@@ -50,8 +52,11 @@ export type PlayerTuple = [number, string, number, number, number, number, numbe
 export type VehicleTuple = [number, number, number, number, number, number, number, number, number, number, number, number, number];
 /** Fahrzeug-Stammdaten (selten geändert): [id, kind, variant, color, driver (-1 frei, -2 NPC, sonst Spieler-ID)] */
 export type VehicleInfoTuple = [number, number, number, number, number];
-/** [id, x, z, angle, outfitColor, Zustand (0 geht, 1 rennt, 2 schimpft, 3 Polizist), höhe, ragdoll 0/1, Archetyp (-1 keiner), Act (Animations-ID, siehe npc/scenarios)] */
-export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?];
+/**
+ * [id, x, z, angle, outfitColor, Zustand (0 geht, 1 rennt, 2 schimpft, 3 Polizist), höhe, ragdoll 0/1, Archetyp (-1 keiner),
+ *  Act (Animations-ID, siehe npc/scenarios), gemiedener Spieler (Kurzzeitgedächtnis, fehlt = keiner)]
+ */
+export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?, number?];
 /** Verschobenes Prop: [id, x, y, z, qx, qy, qz, qw, flags (1 ruht, 2 Wasserfontäne)] */
 export type PropTuple = [number, number, number, number, number, number, number, number, number];
 
@@ -66,6 +71,7 @@ export const DRIVER_COP_ID = -3;
  *  ['part', vid, part, state]                        Teil wackelt (1) / fällt ab (2)
  *  ['boom', vid, x, y, z]                            Comic-Explosion
  *  ['honk', vid] · ['shout', pedId] · ['eject', playerId] · ['repair', vid]
+ *  ['bark', pedId, situation, variante]              Sprechblase (Text: shared/npc/barks.ts)
  *  ['tree', treeIndex, strength] · ['prop', propId, x, y, z, speed]
  */
 export type GameEvent = (string | number)[];
@@ -173,4 +179,13 @@ export type ServerMsg =
   | { t: 'questLog'; done: string[]; cooldowns: Record<string, number> }
   | { t: 'bonus'; kind: string; points: number; money: number; info: string; total: number }
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }
-  | { t: 'error'; text: string };
+  | { t: 'error'; text: string }
+  /** Nur Dev-Modus: NPCs um den Spieler (F3 → NPC-Tab). */
+  | { t: 'npcDebug'; peds: NpcDebugPed[]; events: [number, number, number, number, number][]; pop: string };
+
+/** Debug-Ansicht eines NPCs: Archetyp, Absichtskette, Bedürfnisse, Smart Object, Reaktion, Wahrnehmung. */
+export interface NpcDebugPed {
+  id: number; x: number; z: number; arch: string; act: number;
+  chain: string[]; step: number; needs: number[]; obj: string; react: string; goal: [number, number] | null;
+  fear: number; lod: number; last: string; seen: string[];
+}

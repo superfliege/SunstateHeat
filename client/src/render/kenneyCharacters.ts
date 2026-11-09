@@ -234,6 +234,9 @@ export class KenneyCharacter {
   /** Animations-ID (npc/scenarios Act) setzen; seed = fester Phasenversatz je NPC. */
   setAct(act: number, seed: number) { this.acts.setAct(act, seed); }
 
+  /** Kopfdrehung (Blickkontakt): yaw relativ zum Körper, w = Gewicht. */
+  setLook(yaw: number, w: number, anxious = false) { this.acts.setLook(yaw, w, anxious); }
+
   /** speed in m/s; seated = sitzt (Motorrad/Boot); dist = Abstand zur Kamera (Animations-LOD). */
   animate(speed: number, dt: number, seated = false, dist = 0) {
     this.attackT = Math.max(0, this.attackT - dt);
@@ -253,6 +256,7 @@ export class KenneyCharacter {
       this.mixer.update(this.acc);
       // Szenario-Posen nur für Figuren in Kamera-Nähe (Detailstufe Nah/Mittel)
       if (act !== Act.None && dist < 70) this.acts.apply(this.acc);
+      if (dist < 45) this.acts.applyLook(this.acc);
       this.acc = 0;
     }
     if (act !== Act.None) this.acts.syncProp();

@@ -167,6 +167,8 @@ export class Game {
       document.getElementById('bigmap-canvas') as HTMLCanvasElement,
     );
     this.debug = new DebugOverlay(this.map, this.minimap.base);
+    this.debug.onNpcTab = (on) => this.net.send({ t: 'npcDebug', on });
+    this.debug.onCommand = (text) => this.net.send({ t: 'chat', text });
     if (dev) this.tuning = new TuningPanel((cls, values, assists) => this.net.send({ t: 'tune', cls, values, assists }));
     for (let i = 0; i < 9; i++) {
       const a = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, i < 4 ? 0xff4f9a : i < 8 ? 0x2af0e6 : 0xffe14d, 0.4, 0.25);
@@ -288,6 +290,7 @@ export class Game {
       case 'error':
         this.hud.toast(msg.text, 'bad');
         break;
+      case 'npcDebug': this.debug.setNpcData(msg); break;
     }
   }
 
@@ -402,6 +405,7 @@ export class Game {
         if (vol > 0.5) this.hitStop = HITSTOP_MAX;
         break;
       }
+      case 'bark': this.views.bark(ev[1] as number, ev[2] as number, ev[3] as number); break;
       case 'honk': {
         const r = this.recs.get(ev[1] as number);
         if (r) r.hornUntil = this.clock + 0.35 + Math.random() * 0.3;
@@ -593,6 +597,11 @@ export class Game {
     this.sfx.car?.begin();
     this.views.beginFrame(dt);
     const me = this.predictor.view();
+    // Eigener Spieler für den Blickkontakt der NPCs (Tempo geglättet)
+    const lv = this.views.local;
+    const sp = dt > 0 ? Math.hypot(me.x - lv.x, me.z - lv.z) / dt : 0;
+    lv.speed += (Math.min(sp, 20) - lv.speed) * Math.min(1, dt * 6);
+    lv.x = me.x; lv.z = me.z; lv.id = this.myId; lv.onFoot = !this.predictor.inVehicle;
     const vehicleStates = frame ? this.drawEntities(frame, dt, me) : new Map<number, VehicleViewState>();
     this.views.endFrame();
     this.sfx.car?.end();
@@ -722,7 +731,7 @@ export class Game {
       this.views.setPed({
         id: db[0], x: lerp(da[1], db[1], t), z: lerp(da[2], db[2], t), a: lerpAngle(da[3], db[3], t),
         color: db[4], running: db[5] === 1 || db[5] >= 3, angry: db[5] === 2, cop: db[5] === 3, gang: db[5] === 4, h: lerp(da[6], db[6], t), ragdoll: db[7] === 1,
-        arch: db[8] ?? -1, act: db[9] ?? 0,
+        arch: db[8] ?? -1, act: db[9] ?? 0, fear: db[10] ?? -1,
       }, dt);
     }
 

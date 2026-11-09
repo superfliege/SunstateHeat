@@ -14,6 +14,7 @@ import { dist2 } from '../../../shared/src/math';
 import { generateSmartObjects, type SmartObject } from '../../../shared/src/world/smartObjects';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { Tile } from '../../../shared/src/world/tiles';
+import type { NpcBrain } from './NpcBrain';
 import type { Ped, Pedestrians, Walkway } from './Pedestrians';
 
 const PASS_INTERVAL = 0.5;
@@ -23,8 +24,10 @@ const MIN_SPAWN_DIST = 38;
 const DESPAWN_DIST = POP_RADIUS + 25;
 /** Austausch nur jenseits dieser Entfernung zum nächsten Spieler (außer Sicht). */
 const SWAP_DIST = 55;
-/** Mittlere Lebensdauer eines laufenden NPCs in Sekunden. */
-const LIFESPAN = 75;
+/** Notbremse: so alt wird kein verwalteter NPC (Absichtskette hängt o. Ä.), außer Sicht. */
+const MAX_AGE = 360;
+/** Wer die Welt verlässt (Bus, kein Ausgang), verschwindet ab dieser Entfernung zum nächsten Spieler. */
+const LEAVE_DIST = 45;
 
 export interface PopStats {
   part: DayPart; weather: Weather; managed: number; scenario: number;
@@ -41,10 +44,7 @@ export class Population {
   /** Erzwungene Tageszeit/Wetter (Debug), sonst aus der Spielzeit. */
   forcePart: DayPart | null = null;
   weather: Weather = 'clear';
-  /** Nächste Gruppen-ID */
-  private occ = new Map<number, Set<number>>();
-
-  constructor(private map: WorldMap, private peds: Pedestrians, private day: () => number, private anchors: () => { x: number; z: number }[]) {
+  constructor(private map: WorldMap, private peds: Pedestrians, private brain: NpcBrain, private day: () => number, private anchors: () => { x: number; z: number }[]) {
     this.objects = generateSmartObjects(map);
     this.walkways = peds.walkways.filter((w) => hasPopTable(w.district));
   }
@@ -59,7 +59,6 @@ export class Population {
     const players = this.anchors();
     if (!players.length) { this.clear(); return; }
     const part = this.part;
-    this.rebuildOccupancy();
 
     // Verwaltete NPCs außerhalb aller Umkreise entfernen
     let managed = 0;
@@ -70,12 +69,15 @@ export class Population {
       p.age += PASS_INTERVAL;
       const d2 = nearest2(players, p.x, p.z);
       if (d2 > DESPAWN_DIST * DESPAWN_DIST) { this.peds.peds.delete(p.id); continue; }
-      // Austausch: nach ~2 Minuten, bzw. schon früh, wenn der Archetyp nicht mehr zur Tageszeit passt –
-      // aber nur außerhalb der Sicht (kein Verschwinden vor den Augen des Spielers)
-      if (d2 > SWAP_DIST * SWAP_DIST && !p.scn && p.rt <= 0 && p.flee <= 0) {
+      // Wer die Welt verlässt (wartet auf den Bus, fand keinen Ausgang), ist weg, sobald niemand hinschaut
+      const m = p.mind;
+      if (m?.leaving && d2 > LEAVE_DIST * LEAVE_DIST && m.exitT <= 0) { this.peds.peds.delete(p.id); continue; }
+      // Austausch nur außerhalb der Sicht (kein Verschwinden vor den Augen des Spielers): Archetyp passt
+      // nicht mehr zur Tageszeit, oder die Absichtskette hängt (Notbremse)
+      if (d2 > SWAP_DIST * SWAP_DIST && !p.scn && p.rt <= 0 && p.flee <= 0 && (!m || (!m.react && m.exitT <= 0))) {
         const t = tableAt(p);
         const fits = !!t && (t.mix[archetypeOf(p.arch).id] ?? 0) > 0;
-        if (p.age > LIFESPAN * (0.7 + (p.id % 7) / 10) || (!fits && p.age > 12)) this.peds.peds.delete(p.id);
+        if (p.age > MAX_AGE || (!fits && p.age > 12)) this.peds.peds.delete(p.id);
       }
     }
 
@@ -86,7 +88,7 @@ export class Population {
       const target = Math.min(MAX_PEDS_PER_PLAYER, this.targetAround(pl, part));
       if (near.length > target + 3) {
         // Tageszeit-Wechsel o. Ä.: überzählige NPCs außerhalb des Nahbereichs verschwinden lassen
-        const far = near.filter((p) => dist2(p.x, p.z, pl.x, pl.z) > 60 * 60 && !p.scn && nearest2(players, p.x, p.z) > 60 * 60);
+        const far = near.filter((p) => dist2(p.x, p.z, pl.x, pl.z) > 60 * 60 && !p.scn && !p.mind?.react && nearest2(players, p.x, p.z) > 60 * 60);
         for (let i = 0; i < 2 && i < far.length; i++) this.peds.peds.delete(far[i].id);
         continue;
       }
@@ -110,16 +112,6 @@ export class Population {
   /** Alle verwalteten NPCs entfernen (z. B. kein Spieler online). */
   private clear() {
     for (const p of this.peds.peds.values()) if (p.pop) this.peds.peds.delete(p.id);
-  }
-
-  private rebuildOccupancy() {
-    this.occ.clear();
-    for (const p of this.peds.peds.values()) {
-      if (!p.scn || p.scn.obj < 0) continue;
-      let set = this.occ.get(p.scn.obj);
-      if (!set) this.occ.set(p.scn.obj, (set = new Set()));
-      set.add(p.scn.slot);
-    }
   }
 
   /** Zielanzahl um den Spieler: Σ Dichte × Gehweglänge im Umkreis / 100. */
@@ -153,7 +145,8 @@ export class Population {
         const n = this.spawnScenario(pl, w, q, arch, part, table);
         if (n > 0) return n;
       }
-      this.peds.spawnManaged(q[0], q[1], w, arch);
+      const p = this.peds.spawnManaged(q[0], q[1], w, arch);
+      this.brain.initMind(p, part, false);
       this.spawnedAll++;
       return 1;
     }
@@ -183,8 +176,7 @@ export class Population {
       if (d2 > (POP_RADIUS - 6) ** 2 || d2 < (MIN_SPAWN_DIST - 10) ** 2) continue;
       for (const wh of sc.where!) {
         if (wh.kind !== o.kind) continue;
-        const taken = this.occ.get(o.id);
-        for (const slot of wh.slots) if (!taken?.has(slot)) cands.push({ o, slot });
+        for (const slot of wh.slots) if (this.brain.isFree(o.id, slot)) cands.push({ o, slot });
       }
     }
     if (!cands.length) return false;
@@ -195,10 +187,7 @@ export class Population {
     const sw = slotWorld(c.o.x, c.o.z, c.o.rot, SMART_KINDS[c.o.kind].slots[c.slot]);
     const p = this.peds.spawnManaged(sw.x, sw.z, null, arch, sw.a);
     this.peds.startScenario(p, { id: sc.id, obj: c.o.id, slot: c.slot, dur: 0, t: rnd(sc.dur) }, sc.act, sw.x, sw.z, sw.a);
-    let set = this.occ.get(c.o.id);
-    if (!set) this.occ.set(c.o.id, (set = new Set()));
-    set.add(c.slot);
-    void part;
+    this.brain.initMind(p, part, true);
     return true;
   }
 
@@ -211,6 +200,7 @@ export class Population {
     const mk = (x: number, z: number, a: number, a2: number, act: number, id: ScenarioId, dur: number) => {
       const p = this.peds.spawnManaged(x, z, null, a2, a);
       this.peds.startScenario(p, { id, obj: -1, slot: 0, dur, t: dur }, act, x, z, a);
+      this.brain.initMind(p, part, true);
       return p;
     };
     if (sc.id === 'talk' || sc.id === 'busk') {
@@ -245,7 +235,6 @@ export class Population {
     let face = across;
     if (sc.id === 'photo') face = this.towardWater(q[0], q[1], across);
     mk(q[0], q[1], face, arch, sc.act, sc.id, t);
-    void part;
     return 1;
   }
 

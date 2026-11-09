@@ -42,14 +42,16 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 | H | Hupe |
 | Enter | Chat öffnen und senden (Esc bricht ab) |
 | M | Große Karte |
-| F3 | Debug-Overlay mit Tabs (Tab-Taste wechselt): **Karte** (Straßengraph, Blöcke, Grundstücke, Viertel – Ziehen/Mausrad, C = Spieler, 1–6 = Ebenen) und **Fahrzeug** (Tempo, Drehzahl, Gang, Federweg/Last/Schlupf je Rad, Kraftpfeile am Auto) |
+| F3 | Debug-Overlay mit Tabs (Tab-Taste wechselt): **Karte** (Straßengraph, Blöcke, Grundstücke, Viertel – Ziehen/Mausrad, C = Spieler, 1–6 = Ebenen) **Fahrzeug** (Tempo, Drehzahl, Gang, Federweg/Last/Schlupf je Rad, Kraftpfeile am Auto) und **NPC** (Dev: Archetyp, Absichtskette, Bedürfnisse, Smart Object, Reaktion, wahrgenommene Ereignisse als Kreise; Knöpfe zum Erzwingen von Tageszeit/Wetter) |
 | F4 | Nur Dev-Modus: Live-Tuning-Panel (Handling-Werte, Arcade-Hilfen, Kamera; Export als JSON) |
 | F7 | Bildschirmwackeln an/aus |
 | F8 | Grafikqualität: hoch / mittel (ohne Echtzeitschatten) / niedrig (ohne Schatten, Umrisslinien, Bloom) |
 | F9 | Retro-Modus: Render-Scale 0,6 mit harter Pixel-Hochskalierung (auch per `?retro=1`) |
 | Gamepad | Linker Stick, RT/LT = Gas/Rückwärts, A = Einsteigen, B = Sprint/Nitro, X = Handbremse, Y = Hupe; Vibration nach Schlupf und Aufprall |
 
-**Dev-Chatbefehle** (nur `npm run dev`): `/test` (ins Testgelände), `/laden <sunmart|gas|ammo|paint>` (reihum vor die Läden), `/auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad>`, `/rennen <1-3>` (zum Renntelefon), `/reparieren`, `/feuer`.
+**Dev-Chatbefehle** (nur `npm run dev`): `/test` (ins Testgelände), `/laden <sunmart|gas|ammo|paint>` (reihum vor die Läden), `/auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad>`, `/rennen <1-3>` (zum Renntelefon), `/reparieren`, `/feuer`, `/zeit <0-24>`, `/pop <morgen|mittag|nachmittag|abend|nacht|auto>` (Population Table erzwingen), `/wetter <klar|regen|hitze>`, `/ort <x> <z>`, `/tp <viertel>`, `/fahndung <0-3>`.
+
+**NPC-Lasttest:** `npx tsx scripts/npc-bench.ts [Sekunden] [morning|noon|afternoon|evening|night]` – 16 Spieler im Ocean Strip, misst Tick-Zeit, Bandbreite und zählt Szenarien/Ausgänge/Reaktionen/Barks (`PROF=1` zeigt die langsamsten Aufrufe).
 
 **Straßenrennen** (`shared/src/races.ts`, `server/src/quests/Races.ts`): drei beliebig oft wiederholbare Rennen (Downtown Dash und Brickell Hills Loop mit je 2 Runden, Cane Ridge Rally als Sprint), Start am 🏁-Renntelefon. Immer 5 Starter: bis zu 4 Spieler, den Rest füllen KI-Fahrer auf (gleiche Fahrphysik, leichtes Gummiband). Startet jemand und andere Spieler stehen im Umkreis von 60 m, bleibt die Anmeldung 15 s offen (am selben Telefon beitreten). Jeder bekommt ein ausgelostes Fahrzeug. Checkpoints erscheinen als Ringe wie bei GTA (aktueller Ring plus der nächste). Preisgeld und XP gibt es je nach Platz.
 
@@ -223,3 +225,10 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
   unter 10 m, Neutral ignoriert (wehrt sich nach Angriff, Ruf −5), Freundlich/Vertraut hilft gegen die Polizei.
   Ruf-Übersicht im Inventar (**I**), Quests verändern den Ruf (Gang +, Rivale −).
 - Quest-Fortschritt (erledigt, Abklingzeiten) und Ruf werden im Profil gespeichert.
+
+### Lebendige Passanten (NPC-System, Schritte 1–2)
+- **Population Tables** (`shared/src/npc/population.ts`): Dichte, Archetyp-Mischung und Szenario-Anteil je Viertel und Tageszeit (bisher Ocean Strip).
+- **Smart Objects & Szenarien** (`shared/src/npc/scenarios.ts`, `shared/src/world/smartObjects.ts`): Bänke, Haltestellen, Taco-Stand, Geldautomat, Liegen, Club-Schlange, Café, Basketball, Türen …
+- **Mini-Lebenszyklus** (`shared/src/npc/intents.ts`, `server/src/sim/NpcBrain.ts`): Absichtsketten aus 2–4 Schritten je Archetyp/Tageszeit, Bedürfnisse (Hunger, Langeweile, Müdigkeit, Ziel) als Utility, Wege über das Gehweg-Netz, Abgang durch Türen, zum Bus oder im geparkten Auto (das dann losfährt und außer Sicht zurückparkt).
+- **Wahrnehmung & Reaktionen** (`shared/src/npc/reactions.ts`, `server/src/sim/Perception.ts`): Ereignisse mit Radius/Stärke (Hupe, Unfall, Schuss, Explosion, Schlägerei, Sirene, Sprint, Anrempeln, Auto auf dem Gehweg, Autodiebstahl); Reaktionen nach Mut: hinschauen, ausweichen, erschrecken, schimpfen, filmen, Polizei rufen (Zeugen-Meldung hängt am NPC – wird er vorher ausgeknockt, kommt sie nicht an), flüchten, Gruppenpanik, ducken, eingreifen; bei Fahndung zeigen Passanten auf den Spieler. Kurzzeitgedächtnis 60 s. Blickkontakt rechnet der Client.
+- **Barks** (`shared/src/npc/barks.ts`): satirische Sprüche je Situation und Archetyp als DS-Sprechblasen; Abklingzeit pro NPC, max. 3 gleichzeitig je 30 m, Client zeigt höchstens 4.

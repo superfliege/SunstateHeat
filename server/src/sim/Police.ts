@@ -10,7 +10,7 @@ import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { WEAPONS } from '../../../shared/src/weapons';
 import { DRIVER_COP, type ServerPlayer, type ServerVehicle } from '../entities/types';
 import { wallDistance } from './Combat';
-import type { Pedestrians } from './Pedestrians';
+import type { Ped, Pedestrians } from './Pedestrians';
 
 export const MAX_WANTED = 3;
 /** Sekunden ohne Polizeikontakt, bis die Fahndung der jeweiligen Stufe endet (Spec 11.2). */
@@ -40,6 +40,8 @@ export interface PoliceHost {
   emit(x: number, z: number, ev: (string | number)[]): void;
   notice(p: ServerPlayer, text: string, kind: 'info' | 'good' | 'bad'): void;
   arrest(p: ServerPlayer): void;
+  /** Ein Passant hat das Verbrechen gesehen und ruft jetzt die Polizei (Animation + Bark). */
+  witness?(ped: Ped, p: ServerPlayer, x: number, z: number): void;
 }
 
 interface CarBrain { stuck: number; reverse: number }
@@ -57,7 +59,12 @@ export class Police {
   /** Verbrechen melden: wirkt nur mit Zeugen (Spec 11.2). */
   crime(p: ServerPlayer, level: number, x: number, z: number) {
     if (this.copNear(x, z, COP_WITNESS_RANGE)) { this.raise(p, level); return; }
-    if (this.pedWitness(x, z)) p.reports.push({ t: 3, level });
+    const w = this.pedWitness(x, z);
+    if (!w) return;
+    // Meldung hängt am Zeugen: wird er vorher umgehauen oder verschwindet er, kommt sie nie an
+    if (p.reports.some((r) => r.by === w.id && r.level >= level)) return;
+    p.reports.push({ t: 3, level, by: w.id });
+    this.h.witness?.(w, p, x, z);
   }
 
   /** Fahndungsstufe sofort erhöhen (Polizist hat es gesehen oder Passant hat gemeldet). */
@@ -76,14 +83,16 @@ export class Police {
     return false;
   }
 
-  private pedWitness(x: number, z: number): boolean {
+  /** Nächster Passant mit Sichtlinie in 30 m (Gang-/Quest-Figuren melden nichts). */
+  private pedWitness(x: number, z: number): Ped | null {
+    let best: Ped | null = null, bd = Infinity;
     for (const c of this.h.peds.peds.values()) {
-      if (c.cop || c.hp <= 0 || c.rt > 0) continue;
+      if (c.cop || c.ext || c.hp <= 0 || c.rt > 0) continue;
       const d = Math.sqrt(dist2(c.x, c.z, x, z));
-      if (d > WITNESS_RANGE) continue;
-      if (d < 2 || wallDistance(this.h.map, x, z, Math.atan2(c.x - x, c.z - z), d) >= d - 1) return true;
+      if (d > WITNESS_RANGE || d >= bd) continue;
+      if (d < 2 || wallDistance(this.h.map, x, z, Math.atan2(c.x - x, c.z - z), d) >= d - 1) { best = c; bd = d; }
     }
-    return false;
+    return best;
   }
 
   /** Nächste Entfernung zu einem Polizisten/Streifenwagen des Spielers (Infinity = keiner). */
@@ -108,6 +117,10 @@ export class Police {
       for (let i = p.reports.length - 1; i >= 0; i--) {
         const r = p.reports[i];
         r.t -= dt;
+        if (r.by !== undefined) {
+          const w = this.h.peds.peds.get(r.by);
+          if (!w || w.hp <= 0 || w.rt > 0) { p.reports.splice(i, 1); continue; } // Zeuge ausgeschaltet
+        }
         if (r.t <= 0) { p.reports.splice(i, 1); if (p.downT <= 0) this.raise(p, r.level); }
       }
       if (p.wanted > 0) { this.gone.delete(p.id); this.chase(p, dt); } else this.dismiss(p, dt);

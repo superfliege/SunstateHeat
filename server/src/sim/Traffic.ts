@@ -23,7 +23,7 @@ const CRUISE: Record<number, number> = {
 const TURN_SPEED = 7;
 const REACH = 3; // Meter: Wegpunkt erreicht
 
-type Mode = 'drive' | 'crash' | 'flee';
+type Mode = 'drive' | 'crash' | 'flee' | 'depart';
 
 interface Brain {
   path: Vec2[]; // anstehende Wegpunkte
@@ -42,6 +42,9 @@ interface Brain {
   evade: number; evadeT: number;
   honkCd: number;
   blockedByPlayer: number;
+  /** Ausgeparktes Auto: Parkplatz, auf den es später (außer Sicht) zurückkehrt */
+  home?: ServerVehicle['home'];
+  age?: number;
 }
 
 export interface TrafficHost {
@@ -79,6 +82,40 @@ export class Traffic {
     this.brains.delete(vehicleId);
     const v = this.host.vehicles.get(vehicleId);
     if (v) v.kinematic = false;
+  }
+
+  /**
+   * Ein NPC ist in ein geparktes Auto gestiegen: mit Physik aus der Lücke auf die nächste Fahrspur,
+   * dann normaler Verkehr. Später (außer Sicht) kehrt das Auto auf seinen Parkplatz zurück.
+   */
+  adopt(v: ServerVehicle): boolean {
+    const s = v.sim.car;
+    let best: { e: RoadEdge; fwd: boolean; path: Vec2[]; i: number } | null = null, bd = 30 * 30;
+    for (const e of this.drivable) {
+      const m = e.pts[Math.floor(e.pts.length / 2)];
+      if (Math.abs(m[0] - s.x) > e.len / 2 + 40 || Math.abs(m[1] - s.z) > e.len / 2 + 40) continue;
+      for (const fwd of [true, false]) {
+        const path = this.lanePath(e, fwd, 0);
+        for (let i = 0; i < path.length - 1; i++) {
+          const d = dist2(path[i][0], path[i][1], s.x, s.z);
+          // Spurpunkt etwas voraus in Fahrzeugrichtung bevorzugen (kein Wenden in der Lücke)
+          const ahead = (path[i][0] - s.x) * Math.sin(s.a) + (path[i][1] - s.z) * Math.cos(s.a);
+          const dir = (path[i + 1][0] - path[i][0]) * Math.sin(s.a) + (path[i + 1][1] - path[i][1]) * Math.cos(s.a);
+          const score = d + (ahead < 3 ? 400 : 0) + (dir < 0 ? 600 : 0);
+          if (score < bd) { bd = score; best = { e, fwd, path, i }; }
+        }
+      }
+    }
+    if (!best) return false;
+    v.driver = DRIVER_NPC; v.kinematic = false; v.buttons = 0; v.idleTime = 0;
+    const rest = best.path.slice(best.i + 1);
+    this.brains.set(v.id, {
+      path: rest, turning: rest.map(() => false), edge: best.e.id, toNode: best.fwd ? best.e.b : best.e.a, lane: 0,
+      cruise: CRUISE[best.e.type], speed: 0, stuck: 0, ignore: 0, mode: 'depart', timer: 0, severity: 0,
+      evade: 0, evadeT: 0, honkCd: 2, blockedByPlayer: 0, home: v.home, age: 0,
+    });
+    v.home = null;
+    return true;
   }
 
   /** Getroffen: ab jetzt echte Physik, Fahrer reagiert. */
@@ -203,6 +240,7 @@ export class Traffic {
       const v = vehicles.get(id);
       if (!v || v.driver !== DRIVER_NPC) { this.brains.delete(id); if (v) v.kinematic = false; continue; }
       brain.honkCd -= dt;
+      if (brain.home && (brain.age = (brain.age ?? 0) + dt) > 45 && this.returnHome(v, brain)) continue;
       if (brain.mode === 'drive') this.driveKinematic(v, brain, dt, vehicles, pawns, fast);
       else this.driveDynamic(v, brain, dt);
     }
@@ -215,6 +253,19 @@ export class Traffic {
         this.respawnTimer = 4;
       }
     }
+  }
+
+  /** Ausgeparktes Auto außer Sicht wieder auf seinen Parkplatz stellen (die Lücke bleibt nicht ewig leer). */
+  private returnHome(v: ServerVehicle, brain: Brain): boolean {
+    const s = v.sim.car, h = brain.home!;
+    for (const p of this.host.playerPositions()) {
+      if (dist2(p.x, p.z, s.x, s.z) < 90 * 90 || dist2(p.x, p.z, h.x, h.z) < 90 * 90) return false;
+    }
+    this.brains.delete(v.id);
+    v.driver = DRIVER_NONE; v.kinematic = false; v.home = h; v.buttons = 0;
+    placeCar(this.host.map, s, v.sim.prof, h.x, h.z, h.a);
+    s.sleep = 1;
+    return true;
   }
 
   private honk(v: ServerVehicle, brain: Brain) {
@@ -319,7 +370,18 @@ export class Traffic {
     const steps = Math.round(dt / (1 / 60));
     let ax = 0, ay = 0, buttons = 0;
 
-    if (brain.mode === 'crash') {
+    if (brain.mode === 'depart') {
+      // Ausparken: langsam der Spur folgen (mit Physik), dann kinematisch weiter
+      this.advancePath(brain, s.x, s.z);
+      const target = brain.path[0];
+      const desired = Math.atan2(target[0] - s.x, target[1] - s.z);
+      const diff = wrapAngle(desired - s.a);
+      ax = Math.max(-1, Math.min(1, -diff * 2.2));
+      ay = s.s < 4.5 ? 0.6 : 0;
+      if (Math.abs(s.s) < 0.4 && brain.timer > 2) brain.stuck += dt; else brain.stuck = 0;
+      if (brain.stuck > 4 || brain.timer > 25) { this.resume(v, brain); return; }
+      if (brain.timer > 1.5 && this.nearPath(s.x, s.z, brain, 2) && Math.abs(diff) < 0.3) { this.resume(v, brain); return; }
+    } else if (brain.mode === 'crash') {
       // anhalten, kurz sammeln
       buttons = Math.abs(s.s) > 1 ? Btn.BRAKE : 0;
       if (Math.abs(s.s) < 1 && brain.timer > 1.2) {

@@ -77,6 +77,11 @@ function build(kind: SmartKindId, solid: Parts, neon: Parts) {
     case SmartKind.FishSpot:
       solid.push(box(0.5, 0.35, 0.35, 1.0, 0, -0.4, 0x2ad4c9), cyl(0.18, 0.15, 0.3, 8, -0.9, 0, -0.3, GRAY), box(0.04, 1.0, 0.04, -0.2, 0, 0.9, WOOD, 0, -0.5));
       break;
+    case SmartKind.Door: // Tür an der Fassade (Wand liegt 0,9 m hinter dem Objekt), Lampe darüber
+      solid.push(box(1.5, 2.45, 0.14, 0, 0, -0.86, DARK), box(1.2, 2.25, 0.1, 0, 0, -0.8, 0x6a4a3a), box(0.08, 0.08, 0.1, 0.42, 1.1, -0.74, 0xe8c04a),
+        box(1.3, 0.12, 0.5, 0, 2.5, -0.65, TEAL));
+      neon.push(box(0.3, 0.1, 0.1, 0, 2.42, -0.6, 0xfff1b0));
+      break;
     case SmartKind.Grill:
       solid.push(cyl(0.45, 0.4, 0.5, 10, 0, 0.7, 0, DARK), box(0.06, 0.7, 0.06, -0.25, 0, 0, DARK), box(0.06, 0.7, 0.06, 0.25, 0, 0, DARK));
       break;

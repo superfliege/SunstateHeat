@@ -115,6 +115,12 @@ export function generateSmartObjects(map: WorldMap): SmartObject[] {
         have++;
       }
     }
+    // Türen: freie Hauswände in Abständen, durch die NPCs die Welt verlassen (Absichtskette, Schritt „exit“)
+    const doors = wallCands.filter((c) => c.district === dName);
+    for (const c of doors) {
+      if (out.some((o) => Math.hypot(o.x - c.x, o.z - c.z) < (o.kind === SmartKind.Door ? 22 : 3.5))) continue;
+      out.push({ id: out.length, kind: SmartKind.Door, x: c.x, z: c.z, rot: c.rot, district: dName });
+    }
     // Props, die zugleich Smart Objects sind: Liegen (Strand), Mülltonnen, Zeitungsautomaten
     for (const p of generateProps(map)) {
       if (p.type !== PropType.Lounger && p.type !== PropType.Trash && p.type !== PropType.Newsbox) continue;
