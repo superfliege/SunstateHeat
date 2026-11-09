@@ -1,165 +1,131 @@
-// Soundeffekte aus den Kenney-Packs (Starter Kits, Impact Sounds, Interface Sounds – CC0, siehe
-// CREDITS.md) über die Web Audio API, dazu das prozedurale Fahrzeug-Audio (CarAudio). Gruppen mit
-// mehreren Varianten werden zufällig mit leichter Tonhöhenstreuung gespielt, damit sich nichts
-// wiederholt anhört. Fehlt eine Datei oder blockiert der Browser Audio, bleibt es einfach still.
-import { CarAudio } from './CarAudio';
+// Einstieg ins Audio-System für das Spiel: startet die AudioEngine nach der ersten Nutzeraktion,
+// führt Hörer, Hallzone, Verdeckung und Zonen-Lazy-Loading nach und bietet einfache Aufrufe
+// (UI-Sounds, 3D-Effekte, Waffen) plus das Fahrzeug-Audio (VehicleAudio).
+import type { WorldMap } from '../../../shared/src/world/WorldMap';
+import { AudioEngine, type LoopHandle, type Vec3 } from './AudioEngine';
+import { AudioEnvironment } from './Environment';
+import { BUSES, SPATIAL } from './manifest';
+import { VehicleAudio } from './VehicleAudio';
 
-const IMPACT = 'kenney/impact-sounds/';
-const UI = 'kenney/interface-sounds/';
-const n = (prefix: string, count: number) => Array.from({ length: count }, (_, i) => `${IMPACT}${prefix}_00${i}.ogg`);
-/** Variantengruppen (Kenney Impact/Interface Sounds). */
-const GROUPS = {
-  punch: [...n('impactPunch_heavy', 5), ...n('impactPunch_medium', 3)],
-  metalHeavy: n('impactMetal_heavy', 5),
-  metalLight: n('impactMetal_light', 3),
-  glass: n('impactGlass_heavy', 3),
-  plate: n('impactPlate_heavy', 3),
-  soft: n('impactSoft_heavy', 3),
-  stepConcrete: n('footstep_concrete', 5),
-  stepGrass: n('footstep_grass', 5),
-  stepWood: n('footstep_wood', 3),
-  uiOpen: [`${UI}open_001.ogg`],
-  uiClose: [`${UI}close_001.ogg`],
-  uiClick: [`${UI}click_001.ogg`, `${UI}click_002.ogg`],
-  uiGood: [`${UI}confirmation_001.ogg`, `${UI}confirmation_002.ogg`],
-  uiBad: [`${UI}error_004.ogg`],
-  uiInfo: [`${UI}select_001.ogg`],
-  money: [`${UI}maximize_006.ogg`, `${UI}pluck_001.ogg`],
-} as const;
-export type SoundGroup = keyof typeof GROUPS;
-
-const FILES = {
-  impact: 'kenney/starter-kit-racing/audio/impact.ogg',
-  ambience: 'kenney/starter-kit-city-builder/sounds/ambience.ogg',
-  toggle: 'kenney/starter-kit-city-builder/sounds/toggle.ogg',
-  notice: 'kenney/starter-kit-city-builder/sounds/placement-a.ogg',
-} as const;
-type SoundName = keyof typeof FILES;
+export type UiSound = 'open' | 'close' | 'click' | 'good' | 'bad' | 'info' | 'money' | 'toggle' | 'notice';
 
 export class Sfx {
-  private ctx: AudioContext | null = null;
-  private master: GainNode | null = null;
-  private buffers = new Map<SoundName, AudioBuffer>();
-  private groups = new Map<SoundGroup, AudioBuffer[]>();
-  /** Prozedurales Fahrzeug-Audio (null, solange Audio nicht freigegeben ist) */
-  car: CarAudio | null = null;
+  engine: AudioEngine | null = null;
+  /** Fahrzeug-Audio (null, solange Audio nicht freigegeben ist) */
+  car: VehicleAudio | null = null;
+  private env: AudioEnvironment | null = null;
+  private envT = 0; private zoneT = 0;
+  private ambience: LoopHandle | null = null;
+  zone = '';
 
   /** Muss aus einer Nutzeraktion heraus (Klick/Enter) aufgerufen werden – Autoplay-Regeln. */
   init() {
-    if (this.ctx) return;
-    try {
-      this.ctx = new AudioContext();
-    } catch {
-      return;
-    }
-    this.master = this.ctx.createGain();
-    this.master.gain.value = 0.6;
-    // sanfter Limiter, damit Crash-Schichten nicht übersteuern
-    const comp = this.ctx.createDynamicsCompressor();
-    comp.threshold.value = -10; comp.ratio.value = 6;
-    this.master.connect(comp).connect(this.ctx.destination);
-    this.car = new CarAudio(this.ctx, this.master, () => this.buffers.get('impact'), (g) => this.pick(g));
-    for (const [group, files] of Object.entries(GROUPS) as [SoundGroup, readonly string[]][]) {
-      const list: AudioBuffer[] = [];
-      this.groups.set(group, list);
-      for (const file of files) {
-        fetch(`assets/${file}`)
-          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
-          .then((data) => this.ctx!.decodeAudioData(data))
-          .then((buf) => { list.push(buf); })
-          .catch(() => console.warn(`[sfx] ${file} nicht geladen`));
+    if (this.engine) { this.engine.start(); return; }
+    try { this.engine = new AudioEngine(); } catch (e) { console.warn('[audio] Web Audio nicht verfügbar', e); return; }
+    this.engine.start();
+    this.car = new VehicleAudio(this.engine);
+    // Fahrzeug-Puffer schon jetzt erzeugen (kein Ruckler beim ersten Einsteigen)
+    // Häufige Klassen zuerst (Verkehr), Effekte, dann der Rest
+    const first = ['sedan', 'compact', 'suv', 'muscle', 'sport', 'truck', 'bike', 'boat', 'airboat'];
+    const eng = first.flatMap((set) => ['idle', 'low', 'mid', 'high'].flatMap((l) => [`veh.engine.${set}.${l}.on`, `veh.engine.${set}.${l}.off`]));
+    this.engine.bank.warmGradually([
+      'veh.crash.thud', 'veh.crash.crunch', 'veh.shift', 'veh.tire.squeal', 'veh.roll.asphalt', ...eng.slice(0, 16),
+      'veh.backfire', 'veh.curb', 'veh.land', 'veh.crash.debris', 'veh.scrape', 'veh.roll.grass', 'veh.roll.gravel', 'veh.roll.sand',
+      ...eng.slice(16), 'veh.prop.airboat', 'veh.water.rush', 'veh.water.slap', 'veh.explosion', 'veh.crash.glass', 'veh.sparks',
+      'veh.dmg.hiss', 'veh.dmg.fire', 'veh.dmg.sputter', 'veh.turbo.bov', 'veh.airbrake', 'veh.nitro', 'veh.tire.burst', 'veh.roll.wet',
+    ]);
+  }
+
+  /** Karte für Hall/Verdeckung/Zonen setzen. */
+  setWorld(map: WorldMap) {
+    this.env = new AudioEnvironment(map);
+    if (this.engine) this.engine.occluder = (sx, sz, lx, lz) => this.env!.occlusion(sx, sz, lx, lz);
+  }
+
+  /** Einmal pro Bild: Hörer an der Spielfigur, Blickrichtung der Kamera. */
+  frame(dt: number, x: number, y: number, z: number, fx: number, fz: number) {
+    const e = this.engine;
+    if (!e) return;
+    e.setListener(x, y + 1.6, z, fx, fz, dt);
+    if (this.env) {
+      if (!e.occluder) e.occluder = (sx, sz, lx, lz) => this.env!.occlusion(sx, sz, lx, lz);
+      this.envT -= dt;
+      if (this.envT <= 0) { this.envT = 0.3; e.setEnvironment(this.env.reverbAt(x, z)); }
+      this.zoneT -= dt;
+      if (this.zoneT <= 0) {
+        this.zoneT = 1;
+        this.zone = this.env.zoneAt(x, z);
+        e.bank.setZones(this.env.zonesNear(x, z));
       }
     }
-    for (const [name, file] of Object.entries(FILES) as [SoundName, string][]) {
-      fetch(`assets/${file}`)
-        .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`${r.status}`))))
-        .then((data) => this.ctx!.decodeAudioData(data))
-        .then((buf) => {
-          this.buffers.set(name, buf);
-          if (name === 'ambience') this.loop('ambience', 0.12);
-        })
-        .catch(() => console.warn(`[sfx] ${file} nicht geladen`));
+    if (!this.ambience || this.ambience.voice.dead) {
+      this.ambience = e.bank.loaded('amb.bed.city') ? e.loop('amb.bed.city', null, { priority: 0.4 }) : null;
+      this.ambience?.voice.setVolume(0.45, 1.5);
     }
+    e.update();
   }
 
-  /** Einmaliger Effekt. */
-  play(name: SoundName, volume = 1, rate = 1) {
-    const buf = this.buffers.get(name);
-    if (!this.ctx || !this.master || !buf) return;
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = rate;
-    const gain = this.ctx.createGain();
-    gain.gain.value = volume;
-    src.connect(gain).connect(this.master);
-    src.start();
-  }
+  ui(name: UiSound, vol = 0.6) { this.engine?.play(`ui.${name}`, { vol }); }
 
-  /** Zufällige Variante einer Gruppe (undefined, solange nichts geladen ist). */
-  pick(group: SoundGroup): AudioBuffer | undefined {
-    const list = this.groups.get(group);
-    return list?.length ? list[Math.floor(Math.random() * list.length)] : undefined;
-  }
+  /** Manifest-Sound an einer Weltposition (null = 2D). */
+  at(id: string, pos: Vec3 | null, vol = 1) { this.engine?.play(id, { pos, vol }); }
 
-  /** Variante einer Gruppe abspielen (Tonhöhe ±spread, Stereo-Position pan). */
-  playGroup(group: SoundGroup, volume = 1, pan = 0, spread = 0.08) {
-    const buf = this.pick(group);
-    if (!this.ctx || !this.master || !buf || volume < 0.01) return;
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * spread;
-    const gain = this.ctx.createGain();
-    gain.gain.value = volume;
-    const panner = this.ctx.createStereoPanner();
-    panner.pan.value = pan;
-    src.connect(gain).connect(panner).connect(this.master);
-    src.start();
-  }
+  /** Radio/Ambience kurz absenken (Missionsansage, Dialog). */
+  duck(db = -8, hold = 1.5) { this.engine?.duck(db, hold); }
 
-  /** Prozeduraler Waffen-Sound (Spec 5.1: dumpf, comicartig). kind: 'swing' | 'shot' | 'heavy' | 'hit' */
-  weapon(kind: 'swing' | 'shot' | 'heavy' | 'hit', volume = 1, pan = 0) {
-    const ctx = this.ctx;
-    if (!ctx || !this.master) return;
-    const t = ctx.currentTime;
-    const out = ctx.createGain();
-    const panner = ctx.createStereoPanner();
-    panner.pan.value = pan;
-    out.connect(panner).connect(this.master);
+  /** Prozeduraler Waffen-Sound (Spec 5.4: dumpf, comicartig) – Phase 3 ersetzt ihn durch Schichten. */
+  weapon(kind: 'swing' | 'shot' | 'heavy' | 'hit', pos: Vec3 | null) {
+    const e = this.engine;
+    if (!e) return;
+    if (kind === 'hit') { e.play('hit.punch', { pos, vol: 0.9 }); return; }
+    const v = e.voice({ name: `weapon.${kind}`, bus: 'weapons', pos, spatial: pos ? SPATIAL.weapon : undefined, priority: 0.8 }, 1);
+    if (!v) return;
+    const ctx = e.ctx, t = ctx.currentTime;
     const dur = kind === 'heavy' ? 0.28 : kind === 'shot' ? 0.14 : 0.1;
-    out.gain.setValueAtTime(volume * (kind === 'swing' ? 0.25 : 0.55), t);
+    const out = ctx.createGain();
+    out.connect(v.input);
+    out.gain.setValueAtTime(kind === 'swing' ? 0.25 : 0.6, t);
     out.gain.exponentialRampToValueAtTime(0.001, t + dur);
     const osc = ctx.createOscillator();
-    osc.type = kind === 'hit' ? 'square' : 'sawtooth';
-    const f0 = kind === 'heavy' ? 120 : kind === 'shot' ? 220 : kind === 'hit' ? 160 : 400;
+    osc.type = 'sawtooth';
+    const f0 = kind === 'heavy' ? 120 : kind === 'shot' ? 220 : 400;
     osc.frequency.setValueAtTime(f0, t);
     osc.frequency.exponentialRampToValueAtTime(Math.max(30, f0 * 0.25), t + dur);
-    osc.connect(out);
-    osc.start(t); osc.stop(t + dur);
-    if (kind === 'hit') this.playGroup('punch', volume * 0.9, pan, 0.12);
-    if (kind !== 'hit') { // Rauschen für den Knall
-      const len = Math.floor(ctx.sampleRate * dur);
-      const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-      const d = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-      const src = ctx.createBufferSource();
-      src.buffer = buf;
-      const lp = ctx.createBiquadFilter();
-      lp.type = kind === 'swing' ? 'highpass' : 'lowpass';
-      lp.frequency.value = kind === 'swing' ? 1800 : 1400;
-      src.connect(lp).connect(out);
-      src.start(t);
-    }
+    osc.connect(out); osc.start(t); osc.stop(t + dur);
+    v.addSource(osc);
+    const len = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = kind === 'swing' ? 'highpass' : 'lowpass'; f.frequency.value = kind === 'swing' ? 1800 : 1400;
+    src.connect(f).connect(out); src.start(t);
+    v.addSource(src);
+    v.setVolume(1, 0.001);
   }
 
-  private loop(name: SoundName, volume: number) {
-    const buf = this.buffers.get(name);
-    if (!this.ctx || !this.master || !buf) return;
-    const src = this.ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    const gain = this.ctx.createGain();
-    gain.gain.value = volume;
-    src.connect(gain).connect(this.master);
-    src.start();
+  /** Text fürs Debug-Overlay (F3 → Audio). */
+  debugText(): string {
+    const e = this.engine;
+    if (!e) return 'Audio noch nicht gestartet (erst nach einer Nutzeraktion).';
+    const L = e.listener;
+    const lines = [
+      `Kontext ${e.ctx.state} · ${e.ctx.sampleRate} Hz · Latenz ${(e.ctx.baseLatency * 1000).toFixed(0)} ms`,
+      `Hallzone ${e.env} · Zone ${this.zone} · Stimmen ${e.voices.length}/32 · verworfen ${e.stolen}`,
+      `geladen ${(e.bank.bytes / 1024).toFixed(0)} KB · offen ${e.bank.pending} · Bank-Version ${e.bank.version}`,
+      '',
+      'Bus-Pegel (dBFS):',
+      BUSES.map((b) => `${b.padEnd(8)} ${e.busLevel(b).toFixed(0).padStart(4)}  ${'█'.repeat(Math.max(0, Math.round((e.busLevel(b) + 60) / 3)))}`).join('\n'),
+      '',
+      this.car?.debug() ?? '',
+      '',
+      'Aktive Stimmen (Name · Bus · Entfernung · Hörbarkeit · Verdeckung):',
+    ];
+    const vs = [...e.voices].filter((v) => !v.dead).sort((a, b) => b.audibility() - a.audibility());
+    for (const v of vs.slice(0, 32)) {
+      const d = v.pos ? `${Math.hypot(v.pos.x - L.x, v.pos.z - L.z).toFixed(0).padStart(4)} m` : '   2D ';
+      lines.push(`${v.o.name.padEnd(28).slice(0, 28)} ${v.o.bus.padEnd(8)} ${d} ${v.audibility().toFixed(2)} ${v.occl > 0 ? v.occl.toFixed(2) : ''}`);
+    }
+    return lines.join('\n');
   }
 }

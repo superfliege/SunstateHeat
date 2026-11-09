@@ -3,3 +3,11 @@ dist/
 *.log
 .DS_Store
 data/
+
+# Audio-Rohdateien ohne Weitergaberecht (Lizenzen: client/src/audio/manifest.ts → LICENSES)
+assets-src/audio/sonniss/
+assets-src/audio/pixabay/
+packages/client/assets-src/audio/sonniss/
+packages/client/assets-src/audio/pixabay/
+assets-src/audio/_scan.md
+client/public/audio/.cache.json

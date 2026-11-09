@@ -132,7 +132,8 @@ client/src/
   render/quaternius.ts Findet und vereinheitlicht die Quaternius-Packs (Vegetation, Figuren)
   render/characters.ts Modulare, animierte Passanten (zonenspezifische Kleidung, Animations-LOD)
   preview.html         Render-Vorschau ohne Server (nur Dev): /preview.html?district=Ocean%20Strip&day=0.72
-  audio/Sfx.ts         Motor-, Crash-, Reifen-, Umgebungs- und UI-Sounds (Web Audio)
+  audio/               Audio-Engine (Busse, 3D, Hall, Voice-Limit), Manifest, Fahrzeug-Audio, prozedurale Synthese
+                       (Rohdateien: assets-src/audio/, Pipeline: npm run audio, siehe assets-src/audio/README.md)
   public/assets/       Externe CC0-Assets (siehe CREDITS.md)
 
 scripts/fetch-assets.mjs  Lädt die CC0-Assets aus den offiziellen Repositories (npm run assets)

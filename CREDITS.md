@@ -128,3 +128,69 @@ Jede so verwendete Quelle bitte hier mit Name, URL und Lizenz nachtragen.
 Ersatzfiguren (falls die Kenney-Figuren fehlen), Art-déco-Hotels, Spiegelglas-Türme (wenn kein Kit-Hochhaus passt), Little-Havana-Häuser, Scheunen,
 Trailer, Stelzenhütten in Gator Flats, Mangroven/Zypressen/Orangenbäume, Neon, Boden, Wasser, Brücken und Stege,
 Nahkampfwaffen und Molotov sowie die Ersatzmodelle, falls ein Kit fehlt.
+
+<!-- audio-credits:start (automatisch erzeugt von scripts/process-audio.ts – nicht von Hand ändern) -->
+## Audio
+
+Alle Sounds sind in `client/src/audio/manifest.ts` mit Quelle und Lizenz erfasst. 105 Einträge haben zusätzlich einen
+prozeduralen Ersatz (Web Audio, `client/src/audio/procedural.ts`), der klingt, solange keine Datei vorliegt.
+Rohdateien ohne Weitergaberecht (Sonniss, Pixabay) liegen nicht im Repository (`.gitignore`).
+
+### Kenney (CC0 1.0)
+
+- **Lizenz/Quelle:** https://kenney.nl/assets – Gemeinfrei, keine Namensnennung nötig.
+- `client/public/assets/kenney/impact-sounds/footstep_concrete_000.ogg` → foot.concrete
+- `client/public/assets/kenney/impact-sounds/footstep_concrete_001.ogg` → foot.concrete
+- `client/public/assets/kenney/impact-sounds/footstep_concrete_002.ogg` → foot.concrete
+- `client/public/assets/kenney/impact-sounds/footstep_concrete_003.ogg` → foot.concrete
+- `client/public/assets/kenney/impact-sounds/footstep_concrete_004.ogg` → foot.concrete
+- `client/public/assets/kenney/impact-sounds/footstep_grass_000.ogg` → foot.grass
+- `client/public/assets/kenney/impact-sounds/footstep_grass_001.ogg` → foot.grass
+- `client/public/assets/kenney/impact-sounds/footstep_grass_002.ogg` → foot.grass
+- `client/public/assets/kenney/impact-sounds/footstep_grass_003.ogg` → foot.grass
+- `client/public/assets/kenney/impact-sounds/footstep_grass_004.ogg` → foot.grass
+- `client/public/assets/kenney/impact-sounds/footstep_wood_000.ogg` → foot.wood
+- `client/public/assets/kenney/impact-sounds/footstep_wood_001.ogg` → foot.wood
+- `client/public/assets/kenney/impact-sounds/footstep_wood_002.ogg` → foot.wood
+- `client/public/assets/kenney/impact-sounds/impactGlass_heavy_000.ogg` → veh.crash.glass
+- `client/public/assets/kenney/impact-sounds/impactGlass_heavy_001.ogg` → veh.crash.glass
+- `client/public/assets/kenney/impact-sounds/impactGlass_heavy_002.ogg` → veh.crash.glass
+- `client/public/assets/kenney/impact-sounds/impactMetal_heavy_000.ogg` → veh.crash.metal
+- `client/public/assets/kenney/impact-sounds/impactMetal_heavy_001.ogg` → veh.crash.metal
+- `client/public/assets/kenney/impact-sounds/impactMetal_heavy_002.ogg` → veh.crash.metal
+- `client/public/assets/kenney/impact-sounds/impactMetal_heavy_003.ogg` → veh.crash.metal
+- `client/public/assets/kenney/impact-sounds/impactMetal_heavy_004.ogg` → veh.crash.metal
+- `client/public/assets/kenney/impact-sounds/impactMetal_light_000.ogg` → veh.crash.metalLight
+- `client/public/assets/kenney/impact-sounds/impactMetal_light_001.ogg` → veh.crash.metalLight
+- `client/public/assets/kenney/impact-sounds/impactMetal_light_002.ogg` → veh.crash.metalLight
+- `client/public/assets/kenney/impact-sounds/impactPlate_heavy_000.ogg` → veh.rattle, veh.crash.plastic
+- `client/public/assets/kenney/impact-sounds/impactPlate_heavy_001.ogg` → veh.rattle, veh.crash.plastic
+- `client/public/assets/kenney/impact-sounds/impactPlate_heavy_002.ogg` → veh.rattle, veh.crash.plastic
+- `client/public/assets/kenney/impact-sounds/impactPunch_heavy_000.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_heavy_001.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_heavy_002.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_heavy_003.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_heavy_004.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_medium_000.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_medium_001.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactPunch_medium_002.ogg` → hit.punch
+- `client/public/assets/kenney/impact-sounds/impactSoft_heavy_000.ogg` → veh.land, veh.crash.plastic
+- `client/public/assets/kenney/impact-sounds/impactSoft_heavy_001.ogg` → veh.land, veh.crash.plastic
+- `client/public/assets/kenney/impact-sounds/impactSoft_heavy_002.ogg` → veh.land, veh.crash.plastic
+- `client/public/assets/kenney/interface-sounds/click_001.ogg` → ui.click
+- `client/public/assets/kenney/interface-sounds/click_002.ogg` → ui.click
+- `client/public/assets/kenney/interface-sounds/close_001.ogg` → ui.close
+- `client/public/assets/kenney/interface-sounds/confirmation_001.ogg` → ui.good
+- `client/public/assets/kenney/interface-sounds/confirmation_002.ogg` → ui.good
+- `client/public/assets/kenney/interface-sounds/error_004.ogg` → ui.bad
+- `client/public/assets/kenney/interface-sounds/maximize_006.ogg` → ui.money
+- `client/public/assets/kenney/interface-sounds/open_001.ogg` → ui.open
+- `client/public/assets/kenney/interface-sounds/pluck_001.ogg` → ui.money
+- `client/public/assets/kenney/interface-sounds/select_001.ogg` → ui.info
+- `client/public/assets/kenney/starter-kit-city-builder/sounds/ambience.ogg` → amb.bed.city
+- `client/public/assets/kenney/starter-kit-city-builder/sounds/placement-a.ogg` → ui.notice
+- `client/public/assets/kenney/starter-kit-city-builder/sounds/toggle.ogg` → ui.toggle
+- `client/public/assets/kenney/starter-kit-racing/audio/impact.ogg` → veh.crash.thud
+- `client/public/assets/kenney/starter-kit-racing/audio/skid.ogg` → veh.tire.squeal
+
+<!-- audio-credits:end -->

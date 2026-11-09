@@ -39,6 +39,8 @@ const assets = Promise.all([
   loadTextureOverrides(),
 ]);
 const sfx = new Sfx();
+// Dev: Audio in der Browser-Konsole testen, z. B. sfx.car.explosion({x:0,y:0,z:0}) oder sfx.engine.voices
+if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) (globalThis as { sfx?: Sfx }).sfx = sfx;
 
 // Zuletzt benutzten Namen vorschlagen (falls der Browser localStorage erlaubt)
 try { nameInput.value = localStorage.getItem('sunstate.name') ?? ''; } catch { /* egal */ }

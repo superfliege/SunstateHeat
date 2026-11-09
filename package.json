@@ -12,7 +12,8 @@
     "start": "tsx server/src/index.ts",
     "typecheck": "tsc --noEmit",
     "assets": "node scripts/fetch-assets.mjs",
-    "textures": "tsx scripts/process-textures.ts"
+    "textures": "tsx scripts/process-textures.ts",
+    "audio": "tsx scripts/process-audio.ts"
   },
   "dependencies": {
     "three": "0.170.0",
