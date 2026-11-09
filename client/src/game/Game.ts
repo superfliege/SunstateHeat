@@ -8,7 +8,8 @@ import { lerp, lerpAngle } from '../../../shared/src/math';
 import { Btn, DRIVER_COP_ID, VehFlag, type GameEvent, type ServerMsg, type SnapshotMsg, type VehicleInfoTuple, type VehicleTuple } from '../../../shared/src/protocol';
 import { createCar, groundHeight, setOrientation, type CarCollision, type CarState, type Impact } from '../../../shared/src/sim/car';
 import { enginePower, newDamage, partState, PART_COUNT, smokeStage, unpackDamage, Zone5, type CarDamage } from '../../../shared/src/sim/damage';
-import { ASSISTS, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
+import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
+import { ARCHETYPES } from '../../../shared/src/npc/archetypes';
 import { PROP_INFO, PropType } from '../../../shared/src/world/features';
 import type { PropHit } from '../../../shared/src/sim/props';
 import { driftMultiplier } from '../../../shared/src/sim/stunts';
@@ -76,6 +77,8 @@ const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpV = new THREE.
 const vehQuats = new Map<number, THREE.Quaternion>();
 const vehQuat = (id: number) => { let q = vehQuats.get(id); if (!q) vehQuats.set(id, (q = new THREE.Quaternion())); return q; };
 const UP = new THREE.Vector3(0, 1, 0);
+/** Untergrenze der dynamischen Auflösung (Anteil der Zielauflösung). */
+const RES_MIN = 0.65;
 
 export class Game {
   private map: WorldMap = generateWorld(MAP_SEED);
@@ -232,19 +235,54 @@ export class Game {
   // ------------------------------------------------------------------ Grafik-Einstellungen
   /** Auflösung, Retro-Modus (Render-Scale 0,6 + Nearest-Neighbor), Schatten, Bloom. */
   private applyGfx() {
+    this.applyResolution();
+    this.sky.setShadows(this.gfx.shadows);
+    this.post.setBloom(this.gfx.bloom);
+    // Umrisslinien ein/aus: Hüllen-Meshes ausblenden (spart Draw-Calls)
+    this.scene.traverse((o) => { if (o.userData.outline) o.visible = this.gfx.outlines; });
+    saveGfx(this.gfx);
+  }
+
+  /** Render-Auflösung: Retro fest 0,6, sonst Bildschirm x dynamischer Faktor (siehe updateResolution). */
+  private applyResolution() {
     const w = window.innerWidth, h = window.innerHeight;
-    const ratio = this.gfx.retro ? 0.6 : Math.min(window.devicePixelRatio, 1.5) * 0.9;
+    const ratio = this.gfx.retro ? 0.6 : Math.min(window.devicePixelRatio, 1.5) * 0.9 * this.resScale;
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h, false);
     this.post.setSize(w, h, ratio);
     this.rig.resize(w / h);
     U.uResolution.value.set(Math.round(w * ratio), Math.round(h * ratio));
-    this.sky.setShadows(this.gfx.shadows);
-    this.post.setBloom(this.gfx.bloom);
-    // Umrisslinien ein/aus: Hüllen-Meshes ausblenden (spart Draw-Calls)
-    this.scene.traverse((o) => { if (o.userData.outline) o.visible = this.gfx.outlines; });
     this.fx.setScale(Math.round(h * ratio));
-    saveGfx(this.gfx);
+  }
+
+  // ------------------------------------------------------------------ Dynamische Auflösung
+  /** Faktor auf die Render-Auflösung (1 = volle Zielauflösung). */
+  private resScale = 1;
+  private res = { t: 0, frames: 0, cpu: 0, good: 0, hold: 0, lock: 0, raisedAt: -99 };
+  /**
+   * Dynamic Resolution Scaling: Ist die Grafikkarte der Engpass (Bildrate unter ~48 FPS, die
+   * JS-Arbeit pro Bild aber klein), wird die Render-Auflösung schrittweise gesenkt (bis 65 %), bei
+   * dauerhaft flüssigen 57+ FPS langsam wieder angehoben. Inhalte bleiben gleich – nur die Pixelzahl
+   * ändert sich. Ein Anheben, das sofort wieder Einbrüche bringt, wird für eine Weile gesperrt.
+   */
+  private updateResolution(rawDt: number, cpuMs: number) {
+    const r = this.res;
+    r.t += rawDt; r.frames++; r.cpu += cpuMs;
+    r.hold = Math.max(0, r.hold - rawDt); r.lock = Math.max(0, r.lock - rawDt);
+    if (r.t < 1) return;
+    const fps = r.frames / r.t, cpu = r.cpu / r.frames;
+    r.t = 0; r.frames = 0; r.cpu = 0;
+    if (this.gfx.retro || document.hidden) return;
+    let next = this.resScale;
+    const gpuBound = cpu < 0.6 * (1000 / Math.max(1, fps));
+    if (fps < 48 && gpuBound && this.resScale > RES_MIN) {
+      next = Math.max(RES_MIN, this.resScale - (fps < 35 ? 0.15 : 0.08));
+      r.hold = 6; r.good = 0;
+      if (this.clock - r.raisedAt < 4) r.lock = 45; // Anheben hat nicht gereicht: länger dabei bleiben
+    } else if (fps > 57) {
+      if (++r.good >= 4 && r.hold <= 0 && r.lock <= 0 && this.resScale < 1) { next = Math.min(1, this.resScale + 0.05); r.good = 0; r.raisedAt = this.clock; }
+    } else r.good = 0;
+    if (next !== this.resScale) { this.resScale = next; this.applyResolution(); }
   }
 
   /** F9 = Retro-Modus, F8 = Qualität durchschalten (alles / ohne Schatten / ohne Schatten+Linien+Bloom). */
@@ -464,6 +502,14 @@ export class Game {
         this.sfx.weapon('hit', { x, y: this.map.surfaceY(x, z) + 1, z });
         break;
       }
+      case 'blood': {
+        // Treffer/angefahren: auf Brusthöhe, überfahren: aus Bodennähe
+        const [, x, z, amount, dx, dz, k] = ev as number[];
+        const gy = this.map.surfaceY(x, z);
+        this.fx.bloodSplash(x, gy + (k === 2 ? 0.25 : k === 1 ? 0.8 : 1.15), z, dx, dz, amount, k);
+        if (k === 2) this.sfx.weapon('hit', { x, y: gy, z });
+        break;
+      }
       case 'tree': this.world.wobbleTree(ev[1] as number, ev[2] as number, Math.random() - 0.5, Math.random() - 0.5); break;
       case 'prop': {
         const [, id, x, , z, speed] = ev as number[];
@@ -519,19 +565,26 @@ export class Game {
   /** Interpolierter + kurz extrapolierter Zustand eines fremden Fahrzeugs */
   private remoteState(va: VehicleTuple, vb: VehicleTuple, t: number, extra: number) {
     const ext = Math.min(0.25, extra);
-    const x = lerp(va[1], vb[1], t) + vb[5] * ext, z = lerp(va[2], vb[2], t) + vb[6] * ext;
-    let y = lerp(va[3], vb[3], t) + vb[11] * ext;
-    const yaw = lerpAngle(va[4], vb[4], t), pitch = lerp(va[9], vb[9], t), roll = lerp(va[10], vb[10], t);
-    return { x, y, z, yaw, pitch, roll, vx: vb[5], vz: vb[6], vy: vb[11], steer: lerp(va[7], vb[7], t), flags: vb[8], rpm: vb[12] * 100, fixY: (gy: number) => { y = Math.max(y, gy); return y; } };
+    const r = this.remoteTmp;
+    r.x = lerp(va[1], vb[1], t) + vb[5] * ext; r.z = lerp(va[2], vb[2], t) + vb[6] * ext;
+    r.y = lerp(va[3], vb[3], t) + vb[11] * ext;
+    r.yaw = lerpAngle(va[4], vb[4], t); r.pitch = lerp(va[9], vb[9], t); r.roll = lerp(va[10], vb[10], t);
+    r.vx = vb[5]; r.vz = vb[6]; r.vy = vb[11]; r.steer = lerp(va[7], vb[7], t); r.flags = vb[8]; r.rpm = vb[12] * 100;
+    return r;
   }
+  /** Wiederverwendeter Zwischenstand (keine Allokation je Fahrzeug und Bild). */
+  private remoteTmp = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, vy: 0, steer: 0, flags: 0, rpm: 0 };
 
+  private obstacleSeen = new Set<number>();
   /** Hindernisse für die Prediction: fremde Fahrzeuge in der Nähe (Gegenwart, extrapoliert) */
   private buildObstacles() {
-    const me = this.predictor.sim?.car;
+    // im Fahrzeug: Fahrzeug-Kollision; zu Fuß: Autos als feste Körper für die Figur
+    const me = this.predictor.inVehicle ? this.predictor.sim?.car : this.predictor.pawn;
     this.obstacles.length = 0;
     if (!me) return;
     const age = this.buffer.latestAge();
-    const seen = new Set<number>();
+    const seen = this.obstacleSeen;
+    seen.clear();
     for (const vb of this.buffer.vehicles.values()) {
       const id = vb[0];
       if (id === this.predictor.vehicleId) continue;
@@ -560,6 +613,7 @@ export class Game {
     const rawDt = Math.min(0.1, (now - this.lastTime) / 1000);
     this.lastTime = now;
     if (!this.predictor.ready) return; // auf den ersten Snapshot warten
+    if (++this.frameNo === 1) this.warmup(); // vor dem ersten Bild: es gibt noch keine echten Entitäten
     this.clock += rawDt;
     // Hit-Stop: Darstellung kurz einfrieren (Simulation und Netz laufen weiter)
     let dt = rawDt;
@@ -653,7 +707,8 @@ export class Game {
 
     this.renderer.info.reset();
     this.post.render();
-    this.hud.tickFps(rawDt, this.renderer.info.render.calls);
+    this.updateResolution(rawDt, performance.now() - now);
+    this.hud.tickFps(rawDt, this.renderer.info.render.calls, this.gfx.retro ? 1 : this.resScale);
 
     // Debug-Overlay (F3): Werte jeden Frame, Neuzeichnen ~4x pro Sekunde
     this.fpsAvg += (1 / Math.max(rawDt, 1e-3) - this.fpsAvg) * 0.05;
@@ -665,6 +720,57 @@ export class Game {
     this.debugTimer -= rawDt;
     if (this.debugTimer <= 0) { this.debugTimer = 0.25; this.debug.redraw(); if (this.debug.audioTab) this.audioDebug.update(); }
     this.vehicleDebug();
+  }
+
+  private frameNo = 0;
+  /**
+   * Shader-Aufwärmen: Je eine Instanz aller Fahrzeugmodelle, Figurentypen, Waffen, Szenario-Gegenstände
+   * und Sprechblasen kurz vor die Kamera stellen und ein Bild rendern. Sonst kompiliert WebGL jedes
+   * neue Material-/Shader-Programm erst, wenn es zum ersten Mal im Bild auftaucht – das sind die
+   * Ruckler beim Herumfahren. Danach wird alles wieder entfernt (Vorlagen bleiben im Cache).
+   */
+  private warmup() {
+    const t0 = performance.now();
+    const me = this.predictor.view();
+    const f = { x: me.x, z: me.z };
+    const gy = this.map.surfaceY(f.x, f.z);
+    const q = new THREE.Quaternion();
+    let id = -1_000_000;
+    this.views.beginFrame(0);
+    const vehicles: [number, number, number][] = [
+      ...CAR_VARIANTS.map((_, v): [number, number, number] => [VehicleKind.Car, v, -1]),
+      [VehicleKind.Car, 1, DRIVER_COP_ID], [VehicleKind.Bike, BIKE_VARIANT, -1], [VehicleKind.Boat, BOAT_VARIANT, -1], [VehicleKind.Airboat, AIRBOAT_VARIANT, -1],
+    ];
+    vehicles.forEach(([kind, variant, driver], i) => {
+      const x = f.x + (i % 6) * 5 - 12, z = f.z + Math.floor(i / 6) * 6 - 6;
+      this.views.setVehicle({ id: id--, kind, variant, color: i % 10, driver, x, y: gy + profileOf(variant).cgHeight, z, q, vx: 0, vz: 0, steer: 0, flags: 0 }, 0);
+    });
+    const weapons = Object.keys(WEAPONS).length;
+    for (let w = 0; w < weapons; w++) {
+      this.views.setPlayer({ id: id--, name: 'warmup', x: f.x + w, z: f.z, a: 0, veh: -1, color: w, carrying: false, h: 0, ragdoll: w === 1, weapon: w }, 0.016, null, false);
+    }
+    const acts = 31; // alle Act-IDs (scenarios.ts), damit auch jeder Szenario-Gegenstand einmal gezeigt wird
+    for (let k = -1; k < Math.max(ARCHETYPES.length, acts); k++) {
+      this.views.setPed({
+        id: id--, x: f.x + (k % 8), z: f.z + 2 + Math.floor(k / 8), a: 0, color: k & 7, running: false, h: 0, ragdoll: false,
+        angry: k === 0, cop: k === 1, gang: k === 2, arch: k < ARCHETYPES.length ? k : -1, act: k > 2 ? k % acts : 0, fear: -1,
+      }, 0.016);
+    }
+    this.views.endFrame();
+    this.fx.flash(f.x, gy + 1, f.z, 0.01, 0.01);
+    const extra = this.props.warmupMeshes(f.x, gy, f.z);
+    this.scene.add(...extra);
+    // Ein echtes Bild über die Nachbearbeitung (gleiche Render-Ziele/Farbräume, Schattenpass) –
+    // ohne Frustum-Culling, damit auch alles außerhalb des Bildes einmal kompiliert wird
+    const culled: THREE.Object3D[] = [];
+    this.scene.traverse((o) => { if (o.frustumCulled) { o.frustumCulled = false; culled.push(o); } });
+    this.post.render();
+    for (const o of culled) o.frustumCulled = true;
+    this.scene.remove(...extra);
+    // alles wieder weg (beim nächsten endFrame ungesehen -> entfernt)
+    this.views.beginFrame(0);
+    this.views.endFrame();
+    if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) console.info(`[gfx] Shader aufgewärmt in ${Math.round(performance.now() - t0)} ms, ${this.renderer.info.programs?.length ?? 0} Programme`);
   }
 
   /** Interpoliert alle Entitäten und übergibt sie an die 3D-Darstellung. */
@@ -697,9 +803,9 @@ export class Game {
         const va = a.vehicles.get(id) ?? vb;
         const r = this.remoteState(va, vb, t, extra);
         const prof = profileOf(variant);
-        if (!isWaterVehicle(kind)) r.fixY(groundHeight(this.map, r.x, r.z) + prof.cgHeight * 0.5);
+        if (!isWaterVehicle(kind)) r.y = Math.max(r.y, groundHeight(this.map, r.x, r.z) + prof.cgHeight * 0.5);
         tmpE.set(r.pitch, r.yaw, r.roll, 'YXZ');
-        s = { id, kind, variant, color, driver, x: r.x, y: r.fixY(-99), z: r.z, q: vehQuat(id).setFromEuler(tmpE), vx: r.vx, vz: r.vz, steer: r.steer, flags: r.flags, tires: rec.dmg.tires };
+        s = { id, kind, variant, color, driver, x: r.x, y: r.y, z: r.z, q: vehQuat(id).setFromEuler(tmpE), vx: r.vx, vz: r.vz, steer: r.steer, flags: r.flags, tires: rec.dmg.tires };
         rpm = r.rpm;
       }
       const isNew = !this.views.hasVehicle(id);
@@ -806,7 +912,7 @@ export class Game {
       if (w.w <= 0 && !tpl.bike) continue;
       const slip = ownCar ? ownCar.slip[i] : (i >= 2 ? remoteSlip : remoteSlip * 0.5);
       const surf = ownCar ? ownCar.surf[i] : this.map.tileAt(s.x, s.z);
-      const key = `${s.id}:${i}`;
+      const key = s.id * 4 + i;
       if ((ownCar && surf === 255) || (tpl.bike && w.w <= 0)) { this.fx.skidEnd(key); continue; }
       const p = this.views.worldPoint(s.id, tmpV2.set(w.x, tpl.wheelBaseY - w.r * 0.9, w.z), tmpV3)!;
       const gy = groundHeight(this.map, p.x, p.z);

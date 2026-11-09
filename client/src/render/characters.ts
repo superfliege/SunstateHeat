@@ -298,6 +298,19 @@ export function setFigureBounds(mesh: THREE.SkinnedMesh, hull: THREE.Object3D | 
   }
 }
 
+/**
+ * Knochen-Texturen der Skelette freigeben (je Figur eine eigene GPU-Textur). Ohne das wuchs der
+ * Grafikspeicher mit jeder Figur, die beim Herumfahren auftauchte und wieder verschwand.
+ * Geometrien und Materialien sind geteilt und bleiben.
+ */
+export function disposeSkeletons(root: THREE.Object3D) {
+  const done = new Set<THREE.Skeleton>();
+  root.traverse((o) => {
+    const sk = (o as THREE.SkinnedMesh).isSkinnedMesh ? (o as THREE.SkinnedMesh).skeleton : null;
+    if (sk && !done.has(sk)) { done.add(sk); sk.dispose(); }
+  });
+}
+
 export class AnimatedCharacter {
   readonly root = new THREE.Group();
   private mixer: THREE.AnimationMixer;
@@ -360,7 +373,7 @@ export class AnimatedCharacter {
     if (this.hull) this.hull.visible = dist < 140 && U.uOutlineScale.value > 0;
   }
 
-  dispose() { this.mixer.stopAllAction(); }
+  dispose() { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); disposeSkeletons(this.root); }
 }
 
 /** Neue Figur im Stil der Gegend; shirt überschreibt die Oberteilfarbe (Spielerfarbe). */

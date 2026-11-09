@@ -190,6 +190,17 @@ export class PropsView {
     return l;
   }
 
+  /** Je ein umgeworfenes Prop pro Typ (nur fürs Shader-Aufwärmen; Aufrufer entfernt sie wieder). */
+  warmupMeshes(x: number, y: number, z: number): THREE.Object3D[] {
+    return this.types.map((t) => {
+      const mesh = new THREE.Mesh(t.geo, t.mat);
+      mesh.castShadow = true;
+      addOutline(mesh, LINE.prop);
+      mesh.position.set(x, y, z);
+      return mesh;
+    });
+  }
+
   /** Delta vom Server: verschobene Props + zurückgesetzte (respawnte) IDs. */
   apply(list: PropTuple[] | undefined, gone: number[] | undefined) {
     for (const t of list ?? []) {

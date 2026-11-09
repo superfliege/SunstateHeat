@@ -7,6 +7,8 @@ import { Btn } from '../protocol';
 import { footSurface } from '../world/tiles';
 import type { WorldMap } from '../world/WorldMap';
 import { setYaw, type CarState } from './car';
+import { CELL } from '../constants';
+import { circleBox, circleHitsBuildings, exactCell, pushOutOfBuildings, type Box } from '../world/collision';
 import type { VehicleDef } from './vehicleDefs';
 
 export const WALK_SPEED = 5;
@@ -22,16 +24,25 @@ export const newPawn = (x = 0, z = 0, a = 0): PawnState => ({ x, z, a, h: 0, vx:
 
 type SurfaceFn = (tile: number) => number;
 
-/** Prüft 5 Punkte eines Kreises gegen unbegehbare Kacheln (und zu Fuß gegen Ladeneinrichtung). */
+/**
+ * Prüft 5 Punkte eines Kreises gegen unbegehbare Kacheln (und zu Fuß gegen Ladeneinrichtung).
+ * Gebäude zählen exakt (gedrehtes Rechteck statt Kachel-Treppe, siehe world/collision.ts).
+ */
 function blocked(map: WorldMap, x: number, z: number, r: number, surface: SurfaceFn): boolean {
   const foot = surface === footSurface;
   // Ladenkacheln zählen zu Fuß nicht, dort gelten die exakten Wände (furniture)
-  const solid = (px: number, pz: number) => surface(map.tileAt(px, pz)) === 0 && !(foot && map.storeTileAt(px, pz));
+  const solid = (px: number, pz: number) => {
+    const cx = Math.floor(px / CELL), cz = Math.floor(pz / CELL);
+    return surface(map.tile(cx, cz)) === 0 && !exactCell(map, cx, cz) && !(foot && map.storeTileAt(px, pz));
+  };
   return (
     (foot && map.furnitureHit(x, z, r)) ||
-    solid(x, z) || solid(x + r, z) || solid(x - r, z) || solid(x, z + r) || solid(x, z - r)
+    solid(x, z) || solid(x + r, z) || solid(x - r, z) || solid(x, z + r) || solid(x, z - r) ||
+    circleHitsBuildings(map, x, z, r)
   );
 }
+
+const slideTmp = { x: 0, z: 0 };
 
 /**
  * Bewegt `s` nach (nx, nz) mit Gleiten an Wänden.
@@ -45,9 +56,39 @@ function moveWithCollision(
     s.x = nx; s.z = nz;
     return 0;
   }
+  // An (schrägen) Gebäudewänden sauber entlanggleiten: Ziel aus dem Rechteck herausdrücken
+  slideTmp.x = nx; slideTmp.z = nz;
+  if (pushOutOfBuildings(map, slideTmp, r + 0.002)) {
+    const step = Math.hypot(nx - s.x, nz - s.z), moved = Math.hypot(slideTmp.x - s.x, slideTmp.z - s.z);
+    if (moved <= step * 1.05 + 1e-4 && !blocked(map, slideTmp.x, slideTmp.z, r, surface)) { s.x = slideTmp.x; s.z = slideTmp.z; return 1; }
+  }
   if (!blocked(map, nx, s.z, r, surface)) { s.x = nx; return 1; }
   if (!blocked(map, s.x, nz, r, surface)) { s.z = nz; return 1; }
   return 2;
+}
+
+const pushTmp = [0, 0, 0];
+/**
+ * Figur aus festen Körpern (Fahrzeuge als gedrehte Rechtecke) herausschieben, ohne sie dabei
+ * in eine Wand zu drücken. Rückgabe: Normale des stärksten Kontakts (oder null).
+ */
+export function pushOutOfBodies(map: WorldMap, p: { x: number; z: number }, r: number, bodies: readonly Box[] | undefined): number[] | null {
+  if (!bodies || !bodies.length) return null;
+  let hit: number[] | null = null, best = 0;
+  for (const b of bodies) {
+    if (!circleBox(b, p.x, p.z, r, pushTmp)) continue;
+    const nx = p.x + pushTmp[0] * pushTmp[2], nz = p.z + pushTmp[1] * pushTmp[2];
+    if (!blocked(map, nx, nz, r, footSurface)) { p.x = nx; p.z = nz; }
+    if (pushTmp[2] > best) { best = pushTmp[2]; hit = [pushTmp[0], pushTmp[1]]; }
+  }
+  return hit;
+}
+
+/** Fahrzeug als Kollisionskörper für Figuren (Box aus Position, Gierwinkel, Breite, Länge). */
+export function carBody(x: number, z: number, a: number, width: number, length: number, out?: Box): Box {
+  const b = out ?? { x: 0, z: 0, hw: 0, hd: 0, c: 1, s: 0, r: 0 };
+  b.x = x; b.z = z; b.hw = width / 2; b.hd = length / 2; b.c = Math.cos(a); b.s = Math.sin(a); b.r = Math.hypot(width, length) / 2;
+  return b;
 }
 
 /** Figur wegschleudern (Comic-Ragdoll): Geschwindigkeit + Flugzeit. */
@@ -58,6 +99,7 @@ export function knockPawn(p: PawnState, vx: number, vz: number, up: number, time
 /** Ein Simulationsschritt zu Fuß. ax/ay sind kamerabezogen (oben = Norden = -z). */
 export function stepPawn(
   map: WorldMap, p: PawnState, ax: number, ay: number, buttons: number, dt: number, speedOverride?: number,
+  bodies?: readonly Box[],
 ): boolean {
   if (p.rt > 0) {
     // Ragdoll: ballistisch, Abprallen am Boden, Reibung – Eingaben werden ignoriert
@@ -72,17 +114,24 @@ export function stepPawn(
     }
     const res = moveWithCollision(map, p, p.x + p.vx * dt, p.z + p.vz * dt, PAWN_RADIUS, footSurface);
     if (res) { p.vx *= -0.3; p.vz *= -0.3; }
+    // Gegen Fahrzeuge: abprallen statt hindurchfliegen (nur in Bodennähe)
+    if (p.h < 1.2) {
+      const n = pushOutOfBodies(map, p, PAWN_RADIUS, bodies);
+      if (n) { const vn = p.vx * n[0] + p.vz * n[1]; if (vn < 0) { p.vx -= 1.4 * vn * n[0]; p.vz -= 1.4 * vn * n[1]; } }
+    }
     if (Math.hypot(p.vx, p.vz) > 1) p.a = wrapAngle(p.a + dt * 9);
     if (p.rt <= 0) { p.rt = 0; p.h = 0; p.vx = p.vz = p.vy = 0; }
     return false;
   }
   let mx = ax, mz = -ay;
   const len = Math.hypot(mx, mz);
-  if (len < 0.15) return false;
+  if (len < 0.15) { pushOutOfBodies(map, p, PAWN_RADIUS, bodies); return false; }
   if (len > 1) { mx /= len; mz /= len; }
   const f = footSurface(map.tileAt(p.x, p.z)) || 1;
   const speed = (speedOverride ?? (buttons & Btn.SPRINT ? SPRINT_SPEED : WALK_SPEED)) * f;
   const res = moveWithCollision(map, p, p.x + mx * speed * dt, p.z + mz * speed * dt, PAWN_RADIUS, footSurface);
+  // Fahrzeuge sind fest: an ihnen entlanglaufen statt hindurch
+  pushOutOfBodies(map, p, PAWN_RADIUS, bodies);
   p.a = approachAngle(p.a, Math.atan2(mx, mz), 14 * dt);
   return res === 2; // true = steckt fest
 }
@@ -121,6 +170,11 @@ export function stepWater(map: WorldMap, def: VehicleDef, v: CarState, ax: numbe
   v.y = water ? WATER_LEVEL + 0.15 : Math.max(0, map.terrainHeight(v.x, v.z));
   v.t += dt;
   return hit;
+}
+
+/** Kann eine Figur hier stehen (keine Wand, kein Gebäude, keine Ladeneinrichtung)? */
+export function footFree(map: WorldMap, x: number, z: number): boolean {
+  return !blocked(map, x, z, PAWN_RADIUS, footSurface);
 }
 
 /** Sucht eine begehbare Position neben (x, z), z. B. zum Aussteigen. */

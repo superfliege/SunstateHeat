@@ -1,7 +1,8 @@
 // Fahr-Effekte ("Juice"): Reifenqualm, Staub, Wasserspritzer, Funken, Auspuffflammen,
-// Motorrauch und Feuer, Explosionen, Hydranten-Fontänen – als Partikel in zwei Draw-Calls
-// (Rauch mit Alpha, Leuchtendes additiv) – sowie Bremsspuren als gepoolte Decals, die nach
-// 30 s verblassen, und abgefallene Fahrzeugteile als Trümmer (30 s, gepoolt).
+// Motorrauch und Feuer, Explosionen, Hydranten-Fontänen, Blutspritzer – als Partikel in zwei
+// Draw-Calls (Rauch/Blut mit Alpha, Leuchtendes additiv) – sowie Bremsspuren und Blutlachen als
+// gepoolte Decals (je ein Draw-Call, verblassen von selbst) und abgefallene Fahrzeugteile als
+// Trümmer (30 s, gepoolt). Nichts davon erzeugt im laufenden Spiel neue Objekte oder Materialien.
 import * as THREE from 'three';
 import { groundHeight } from '../../../shared/src/sim/car';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
@@ -10,6 +11,8 @@ import { U, addOutline, LINE } from './materials/toon';
 const MAX_SMOKE = 1600, MAX_GLOW = 900;
 const SKID_MAX = 900, SKID_LIFE = 30;
 const DEBRIS_MAX = 24, DEBRIS_LIFE = 30;
+const BLOOD_MAX = 320, BLOOD_LIFE = 75;
+const FLASH_MAX = 8;
 
 interface Pool {
   points: THREE.Points;
@@ -68,7 +71,7 @@ export interface EmitOpts {
 
 const tmpC = new THREE.Color(), tmpC1 = new THREE.Color();
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3();
-const UP = new THREE.Vector3(0, 1, 0);
+const UP = new THREE.Vector3(0, 1, 0), tmpE = new THREE.Euler();
 
 interface Debris { mesh: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; life: number; rest: boolean }
 
@@ -81,11 +84,17 @@ export class VehicleFx {
   private skidBirth: THREE.InstancedBufferAttribute;
   private skidShade: THREE.InstancedBufferAttribute;
   private skidNext = 0;
-  private skidLast = new Map<string, { x: number; y: number; z: number; t: number }>();
+  private skidLast = new Map<number, { x: number; y: number; z: number; t: number }>();
   private time = 0;
   private debris: Debris[] = [];
-  private flashes: { mesh: THREE.Mesh; t: number; life: number; size: number }[] = [];
-  private flashGeo = new THREE.IcosahedronGeometry(1, 1);
+  // Leuchtkugeln (Explosion): fester Pool statt neuer Meshes/Materialien je Explosion
+  private flashes: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; life: number; size: number }[] = [];
+  private flashNext = 0;
+  // Blutlachen
+  private blood: THREE.InstancedMesh;
+  private bloodBirth: THREE.InstancedBufferAttribute;
+  private bloodSeed: THREE.InstancedBufferAttribute;
+  private bloodNext = 0;
   private rnd = Math.random;
 
   constructor(private map: WorldMap, private debrisMat: THREE.Material) {
@@ -122,7 +131,62 @@ export class VehicleFx {
     this.skid.frustumCulled = false;
     this.skid.renderOrder = 3;
     this.group.add(this.skid);
+
+    // Blutlachen: Einheits-Quad, Form (unregelmäßige Kleckse) im Fragment-Shader aus dem Zufallswert
+    const bgeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+    const bmat = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 }, uLife: { value: BLOOD_LIFE }, uNight: U.uNight },
+      vertexShader: /* glsl */`
+        attribute float aBirth; attribute float aSeed;
+        varying float vA; varying vec2 vUv; varying float vSeed; varying float vGrow;
+        uniform float uTime; uniform float uLife;
+        void main() {
+          float age = uTime - aBirth;
+          vA = aBirth < 0.0 ? 0.0 : clamp((uLife - age) / 8.0, 0.0, 1.0);
+          vGrow = clamp(age / 0.35, 0.25, 1.0); // läuft kurz aus
+          vUv = uv - 0.5; vSeed = aSeed;
+          gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        }`,
+      fragmentShader: /* glsl */`
+        varying float vA; varying vec2 vUv; varying float vSeed; varying float vGrow;
+        uniform float uNight;
+        void main() {
+          if (vA <= 0.01) discard;
+          float ang = atan(vUv.y, vUv.x);
+          float r = length(vUv) * 2.0;
+          // Klecks: Kreis mit zufälligen Ausbuchtungen und Spritz-Zacken
+          float edge = 0.62 + 0.13 * sin(ang * 3.0 + vSeed * 17.0) + 0.09 * sin(ang * 7.0 + vSeed * 41.0)
+                     + 0.16 * pow(max(0.0, sin(ang * 5.0 + vSeed * 23.0)), 8.0);
+          edge *= vGrow;
+          if (r > edge) discard;
+          float inner = smoothstep(edge, edge * 0.55, r);
+          vec3 c = mix(vec3(0.30, 0.015, 0.02), vec3(0.50, 0.03, 0.04), inner * (0.6 + 0.4 * fract(vSeed * 7.31)));
+          c *= 1.0 - uNight * 0.5;
+          // gestufter Rand (Pixel-Look wie die Partikel)
+          float a = vA * (r < edge * 0.8 ? 0.92 : 0.7);
+          gl_FragColor = vec4(c, a);
+        }`,
+      transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8,
+    });
+    this.blood = new THREE.InstancedMesh(bgeo, bmat, BLOOD_MAX);
+    this.bloodBirth = new THREE.InstancedBufferAttribute(new Float32Array(BLOOD_MAX).fill(-1), 1);
+    this.bloodSeed = new THREE.InstancedBufferAttribute(new Float32Array(BLOOD_MAX), 1);
+    this.blood.geometry.setAttribute('aBirth', this.bloodBirth);
+    this.blood.geometry.setAttribute('aSeed', this.bloodSeed);
+    for (let i = 0; i < BLOOD_MAX; i++) this.blood.setMatrixAt(i, tmpM.makeScale(0, 0, 0));
+    this.blood.frustumCulled = false;
+    this.blood.renderOrder = 3;
+    this.group.add(this.blood);
+
+    for (let i = 0; i < FLASH_MAX; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 1.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      const mesh = new THREE.Mesh(this.flashGeo, mat);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.flashes.push({ mesh, mat, t: 0, life: 0, size: 0 });
+    }
   }
+  private flashGeo = new THREE.IcosahedronGeometry(1, 1);
 
   /** Punktgröße an die Render-Auflösung anpassen (Höhe in Pixeln). */
   setScale(heightPx: number) {
@@ -216,26 +280,75 @@ export class VehicleFx {
   }
   /** Leuchtende Kugel (Explosion, Hit-Flash) */
   flash(x: number, y: number, z: number, size: number, life: number) {
-    const m = new THREE.Mesh(this.flashGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3, 1.2), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    m.position.set(x, y, z);
-    this.group.add(m);
-    this.flashes.push({ mesh: m, t: 0, life, size });
+    const f = this.flashes[this.flashNext];
+    this.flashNext = (this.flashNext + 1) % FLASH_MAX;
+    f.mesh.position.set(x, y, z);
+    f.t = 0; f.life = life; f.size = size;
+    f.mesh.visible = true;
+  }
+
+  // ------------------------------------------------------------------ Blut
+  /**
+   * Blutspritzer an einer Figur: Tröpfchen + feiner Nebel in Stoßrichtung (dx, dz) und Lachen am Boden.
+   * kind 0 = Treffer, 1 = angefahren (weiter gestreut), 2 = überfahren (Lache unter dem Auto).
+   */
+  bloodSplash(x: number, y: number, z: number, dx: number, dz: number, amount: number, kind: number) {
+    const a = Math.max(0.2, Math.min(1.6, amount));
+    const reach = kind === 1 ? 6 : kind === 2 ? 2.5 : 3.5;
+    const drops = Math.round(8 + a * (kind === 1 ? 30 : 20));
+    for (let k = 0; k < drops; k++) {
+      const sp = (0.3 + this.rnd()) * reach * (0.5 + a * 0.5);
+      this.emit(this.smoke, x, y, z, {
+        vx: dx * sp + (this.rnd() - 0.5) * 3, vy: 1 + this.rnd() * (kind === 2 ? 2.5 : 4), vz: dz * sp + (this.rnd() - 0.5) * 3,
+        life: 0.45 + this.rnd() * 0.5, size: 0.1 + this.rnd() * 0.14, size1: 0.08, color: 0xb0121a, color1: 0x5a0408,
+        alpha: 0.95, drag: 0.5, gravity: 15, spread: 0.25,
+      });
+    }
+    for (let k = 0; k < 2 + Math.round(a * 3); k++) {
+      this.emit(this.smoke, x, y, z, { vx: dx * 1.5 + (this.rnd() - 0.5), vy: 0.4 + this.rnd() * 0.6, vz: dz * 1.5 + (this.rnd() - 0.5), life: 0.35 + this.rnd() * 0.25, size: 0.45, size1: 1.3, color: 0x9a1018, color1: 0x5a0a10, alpha: 0.45, drag: 3, spread: 0.3 });
+    }
+    // Lachen: eine große nahe der Figur, kleinere Spritzer in Stoßrichtung verteilt
+    const gx = x + dx * (kind === 2 ? 0 : 0.5), gz = z + dz * (kind === 2 ? 0 : 0.5);
+    const main = kind === 2 ? 1.6 + a * 1.2 : 0.8 + a * 1.1;
+    this.bloodDecal(gx, gz, main, main * (kind === 2 ? 1.6 : 1.15), Math.atan2(dx, dz));
+    const smalls = Math.round(2 + a * (kind === 1 ? 7 : 4));
+    for (let k = 0; k < smalls; k++) {
+      const t = this.rnd() * reach * (0.4 + a * 0.4);
+      const side = (this.rnd() - 0.5) * (1 + t * 0.5);
+      const px = gx + dx * t + dz * side, pz = gz + dz * t - dx * side;
+      const s = 0.18 + this.rnd() * 0.45;
+      this.bloodDecal(px, pz, s, s * (1 + this.rnd() * 1.4), Math.atan2(dx, dz) + (this.rnd() - 0.5) * 0.6);
+    }
+  }
+  private bloodDecal(x: number, z: number, w: number, l: number, rot: number) {
+    const i = this.bloodNext;
+    this.bloodNext = (this.bloodNext + 1) % BLOOD_MAX;
+    tmpQ.setFromAxisAngle(UP, rot);
+    tmpP.set(x, groundHeight(this.map, x, z) + 0.035, z);
+    tmpS.set(w, 1, l);
+    this.blood.setMatrixAt(i, tmpM.compose(tmpP, tmpQ, tmpS));
+    this.bloodBirth.setX(i, this.time);
+    this.bloodSeed.setX(i, this.rnd());
+    this.blood.instanceMatrix.needsUpdate = true;
+    this.bloodBirth.needsUpdate = true;
+    this.bloodSeed.needsUpdate = true;
   }
 
   // ------------------------------------------------------------------ Bremsspuren
   /** Bremsspur je Rad fortsetzen (key = Fahrzeug+Rad). shade 0 = Gummi, 1 = Erdspur. */
-  skidmark(key: string, x: number, y: number, z: number, width: number, shade: number) {
+  skidmark(key: number, x: number, y: number, z: number, width: number, shade: number) {
     const last = this.skidLast.get(key);
-    this.skidLast.set(key, { x, y, z, t: this.time });
-    if (!last || this.time - last.t > 0.12) return;
+    if (!last) { this.skidLast.set(key, { x, y, z, t: this.time }); return; }
     const dx = x - last.x, dz = z - last.z;
     const len = Math.hypot(dx, dz);
-    if (len < 0.25) { this.skidLast.set(key, last); return; }
-    if (len > 4) return;
+    if (this.time - last.t > 0.12 || len > 4) { last.x = x; last.y = y; last.z = z; last.t = this.time; return; }
+    if (len < 0.25) return; // Startpunkt halten, bis das Rad weit genug gerollt ist
+    const lx = last.x, ly = last.y, lz = last.z;
+    last.x = x; last.y = y; last.z = z; last.t = this.time;
     const i = this.skidNext;
     this.skidNext = (this.skidNext + 1) % SKID_MAX;
     tmpQ.setFromAxisAngle(UP, Math.atan2(dx, dz));
-    tmpP.set(last.x, Math.max(last.y, y) + 0.03, last.z);
+    tmpP.set(lx, Math.max(ly, y) + 0.03, lz);
     tmpS.set(width, 1, len + 0.05);
     this.skid.setMatrixAt(i, tmpM.compose(tmpP, tmpQ, tmpS));
     this.skidBirth.setX(i, this.time);
@@ -245,7 +358,7 @@ export class VehicleFx {
     this.skidShade.needsUpdate = true;
   }
   /** Spur unterbrechen (Rad rutscht nicht mehr) */
-  skidEnd(key: string) { this.skidLast.delete(key); }
+  skidEnd(key: number) { this.skidLast.delete(key); }
 
   // ------------------------------------------------------------------ Trümmer
   /** Abgefallenes Teil als Trümmer (geo zentriert, matrix = Welt-Matrix des Fahrzeugs). */
@@ -274,16 +387,19 @@ export class VehicleFx {
   update(dt: number) {
     this.time += dt;
     (this.skid.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
+    (this.blood.material as THREE.ShaderMaterial).uniforms.uTime.value = this.time;
+    // Spuren verschwundener Fahrzeuge vergessen (sonst wächst die Tabelle beim Herumfahren)
+    for (const [k, l] of this.skidLast) if (this.time - l.t > 1) this.skidLast.delete(k);
     const night = U.uNight.value;
     this.updatePool(this.smoke, dt, 1);
     this.updatePool(this.glow, dt, 1.6 + night);
-    for (let i = this.flashes.length - 1; i >= 0; i--) {
-      const f = this.flashes[i];
+    for (const f of this.flashes) {
+      if (!f.mesh.visible) continue;
       f.t += dt;
       const k = f.t / f.life;
       f.mesh.scale.setScalar(f.size * (0.4 + k * 1.2));
-      (f.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, 1 - k);
-      if (k >= 1) { this.group.remove(f.mesh); (f.mesh.material as THREE.Material).dispose(); this.flashes.splice(i, 1); }
+      f.mat.opacity = Math.max(0, 1 - k);
+      if (k >= 1) f.mesh.visible = false;
     }
     for (let i = this.debris.length - 1; i >= 0; i--) {
       const d = this.debris[i];
@@ -293,7 +409,7 @@ export class VehicleFx {
       if (d.rest) continue;
       d.vel.y -= 9.81 * 1.4 * dt;
       d.mesh.position.addScaledVector(d.vel, dt);
-      tmpQ.setFromEuler(new THREE.Euler(d.spin.x * dt, d.spin.y * dt, d.spin.z * dt));
+      tmpQ.setFromEuler(tmpE.set(d.spin.x * dt, d.spin.y * dt, d.spin.z * dt));
       d.mesh.quaternion.premultiply(tmpQ);
       const g = groundHeight(this.map, d.mesh.position.x, d.mesh.position.z) + 0.08;
       if (d.mesh.position.y < g) {
