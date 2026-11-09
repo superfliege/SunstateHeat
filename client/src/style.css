@@ -211,6 +211,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 .pn-foot { opacity: 0.6; font-size: 12px; text-align: center; margin: 10px 0 0; }
 
 #quest-panel .prog { color: #ffe14d; font-family: var(--mono); margin-top: 4px; }
+.pn-npc { display: flex; flex-direction: column; gap: 4px; margin: 12px 0 4px; padding: 10px 14px; background: rgba(0,0,0,0.35); border-left: 5px solid var(--cyan); border-radius: 8px; }
+.pn-npc span { font-size: 15px; font-style: italic; }
+.pn-opts { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.pn-opt { display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px 12px; border: 0; border-radius: 8px; background: rgba(255,255,255,0.08); color: #fff; font: inherit; cursor: pointer; }
+.pn-opt:hover { background: rgba(255,255,255,0.18); }
+.pn-opt kbd { min-width: 20px; padding: 1px 6px; border-radius: 4px; background: var(--pink); font-family: var(--mono); font-weight: bold; text-align: center; }
 .pn-dlg { margin: 8px 0 2px; padding: 8px 10px; background: rgba(0,0,0,0.3); border-left: 4px solid var(--cyan); border-radius: 6px; font-size: 13px; }
 .pn-dlg b { color: var(--cyan); }
 .pn-rep { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 13px; }

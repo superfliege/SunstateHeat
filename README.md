@@ -48,7 +48,7 @@ den offiziellen GitHub-Repositories. Ohne sie läuft das Spiel trotzdem – dann
 | F9 | Retro-Modus: Render-Scale 0,6 mit harter Pixel-Hochskalierung (auch per `?retro=1`) |
 | Gamepad | Linker Stick, RT/LT = Gas/Rückwärts, A = Einsteigen, B = Sprint/Nitro, X = Handbremse, Y = Hupe; Vibration nach Schlupf und Aufprall |
 
-**Dev-Chatbefehle** (nur `npm run dev`): `/test` (ins Testgelände), `/auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad>`, `/rennen <1-3>` (zum Renntelefon), `/reparieren`, `/feuer`.
+**Dev-Chatbefehle** (nur `npm run dev`): `/test` (ins Testgelände), `/laden <sunmart|gas|ammo|paint>` (reihum vor die Läden), `/auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad>`, `/rennen <1-3>` (zum Renntelefon), `/reparieren`, `/feuer`.
 
 **Straßenrennen** (`shared/src/races.ts`, `server/src/quests/Races.ts`): drei beliebig oft wiederholbare Rennen (Downtown Dash und Brickell Hills Loop mit je 2 Runden, Cane Ridge Rally als Sprint), Start am 🏁-Renntelefon. Immer 5 Starter: bis zu 4 Spieler, den Rest füllen KI-Fahrer auf (gleiche Fahrphysik, leichtes Gummiband). Startet jemand und andere Spieler stehen im Umkreis von 60 m, bleibt die Anmeldung 15 s offen (am selben Telefon beitreten). Jeder bekommt ein ausgelostes Fahrzeug. Checkpoints erscheinen als Ringe wie bei GTA (aktueller Ring plus der nächste). Preisgeld und XP gibt es je nach Platz.
 
@@ -191,10 +191,16 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
 
 ### Läden, Fahndung, Polizei (M2, Schritt 3)
 
-- **Läden** (F in der Nähe, farbige Markierung + Minimap-Punkt): *24/7 Sunmart* (Essen, Verbandskasten), *Ammo & Ammo*
-  (Waffen, Munition, Westen), *Paint & Pray* (Reparatur, Umlackieren). Sunmart und Ammo & Ammo sind begehbare
-  Gebäude (Tür, Innenraum mit Theke; Marker im Innenraum), Paint & Pray ist nur ein Marker an der Werkstatt.
-  Standorte werden in der Weltgenerierung bestimmt (`placeShops` in `shared/src/shops.ts`), der Server prüft Entfernung, Stufe (Waffen-Freischaltung), Geld und Rucksackplatz.
+- **Läden** sind begehbar: Man geht durch die Tür hinein, Dach und obere Wände fahren weg (Cutaway) und geben den
+  Blick auf die Einrichtung frei. Eingekauft wird im **Gespräch mit dem Verkäufer** hinter der Theke (davor stehen,
+  F: Begrüßung, dann *Einkaufen* / *Was gibt's Neues?* / *Tschüss*, Tasten 1–3). *24/7 Sunmart* (Supermarkt: Kühlregale,
+  Regalgänge, Kasse; Essen, Verbandskasten), *Gas & Go* (Tankstellen-Shop, ersetzt das massive Shop-Gebäude der
+  Tankstelle; Snacks, Energydrinks), *Ammo & Ammo* (Glasvitrine, Gewehrwand; Waffen, Munition, Westen),
+  *Paint & Pray* (Mechaniker an der Werkstatt, auch aus dem Auto ansprechbar; Reparatur, Umlackieren).
+  Läden stehen an der Straße (Tür zur Fahrbahn, parallel zum Straßenverlauf); Wände, Theken und Regale blockieren
+  zu Fuß als gedrehte Rechtecke (`map.furniture`, gemeinsame Simulation), für Fahrzeuge sind die Kacheln darunter massiv. Standorte und Einrichtung bestimmt
+  die Weltgenerierung (`placeShops`/`STORE_FURNITURE` in `shared/src/shops.ts`), gezeichnet von
+  `client/src/render/StoresView.ts`. Der Server prüft Abstand zum Verkäufer, Stufe (Waffen-Freischaltung), Geld und Rucksackplatz.
 - **Inventar** (I): Waffen ausrüsten, Gegenstände benutzen (8 Rucksack-Slots).
 - **Waffenmodelle** in der Hand, Schlag-Schwung und Rückstoß; **Fahrzeugschaden** durch Schüsse (Brand/Explosion bei 0 HP);
   **Drive-by** mit der Pistole (nicht nach hinten).

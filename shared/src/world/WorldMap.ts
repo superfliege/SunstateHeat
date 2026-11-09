@@ -22,6 +22,9 @@ export const BuildingStyle = {
   Store: 10, // begehbarer Laden (Hohlgebäude mit Tür, shops.ts)
 } as const;
 
+/** Gedrehtes Rechteck: [Mitte x, Mitte z, halbe Breite, halbe Tiefe, cos rot, sin rot]. */
+export type Obb = [number, number, number, number, number, number];
+
 export interface BuildingDef {
   x: number; z: number; // Mittelpunkt in Metern
   w: number; d: number; h: number; // w entlang der Front, d in die Tiefe
@@ -131,6 +134,17 @@ export class WorldMap {
   spikes: [number, number, number, number][] = [];
   /** Baumfreie Rechtecke [x0, z0, x1, z1] (Testgelände, Rampen). */
   clearAreas: [number, number, number, number][] = [];
+  /**
+   * Wände und Einrichtung begehbarer Läden (frei gedreht, siehe shops.ts) als Hindernisse zu Fuß:
+   * Kachelindex -> gedrehte Rechtecke [Mitte x, Mitte z, halbe Breite, halbe Tiefe, cos, sin].
+   */
+  furniture = new Map<number, Obb[]>();
+  /**
+   * Kacheln unter einem Laden, die für Fahrzeuge massiv (BUILDING) sind, zu Fuß aber nicht zählen:
+   * dort gelten nur die exakten Wand-Rechtecke aus `furniture` (die Kacheln sind achsparallel,
+   * der Laden steht parallel zur Straße).
+   */
+  storeTiles = new Set<number>();
   /** Werkstätten (Reparatur): Mittelpunkt + Radius. */
   workshops: { x: number; z: number; r: number }[] = [];
   /** Läden (Sunmart, Ammo & Ammo, Paint & Pray) mit Tür-Position; Gebäude liegen in `buildings` (shops.ts). */
@@ -155,6 +169,50 @@ export class WorldMap {
   tileAt(x: number, z: number): number {
     return this.tile(Math.floor(x / CELL), Math.floor(z / CELL));
   }
+
+  /** Hindernis eintragen: gedrehtes Rechteck (Mitte, halbe Breite/Tiefe, Drehung wie Gebäude). */
+  addFurniture(x: number, z: number, hw: number, hd: number, rot: number) {
+    const o: Obb = [x, z, hw, hd, Math.cos(rot), Math.sin(rot)];
+    // in alle Kacheln eintragen, die das Rechteck plus Figurenradius (< 1 m) berühren können
+    const r = Math.hypot(hw, hd) + 1;
+    for (let cz = Math.floor((z - r) / CELL); cz <= Math.floor((z + r) / CELL); cz++) {
+      for (let cx = Math.floor((x - r) / CELL); cx <= Math.floor((x + r) / CELL); cx++) {
+        if (cx < 0 || cz < 0 || cx >= GRID_SIZE || cz >= GRID_SIZE) continue;
+        const i = cz * GRID_SIZE + cx;
+        const list = this.furniture.get(i);
+        if (list) list.push(o); else this.furniture.set(i, [o]);
+      }
+    }
+  }
+
+  /** Überschneidet ein Kreis (x, z, Radius rad) ein Hindernis aus `furniture`? */
+  furnitureHit(x: number, z: number, rad: number): boolean {
+    if (!this.furniture.size) return false;
+    const list = this.furniture.get(this.tileIndex(x, z));
+    if (!list) return false;
+    for (const [ox, oz, hw, hd, c, s] of list) {
+      // in lokale Koordinaten (Breite entlang (cos, -sin), Tiefe entlang (sin, cos))
+      const dx = x - ox, dz = z - oz;
+      const lx = dx * c - dz * s, lz = dx * s + dz * c;
+      const ex = Math.abs(lx) - hw, ez = Math.abs(lz) - hd;
+      const qx = Math.max(ex, 0), qz = Math.max(ez, 0);
+      if (qx * qx + qz * qz < rad * rad) return true;
+    }
+    return false;
+  }
+
+  /** Kachelindex einer Weltposition (-1 außerhalb). */
+  tileIndex(x: number, z: number): number {
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    if (cx < 0 || cz < 0 || cx >= GRID_SIZE || cz >= GRID_SIZE) return -1;
+    return cz * GRID_SIZE + cx;
+  }
+
+  /** Liegt die Position auf einer Ladenkachel (zu Fuß begehbar, siehe storeTiles)? */
+  storeTileAt(x: number, z: number): boolean {
+    return this.storeTiles.size > 0 && this.storeTiles.has(this.tileIndex(x, z));
+  }
+
 
   groundAt(x: number, z: number): number {
     const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
@@ -188,6 +246,7 @@ export class WorldMap {
 
   /** Höhe, auf der Figuren und Landfahrzeuge stehen (Brücken, Stege, Sumpf beachtet). */
   surfaceY(x: number, z: number): number {
+    if (this.storeTileAt(x, z)) return Math.max(0.05, this.terrainHeight(x, z)) + CURB_TOP; // Ladenboden
     switch (this.tileAt(x, z)) {
       case Tile.BRIDGE: return BRIDGE_DECK;
       case Tile.DOCK: return 0.4;

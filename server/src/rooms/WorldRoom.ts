@@ -32,7 +32,7 @@ import { payphones, questLocations, type PhoneDef } from '../../../shared/src/qu
 import { QUEST_BY_ID } from '../../../shared/src/questData';
 import type { GangId } from '../../../shared/src/gangs';
 import { ITEMS, BACKPACK_SLOTS } from '../../../shared/src/items';
-import { generateShops, shopCatalog, RESPRAY_PRICE, SHOP_RANGE, type ShopDef } from '../../../shared/src/shops';
+import { generateShops, shopCatalog, storeToWorld, MECHANIC_RANGE, RESPRAY_PRICE, SHOP_SERVER_RANGE, type ShopDef } from '../../../shared/src/shops';
 import { Police } from '../sim/Police';
 import { CARRY_SLOTS, WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { aimAssist, dirOf, meleeTarget, shootRay, wallDistance, type Target } from '../sim/Combat';
@@ -430,7 +430,8 @@ export class WorldRoom {
     this.broadcast({ t: 'chat', from: p.name, text, color: p.color });
   }
 
-  /** Dev-Befehle zum Testen/Tunen: /test, /auto <klasse>, /reparieren, /feuer */
+  /** Dev-Befehle zum Testen/Tunen: /test, /laden <typ>, /auto <klasse>, /reparieren, /feuer */
+  private devShopIdx = -1;
   private devCommand(p: ServerPlayer, text: string) {
     const [cmd, arg] = text.slice(1).toLowerCase().split(/\s+/);
     const say = (t: string) => p.conn.send({ t: 'notice', text: t, kind: 'info' });
@@ -476,10 +477,20 @@ export class WorldRoom {
       this.addMoney(p, Number(arg) || 1000, 'dev');
     } else if ((cmd === 'reparieren' || cmd === 'repair') && current) {
       this.repair(current);
+    } else if (cmd === 'laden' || cmd === 'shop') {
+      // Zum nächsten Laden des Typs (wiederholt aufrufen = reihum): vor die Tür bzw. zum Mechaniker
+      const list = this.shops.filter((s) => !arg || s.type === arg);
+      if (!list.length) { say('/laden <sunmart|gas|ammo|paint>'); return; }
+      const s = list[(this.devShopIdx = (this.devShopIdx + 1) % list.length)];
+      const [x, z] = s.building ? storeToWorld(s, 0, 6.5) : [s.keeper.x + Math.sin(s.keeper.a) * 4, s.keeper.z + Math.cos(s.keeper.a) * 4];
+      const a = Math.atan2(s.x - x, s.z - z);
+      if (current) { placeCar(this.map, current.sim.car, current.sim.prof, x, z, a); current.dmgVer++; }
+      else p.pawn = newPawn(x, z, a);
+      say(`${s.name} (${s.keeper.name})`);
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /test · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad> · /rennen <1-3> · /reparieren · /feuer');
+      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad> · /rennen <1-3> · /reparieren · /feuer');
     }
   }
 
@@ -805,7 +816,9 @@ export class WorldRoom {
     const shop = this.shops.find((s) => s.id === shopId);
     if (!shop || p.downT > 0) return;
     const pos = this.positionOf(p);
-    if (dist2(pos.x, pos.z, shop.x, shop.z) > (SHOP_RANGE + 4) ** 2) return bad('Du bist zu weit vom Laden entfernt.');
+    // Gekauft wird beim Verkäufer (Mechaniker auch aus dem Fahrzeug); etwas Spielraum für Latenz
+    const range = shop.type === 'paint' ? MECHANIC_RANGE + 4 : SHOP_SERVER_RANGE;
+    if (dist2(pos.x, pos.z, shop.keeper.x, shop.keeper.z) > range ** 2) return bad(`${shop.keeper.name} kann dich von da aus nicht hören – geh näher ran.`);
     const entry = shopCatalog(shop.type).find((i) => i.key === key);
     if (!entry) return;
     if (levelFromXp(p.profile.xp).level < entry.minLevel) return bad(`${entry.name} gibt es erst ab Stufe ${entry.minLevel}.`);
