@@ -5,12 +5,13 @@ import arenaData from './arenas.json';
 import botData from './config/bots.json';
 import sumoConfig from './config/sumo.json';
 import derbyConfig from './config/derby.json';
+import hotPotatoConfig from './config/hotpotato.json';
 
 /** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
 export const MG_PHONE_ID = 'minigames';
 export const MG_PREFIX = 'mg:';
 
-export type MinigameId = 'sumo' | 'derby';
+export type MinigameId = 'sumo' | 'derby' | 'hotpotato';
 
 // ------------------------------------------------------------------ Arenen
 export type DeathZone =
@@ -79,6 +80,14 @@ export interface DerbyConfig extends BaseModeConfig {
   tieGap: number;
 }
 
+export interface HotPotatoConfig extends BaseModeConfig {
+  fuse: { start: number; step: number; min: number };
+  passImmunity: number;
+  passMinSpeed: number;
+  roundPause: number;
+  damageScale: number;
+}
+
 export interface MinigameMeta { id: MinigameId; name: string; icon: string; intro: string[]; config: BaseModeConfig }
 
 export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
@@ -97,6 +106,14 @@ export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
       'Heck und Seite sind empfindlich, die Front hält am meisten aus. Wer kein fahrbares Auto mehr hat, ist raus.',
     ],
     config: derbyConfig as unknown as DerbyConfig,
+  },
+  hotpotato: {
+    id: 'hotpotato', name: 'Hot Potato', icon: '💣',
+    intro: [
+      'Einer hat die Bombe – ramm jemanden, um sie loszuwerden!',
+      'Läuft der Zünder ab, fliegt der Träger in die Luft. Nach dem Weitergeben bist du kurz geschützt. Letzter Überlebender gewinnt.',
+    ],
+    config: hotPotatoConfig as unknown as HotPotatoConfig,
   },
 };
 export const isMinigame = (s: string): s is MinigameId => s in MINIGAMES;

@@ -9,11 +9,13 @@ import type { ServerPlayer, ServerVehicle } from '../entities/types';
 import { MG_MARK, type Minigame, type MinigameHost, type MinigameOptions } from './Minigame';
 import { Sumo } from './modes/Sumo';
 import { Derby } from './modes/Derby';
+import { HotPotato } from './modes/HotPotato';
 
 type Factory = (h: MinigameHost, opts: MinigameOptions) => Minigame;
 const FACTORIES: Record<MinigameId, Factory> = {
   sumo: (h, o) => new Sumo(h, o),
   derby: (h, o) => new Derby(h, o),
+  hotpotato: (h, o) => new HotPotato(h, o),
 };
 
 export class MinigameManager {

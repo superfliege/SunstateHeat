@@ -1,0 +1,22 @@
+{
+  "_doc": "Hot Potato: Ein zufälliger Teilnehmer hat die Bombe. Rammen (Aufprall ab passMinSpeed m/s) gibt sie weiter. Wer sie gerade abgegeben hat, ist passImmunity Sekunden geschützt (sie kann nicht sofort zurück). Läuft der Zünder ab, explodiert der Träger und scheidet aus; nach roundPause Sekunden bekommt ein neuer zufälliger Teilnehmer die Bombe. fuse: Zünderzeit der ersten Runde (start), Änderung je Runde (step), Minimum (min). damageScale 0 = kein Fahrzeugschaden (nur die Bombe zählt). timeLimit ist nur eine Sicherung.",
+  "arena": "bowl",
+  "lobbyTime": 15,
+  "joinRange": 70,
+  "gridTime": 4,
+  "endTime": 8,
+  "timeLimit": 360,
+  "players": { "min": 6, "max": 8, "maxHumans": 8 },
+  "bots": { "difficulty": "normal", "mix": true },
+  "vehicles": ["car_hatchback", "car_sedan", "proc_sport", "proc_muscle", "ck-sedan-sports", "ck-hatchback-sports"],
+  "onLeave": "bot",
+  "abortWithoutHumans": true,
+  "flipTimeout": 8,
+  "fuse": { "start": 20, "step": -2, "min": 10 },
+  "passImmunity": 2,
+  "passMinSpeed": 2,
+  "roundPause": 3,
+  "damageScale": 0,
+  "rewards": [[1300, 240], [550, 130], [250, 80]],
+  "participation": [0, 40]
+}
