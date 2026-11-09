@@ -132,6 +132,8 @@ export interface QuestState {
   count?: number;
   /** Rennen: Platz / Starter, Runde / Runden. */
   race?: { place: number; field: number; lap: number; laps: number };
+  /** Catch the Taxi: eigene Rolle – Taxi (unendlich Nitro, darf schießen) oder Jäger (darf nicht schießen). */
+  hunt?: 'taxi' | 'hunter';
 }
 
 export interface PhoneQuest {

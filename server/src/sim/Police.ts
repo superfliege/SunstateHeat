@@ -42,6 +42,8 @@ export interface PoliceHost {
   arrest(p: ServerPlayer): void;
   /** Ein Passant hat das Verbrechen gesehen und ruft jetzt die Polizei (Animation + Bark). */
   witness?(ped: Ped, p: ServerPlayer, x: number, z: number): void;
+  /** Spieler ist gerade von der Fahndung ausgenommen (z. B. Spielmodus „Catch the Taxi“). */
+  exempt?(p: ServerPlayer): boolean;
 }
 
 interface CarBrain { stuck: number; reverse: number }
@@ -58,6 +60,7 @@ export class Police {
   // ------------------------------------------------------------------ Verbrechen
   /** Verbrechen melden: wirkt nur mit Zeugen (Spec 11.2). */
   crime(p: ServerPlayer, level: number, x: number, z: number) {
+    if (this.h.exempt?.(p)) return;
     if (this.copNear(x, z, COP_WITNESS_RANGE)) { this.raise(p, level); return; }
     const w = this.pedWitness(x, z);
     if (!w) return;
@@ -69,6 +72,7 @@ export class Police {
 
   /** Fahndungsstufe sofort erhöhen (Polizist hat es gesehen oder Passant hat gemeldet). */
   raise(p: ServerPlayer, level: number) {
+    if (this.h.exempt?.(p)) return;
     p.searchT = 0;
     const lvl = Math.min(MAX_WANTED, Math.max(0, Math.floor(level)));
     if (lvl > p.wanted) {
