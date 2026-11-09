@@ -9,7 +9,7 @@
 import { dist2, wrapAngle } from '../../../shared/src/math';
 import { Btn, type GameEvent } from '../../../shared/src/protocol';
 import { groundHeight, placeCar, setYaw, syncDerived, upVector } from '../../../shared/src/sim/car';
-import { pickCarVariant } from '../../../shared/src/sim/handling';
+import { pickCarVariant, variantInfo } from '../../../shared/src/sim/handling';
 import { createSimVehicle } from '../../../shared/src/sim/vehicle';
 import { VehicleKind } from '../../../shared/src/sim/vehicleDefs';
 import { offsetPolyline, type Vec2 } from '../../../shared/src/world/geometry';
@@ -124,7 +124,7 @@ export class Traffic {
       const id = this.host.allocId();
       // Verkehr: keine Lkw auf Nebenstraßen
       let variant = pickCarVariant(Math.random());
-      if (variant === 8 && e.type !== RoadType.Highway && e.type !== RoadType.Main) variant = 1;
+      if (variantInfo(variant).cls === 'truck' && e.type !== RoadType.Highway && e.type !== RoadType.Main) variant = 1;
       const a = Math.atan2(q[0] - p[0], q[1] - p[1]);
       const sim = createSimVehicle(map, VehicleKind.Car, variant, p[0], p[1], a);
       this.host.vehicles.set(id, {

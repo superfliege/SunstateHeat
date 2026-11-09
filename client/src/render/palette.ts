@@ -62,6 +62,31 @@ export function palmaraize(hex: number): number {
   return out;
 }
 
+/**
+ * Sanfte Variante für Pflanzen: kein Zug zur Palette (sonst kippen Grüntöne nach Türkis oder Braun),
+ * nur dieselbe Sonnen-Anhebung, etwas mehr Sättigung und ein Hauch Wärme.
+ */
+export function sunlit(hex: number): number {
+  let [r, g, b] = rgb(hex);
+  // Mint/Türkis (Kenney-Grün, Farbton ~140–175°) Richtung sattes Blattgrün (~105°) drehen
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max === g && max - min > 30) {
+    const hue = 120 + 60 * (b - r) / (max - min);
+    if (hue > 128 && hue < 185) {
+      const t = (hue - 105) / 60; // 0 = Ziel
+      const k = Math.min(1, Math.max(0, t));
+      const newB = min + (b - min) * (1 - 0.75 * k);
+      const newR = r + (max - min) * 0.08 * k;
+      g *= 1 - 0.1 * k; // etwas dunkler, sattes Tropengrün statt Limette
+      r = newR; b = newB;
+    }
+  }
+  const grey = (r + g + b) / 3;
+  const lift = (v: number) => LIFT * 0.6 + v * (1 - (LIFT * 0.6) / 255);
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return (clamp(lift(grey + (r - grey) * 1.08) * 1.03) << 16) | (clamp(lift(grey + (g - grey) * 1.08)) << 8) | clamp(lift(grey + (b - grey) * 1.08) * 0.95);
+}
+
 /** Ist die Farbe "Glas" (bläulich, eher dunkel)? Daraus werden nachts leuchtende Fenster. */
 export function isGlass(hex: number): boolean {
   const [r, g, b] = rgb(hex);

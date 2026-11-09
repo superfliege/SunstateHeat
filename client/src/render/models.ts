@@ -98,8 +98,10 @@ const CAR_MODELS: ModelName[] = [
   'car_sedan', 'car_hatchback', 'car_stationwagon', 'car_sedan', 'car_hatchback', 'car_stationwagon',
   'truck_red', 'truck_yellow', 'car_taxi',
 ];
+/** Speedboote aus dem Watercraft Kit (welches, hängt an der Fahrzeug-ID). */
+const BOAT_MODELS: ModelName[] = ['wc-boat-speed-a', 'wc-boat-speed-b', 'wc-boat-speed-c', 'wc-boat-speed-d', 'wc-boat-speed-e', 'wc-boat-speed-g'];
 /** Modelle mit fester Lackierung (werden nicht umgefärbt). */
-const FIXED_PAINT = new Set<ModelName>(['car_taxi']);
+const FIXED_PAINT = new Set<ModelName>(['car_taxi', 'wc-boat-fan']);
 const CAR_LENGTH = 4.3;
 const BIKE_LENGTH = 2.1;
 
@@ -187,7 +189,7 @@ function modelVehicle(name: ModelName, paint: number, length: number, bike: bool
 /** variant = Fahrzeug-ID (wählt das Auto-Modell). */
 export function vehicleGeometry(kind: number, colorIdx: number, variant = 0): VehicleGeometry {
   const model = kind === VehicleKind.Car ? CAR_MODELS[variant % CAR_MODELS.length] : null;
-  const key = `${kind}:${colorIdx}:${model ?? ''}`;
+  const key = `${kind}:${colorIdx}:${model ?? ''}:${kind === VehicleKind.Boat ? variant % BOAT_MODELS.length : ''}`;
   let v = vehicleCache.get(key);
   if (v) return v;
   const paint = VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length];
@@ -199,6 +201,25 @@ export function vehicleGeometry(kind: number, colorIdx: number, variant = 0): Ve
     v = { ...fromKit, seatY: kind === VehicleKind.Bike ? 0.35 : 0 };
     vehicleCache.set(key, finishVehicle(v));
     return v;
+  }
+
+  // Boote aus dem Kenney Watercraft Kit: Speedboote (Lack in Spielfarbe), Airboat mit Propellerkäfig
+  if (kind === VehicleKind.Boat || kind === VehicleKind.Airboat) {
+    const boat = kind === VehicleKind.Boat;
+    const name: ModelName = boat ? BOAT_MODELS[variant % BOAT_MODELS.length] : 'wc-boat-fan';
+    const len = boat ? 5.4 : 4.9;
+    const kitBoat = modelVehicle(name, paint, len, true);
+    if (kitBoat) {
+      // Rumpf zu ~35 % ins Wasser tauchen
+      const m = getModel(name)!;
+      const h = (m.size.y * len) / m.size.z;
+      const dy = -h * 0.35 - 0.15;
+      kitBoat.body.translate(0, dy, 0);
+      kitBoat.lights = box(0.2, 0.2, 0.2, 0, h * 0.6 + dy, 0.5, boat ? 0x5cff7a : 0xfff6c8);
+      v = { ...kitBoat, seatY: boat ? 0.1 : 0.75 };
+      vehicleCache.set(key, finishVehicle(v));
+      return v;
+    }
   }
 
   switch (kind) {

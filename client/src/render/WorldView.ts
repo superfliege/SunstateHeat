@@ -15,7 +15,7 @@ import { Tile, WATER_LEVEL } from '../../../shared/src/world/tiles';
 import {
   BRIDGE_DECK, BuildingStyle, CURB_TOP, LotUse, RoadType, TreeType, Zone, type BuildingDef, type RoadEdge, type RoadNode, type TreeDef, type WorldMap,
 } from '../../../shared/src/world/WorldMap';
-import { getModel, type ModelName } from './assets';
+import { getModel, triangleColors, type BakedModel, type ModelName } from './assets';
 import { GeoBuilder } from './GeoBuilder';
 import { standaloneTexture } from './materials/atlas';
 import { MATERIALS, matIndex } from './materials/library';
@@ -70,11 +70,34 @@ const COVER_DISTANCE = 230;
 const CURB_H = 0.14;
 const WHITE = 0xffffff;
 
-/** Mittelbauten -> KayKit-Stadthäuser, Wohnhäuser -> Kenney-Häuschen (Stelzenhütten bleiben prozedural). */
+/**
+ * Gebäude aus den Kits (Stelzenhütten, Art-déco, Little Havana bleiben prozedural):
+ *   Mittelbauten -> Kenney City Kit Commercial + KayKit-Stadthäuser
+ *   Hochhäuser   -> Kenney Skyscraper (wenn die Proportion passt, sonst Spiegelglas-Turm)
+ *   Wohnhäuser   -> Kenney City Kit Suburban + Starter-Kit-Häuschen
+ *   Lagerhallen  -> Kenney City Kit Industrial
+ * Kenney-Wände werden in der Gebäudefarbe, Dächer/Akzente in einer Zonenfarbe umgefärbt.
+ */
 const MIDRISE_MODELS: ModelName[] = [
   'building_A', 'building_B', 'building_C', 'building_D', 'building_E', 'building_F', 'building_G', 'building_H',
+  'building-a', 'building-b', 'building-c', 'building-d', 'building-e', 'building-f', 'building-g',
+  'building-h', 'building-i', 'building-j', 'building-k', 'building-l', 'building-m', 'building-n',
 ];
-const HOUSE_MODELS: ModelName[] = ['house_a', 'house_b', 'house_c', 'house_d'];
+const TOWER_MODELS: ModelName[] = ['building-skyscraper-a', 'building-skyscraper-b', 'building-skyscraper-c', 'building-skyscraper-d', 'building-skyscraper-e'];
+const HOUSE_MODELS: ModelName[] = [
+  'house_a', 'house_b', 'house_c', 'house_d',
+  'building-type-a', 'building-type-b', 'building-type-c', 'building-type-d', 'building-type-e', 'building-type-f', 'building-type-g',
+  'building-type-h', 'building-type-i', 'building-type-j', 'building-type-k', 'building-type-l', 'building-type-m', 'building-type-n',
+  'building-type-o', 'building-type-p', 'building-type-q', 'building-type-r', 'building-type-s', 'building-type-t', 'building-type-u',
+];
+const WAREHOUSE_MODELS: ModelName[] = [
+  'industrial-a', 'industrial-b', 'industrial-c', 'industrial-d', 'industrial-e', 'industrial-f', 'industrial-g', 'industrial-h',
+  'industrial-i', 'industrial-j', 'industrial-k', 'industrial-l', 'industrial-m', 'industrial-n', 'industrial-o', 'industrial-p',
+  'industrial-q', 'industrial-r', 'industrial-s', 'industrial-t',
+];
+/** Dachfarben: Terrakotta, Schiefer, Florida-Türkis, Sand – und Akzente in Neon-Pastell für Geschäftshäuser. */
+const ROOF_HEX = [0xd4583f, 0xc0703f, 0xb8553a, 0x5e5a6e, 0x3fb8b0, 0xe8d6b0];
+const ACCENT_HEX = [0xff7eb0, 0x3fd8cc, 0xffb36b, 0x9a6bd8, 0x74d2f2, 0xff8577];
 const NEON = [0xff4fae, 0x4ff2ff, 0xb06bff, 0xffe468, 0x6dff9c];
 const PASTEL = ['pink', 'mint', 'sky', 'lemon', 'salmon'] as const;
 const PASTEL_HEX = [0xffc2d6, 0xb4f0d8, 0xa8dcf5, 0xfff0a0, 0xffb4a0];
@@ -91,6 +114,34 @@ interface Chunk {
 interface PlantEntry { variant: PlantVariant; mats: THREE.Matrix4[]; cover: boolean; mesh?: THREE.InstancedMesh }
 /** Baum wackelt nach einem Treffer (gedämpfte Schwingung um den Fuß). */
 interface Wobble { entry: PlantEntry; idx: number; base: THREE.Matrix4; t: number; s: number; ax: THREE.Vector3 }
+
+/**
+ * Kenney-Kit-Modell umfärben: Wand-Dreiecke -> wall, Akzente -> accent (Helligkeitsverlauf des
+ * Atlas bleibt erhalten), Rest palmaraisiert. Teilt Position/Normalen mit dem Original.
+ */
+function recolorKit(model: BakedModel, wall: number, accent: number): THREE.BufferGeometry {
+  const tri = model.triColors, cls = model.triClass;
+  const lum = (h: number) => (((h >> 16) & 255) + ((h >> 8) & 255) + (h & 255)) / 3;
+  let accLum = 0, accN = 0;
+  for (let t = 0; t < tri.length; t++) if (cls[t] === 2) { accLum += lum(tri[t]); accN++; }
+  accLum = accN ? accLum / accN : 128;
+  const scale = (hex: number, k: number) => {
+    const c = (v: number) => Math.min(255, Math.round(v * k));
+    return (c((hex >> 16) & 255) << 16) | (c((hex >> 8) & 255) << 8) | c(hex & 255);
+  };
+  const out = new Uint32Array(tri.length);
+  for (let t = 0; t < tri.length; t++) {
+    const c = cls[t];
+    out[t] = c === 1 ? scale(wall, Math.min(1.08, lum(tri[t]) / 232))
+      : c === 2 ? scale(accent, Math.min(1.25, lum(tri[t]) / accLum))
+        : palmaraize(tri[t]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', model.body.getAttribute('position'));
+  g.setAttribute('normal', model.body.getAttribute('normal'));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(triangleColors(out, (h) => h), 3));
+  return g;
+}
 
 const m4 = (x: number, y: number, z: number, rot: number, sx: number, sy = sx, sz = sx) =>
   new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(sx, sy, sz));
@@ -147,6 +198,8 @@ export class WorldView {
     map.buildings.forEach((b) => this.buildBuilding(b));
     this.buildStreetProps();
     this.buildCoast();
+    this.buildHarbor();
+    this.buildHighwaySigns();
     trees.forEach((t, i) => { this.treeRefs[i] = this.addTree(t); });
     this.buildGroundCover();
     this.assemble();
@@ -614,6 +667,7 @@ export class WorldView {
     const ground = this.map.terrainHeight(b.x, b.z);
     const base = Math.max(0, ground);
     if (b.style === BuildingStyle.Store) { this.buildStore(b, ch, base); return; }
+    if (b.style === BuildingStyle.Container && this.containerYard(b, ch, base)) return;
     if (this.kitBuilding(b, ch, base)) return;
     const rnd = this.rnd;
     const style = this.styleAt(b.x, b.z);
@@ -795,35 +849,202 @@ export class WorldView {
     g.quad(P(-w / 2, 0), P(w / 2, 0), P(w / 2, h), P(-w / 2, h), WHITE, false, [[0, 1], [1, 1], [1, 0], [0, 0]]);
   }
 
-  /** Kit-Modell statt Quader (Mittelbauten, Wohnhäuser außerhalb von Gator Flats). */
+  /** Kit-Modell statt Quader (Mittelbauten, Hochhäuser, Wohnhäuser, Lagerhallen). */
   private kitBuilding(b: BuildingDef, ch: Chunk, base: number): boolean {
-    let pool: ModelName[] = [];
+    const rnd = this.rnd;
     const style = this.styleAt(b.x, b.z);
+    const zone = this.map.zoneAt(b.x, b.z);
+    let pool: ModelName[] = [];
+    let fit: 'height' | 'random' = 'height';
+    let syRange: [number, number] = [0.8, 1.25];
     if (b.style === BuildingStyle.Midrise && style !== 'havana') pool = MIDRISE_MODELS;
-    else if (b.style === BuildingStyle.House && this.map.zoneAt(b.x, b.z) !== Zone.GatorFlats && style !== 'havana' && this.rnd() < 0.6) pool = HOUSE_MODELS;
+    else if (b.style === BuildingStyle.Tower && rnd() < 0.55) { pool = TOWER_MODELS; syRange = [0.75, 1.6]; }
+    else if (b.style === BuildingStyle.House && zone !== Zone.GatorFlats && style !== 'havana' && rnd() < 0.85) { pool = HOUSE_MODELS; fit = 'random'; }
+    else if (b.style === BuildingStyle.Warehouse && rnd() < 0.8) { pool = WAREHOUSE_MODELS; fit = 'random'; syRange = [0.7, 1.4]; }
     const avail = pool.filter((n) => getModel(n));
-    if (!avail.length || b.w / b.d > 2.2 || b.d / b.w > 2.2) return false;
-    // Modell mit passender Höhe (Mittelbauten) bzw. zufällig (Häuser)
-    let best = avail[Math.floor(this.rnd() * avail.length)], bestScore = Infinity;
-    if (pool === MIDRISE_MODELS) {
-      for (const name of avail) {
-        const size = getModel(name)!.size;
-        const s = Math.min(b.w / size.x, b.d / size.z);
-        const score = Math.abs(size.y * s - b.h) + this.rnd() * 6;
-        if (score < bestScore) { bestScore = score; best = name; }
+    if (!avail.length || b.w / b.d > 2.6 || b.d / b.w > 2.6) return false;
+
+    // Bewertung: Grundriss-Proportion (Front/Tiefe) und – bei Mittelbauten/Türmen – die Höhe
+    let best: ModelName | null = null, bestScore = Infinity;
+    for (const name of avail) {
+      const size = getModel(name)!.size;
+      const s = Math.min(b.w / size.x, b.d / size.z);
+      const aspect = Math.abs(Math.log((size.x / size.z) / (b.w / b.d)));
+      const sy = b.h / (size.y * s);
+      if (fit === 'height' && (sy < syRange[0] * 0.8 || sy > syRange[1] * 1.25)) continue;
+      const score = aspect * 4 + (fit === 'height' ? Math.abs(Math.log(sy)) * 3 : 0) + rnd() * 1.5;
+      if (score < bestScore) { bestScore = score; best = name; }
+    }
+    if (!best) return false;
+    const model = getModel(best)!;
+    const s = Math.min(b.w / model.size.x, b.d / model.size.z) * 0.96;
+    const sy = fit === 'height'
+      ? Math.min(syRange[1], Math.max(syRange[0], b.h / (model.size.y * s)))
+      : b.style === BuildingStyle.House ? Math.min(1.1, Math.max(0.75, (b.h * 1.5) / (model.size.y * s))) : Math.min(syRange[1], Math.max(syRange[0], b.h / (model.size.y * s)));
+    const m = m4(b.x, base - 0.05, b.z, b.rot, s, s * sy, s);
+
+    if (model.triClass.some((c) => c > 0)) {
+      // Kenney-Kit: Wände in der Gebäudefarbe (Pastell), Dächer/Akzente je nach Gebäudeart
+      const wall = pastel(b.color, b.style === BuildingStyle.Warehouse ? 0.35 : b.style === BuildingStyle.House ? 0.25 : 0.12);
+      const accent = b.style === BuildingStyle.House ? ROOF_HEX[Math.floor(rnd() * (zone === Zone.CoralKeys ? ROOF_HEX.length : 4))]
+        : b.style === BuildingStyle.Warehouse ? 0xff9f5a : ACCENT_HEX[Math.floor(rnd() * ACCENT_HEX.length)];
+      ch.solid.use('flat').addGeometry(recolorKit(model, wall.getHex(THREE.SRGBColorSpace), accent), m);
+    } else {
+      // KayKit/Starter-Kit: leichte Tönung in der Gebäudefarbe der Karte – Kit-Farben bleiben erkennbar
+      const t = new THREE.Color(0xffffff).lerp(pastel(b.color, 0.2), 0.3);
+      ch.solid.use('flat').addGeometry(model.body, m, t);
+    }
+    if (model.glass) ch.solid.use('kit_glass').addGeometry(model.glass, m);
+
+    // Industrie: Tank bzw. Schornstein hinter der Halle (Raffinerie häufiger)
+    if (pool === WAREHOUSE_MODELS && rnd() < (zone === Zone.CaneRidge ? 0.7 : 0.3)) {
+      const sv = Math.sin(b.rot), cv = Math.cos(b.rot);
+      const lx = (rnd() - 0.5) * b.w * 0.6, lz = -b.d / 2 - 4;
+      const x = b.x + lx * cv + lz * sv, z = b.z - lx * sv + lz * cv;
+      const t = this.map.tileAt(x, z);
+      if (t !== Tile.BUILDING && t !== Tile.ROAD && t !== Tile.SIDEWALK && t !== Tile.WATER) {
+        if (rnd() < 0.5) this.kitProp('detail-tank', x, base, z, b.rot + Math.PI / 2, 6, 'x');
+        else this.kitProp(rnd() < 0.5 ? 'chimney-large' : 'chimney-medium', x, base, z, b.rot, 14 + rnd() * 8);
       }
     }
-    const model = getModel(best)!;
-    const s = Math.min(b.w / model.size.x, b.d / model.size.z) * 0.95;
-    const sy = pool === MIDRISE_MODELS
-      ? Math.min(1.25, Math.max(0.8, b.h / (model.size.y * s)))
-      : Math.min(1, Math.max(0.55, (b.h * 1.6) / (model.size.y * s)));
-    const m = m4(b.x, base, b.z, b.rot, s, s * sy, s);
-    // Leichte Tönung in der Gebäudefarbe der Karte – Kit-Farben bleiben erkennbar
-    const t = new THREE.Color(0xffffff).lerp(pastel(b.color, 0.2), 0.3);
-    ch.solid.use('flat').addGeometry(model.body, m, t);
-    if (model.glass) ch.solid.use('kit_glass').addGeometry(model.glass, m);
+
+    // Neon-Kante auf Geschäftshäusern und Türmen (nachts) – Miami-Nacht-Look
+    if ((b.style === BuildingStyle.Tower || (b.style === BuildingStyle.Midrise && style === 'downtown')) && rnd() < 0.3) {
+      const top = base - 0.05 + model.size.y * s * sy;
+      ch.neon.box(b.x, top - 0.35, b.z, model.size.x * s + 0.2, 0.25, model.size.z * s + 0.2, b.rot, NEON[Math.floor(rnd() * NEON.length)]);
+    }
     return true;
+  }
+
+  /** Kit-Modell auf Zielhöhe (bzw. -länge mit by = 'z') skaliert in den Chunk legen; liefert die Skalierung. */
+  private kitProp(name: ModelName, x: number, y: number, z: number, rot: number, target: number, by: 'y' | 'z' | 'x' = 'y', mat = 'flat'): number {
+    const model = getModel(name);
+    if (!model) return 0;
+    const s = target / model.size[by];
+    this.chunkAt(x, z).solid.use(mat).addGeometry(model.body, m4(x, y, z, rot, s));
+    if (model.glass) this.chunkAt(x, z).solid.use('kit_glass').addGeometry(model.glass, m4(x, y, z, rot, s));
+    return s;
+  }
+
+  /**
+   * Containerlager statt eines riesigen Quaders: Reihen aus 20-Fuß-Containern (Kenney Watercraft),
+   * 1–3 hoch gestapelt, mit Fahrgassen. Die Kollision bleibt die Grundfläche des "Gebäudes".
+   */
+  private containerYard(b: BuildingDef, ch: Chunk, base: number): boolean {
+    const names: ModelName[] = ['wc-cargo-container-a', 'wc-cargo-container-b', 'wc-cargo-container-c'];
+    const models = names.map((n) => getModel(n)).filter((m) => m) as BakedModel[];
+    if (!models.length) return false;
+    const rnd = this.rnd;
+    const along = b.w >= b.d; // Container längs der längeren Seite
+    const L = along ? b.w : b.d, W = along ? b.d : b.w;
+    const s = 6.1 / models[0].size.z; // 20 Fuß
+    const cl = models[0].size.z * s, cw = models[0].size.x * s, chh = models[0].size.y * s;
+    const nL = Math.max(1, Math.floor(L / (cl + 0.4))), nW = Math.max(1, Math.floor(W / (cw + 0.3)));
+    const sv = Math.sin(b.rot), cv = Math.cos(b.rot);
+    const maxStack = Math.max(1, Math.round(b.h / 2.6)) + 1;
+    for (let i = 0; i < nL; i++) {
+      for (let j = 0; j < nW; j++) {
+        if (nW > 4 && j % 4 === 3) continue; // Fahrgasse
+        const u = (i + 0.5) * (L / nL) - L / 2, v = (j + 0.5) * (W / nW) - W / 2;
+        const lx = along ? u : v, lz = along ? v : u;
+        const x = b.x + lx * cv + lz * sv, z = b.z - lx * sv + lz * cv;
+        const rot = b.rot + (along ? Math.PI / 2 : 0) + (rnd() < 0.5 ? Math.PI : 0);
+        const stack = 1 + Math.floor(rnd() * maxStack);
+        // ab und zu ein Stückgut-Stapel statt Containern
+        const pile = getModel(rnd() < 0.5 ? 'wc-cargo-pile-a' : 'wc-cargo-pile-b');
+        if (pile && rnd() < 0.08) {
+          ch.solid.use('flat').addGeometry(pile.body, m4(x, base, z, rot, cl / Math.max(pile.size.x, pile.size.z)));
+          continue;
+        }
+        for (let k = 0; k < stack; k++) {
+          const m = models[Math.floor(rnd() * models.length)];
+          ch.solid.use('flat').addGeometry(m.body, m4(x + (rnd() - 0.5) * 0.2, base + k * chh, z + (rnd() - 0.5) * 0.2, rot + (rnd() - 0.5) * 0.03, s));
+        }
+      }
+    }
+    return true;
+  }
+
+  // ------------------------------------------------------------------ Hafen
+  /**
+   * Hafen und Marinas aus dem Watercraft Kit: Boote an den Stegen, Frachter und Schlepper vor dem
+   * Port District, Bojen vor den Stränden. Reine Deko (keine Kollision), liegt im Wasser.
+   */
+  private buildHarbor() {
+    const map = this.map, rnd = mulberry32(2024);
+    const water = (x: number, z: number) => map.tileAt(x, z) === Tile.WATER;
+    const boatY = WATER_LEVEL - 0.35;
+    const SMALL: ModelName[] = ['wc-boat-speed-a', 'wc-boat-speed-c', 'wc-boat-speed-f', 'wc-boat-speed-h', 'wc-boat-speed-j',
+      'wc-boat-fishing-small', 'wc-boat-row-small', 'wc-boat-sail-a', 'wc-boat-sail-b', 'wc-boat-tow-a'];
+    // Boote längs der Stege
+    for (const e of map.edges) {
+      if (e.type !== RoadType.Pier) continue;
+      for (let s = 6; s < e.len - 4; s += 8 + rnd() * 6) {
+        const p = pointAt(e.pts, e.cum, s);
+        for (const side of [-1, 1]) {
+          if (rnd() < 0.45) continue;
+          const off = e.width / 2 + 2.4;
+          const x = p.x - p.dz * side * off, z = p.z + p.dx * side * off;
+          if (!water(x, z) || !water(x - p.dz * side * 3, z + p.dx * side * 3)) continue;
+          const name = SMALL[Math.floor(rnd() * SMALL.length)];
+          this.kitProp(name, x, boatY, z, Math.atan2(p.dx, p.dz) + (rnd() < 0.5 ? Math.PI : 0), 6 + rnd() * 2.5, 'z');
+        }
+      }
+    }
+    // Frachter, Schlepper und Bojen: freie Wasserflächen nahe der Küste
+    const ships: [number, number][] = [];
+    const STEP = 24;
+    for (let z = STEP; z < WORLD_SIZE - STEP; z += STEP) {
+      for (let x = STEP; x < WORLD_SIZE - STEP; x += STEP) {
+        if (!water(x, z)) continue;
+        const zone = map.zoneAt(x, z);
+        // Abstand zum Land (grob, in 4 Richtungen)
+        let near = Infinity;
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          for (let k = 8; k <= 96; k += 8) if (!water(x + dx * k, z + dz * k)) { near = Math.min(near, k); break; }
+        }
+        const r = rnd();
+        if (zone === Zone.PortCoralia && near >= 32 && near <= 72 && r < 0.25 && ships.every(([sx, sz]) => Math.hypot(sx - x, sz - z) > 150)) {
+          // Frachter parallel zur nächsten Küste: Richtung mit freiem Wasser in Längsrichtung suchen
+          for (const a of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) {
+            const fx = Math.sin(a), fz = Math.cos(a);
+            let ok = true;
+            for (let k = -36; k <= 36 && ok; k += 6) ok = water(x + fx * k, z + fz * k) && water(x + fx * k + fz * 10, z + fz * k - fx * 10) && water(x + fx * k - fz * 10, z + fz * k + fx * 10);
+            if (!ok) continue;
+            // Frachter, Stückgutschiff oder ein Kreuzfahrtschiff vor Port Coralia
+            const r2 = rnd();
+            const ship: ModelName = r2 < 0.45 ? (rnd() < 0.5 ? 'wc-ship-cargo-a' : 'wc-ship-cargo-b') : r2 < 0.75 ? 'wc-ship-ocean-liner-small' : 'wc-ship-large';
+            this.kitProp(ship, x, WATER_LEVEL - 1.6, z, a, ship === 'wc-ship-ocean-liner-small' ? 70 : r2 < 0.45 ? 64 : 48, 'z');
+            ships.push([x, z]);
+            // Schlepper daneben
+            if (rnd() < 0.7) this.kitProp('wc-boat-tug-a', x + fz * 16, boatY, z - fx * 16, a + 0.3, 11, 'z');
+            break;
+          }
+        } else if ((zone === Zone.PortCoralia || zone === Zone.CoralKeys) && near >= 16 && near <= 40 && r > 0.93) {
+          this.kitProp(rnd() < 0.5 ? 'wc-buoy' : 'wc-buoy-flag', x + (rnd() - 0.5) * 10, WATER_LEVEL - 0.4, z + (rnd() - 0.5) * 10, rnd() * 6, 2.4);
+        } else if ((zone === Zone.CoralKeys || zone === Zone.PortCoralia) && near >= 12 && near <= 48 && r > 0.975) {
+          // vor Anker liegende Segel- und Motorboote
+          this.kitProp(SMALL[Math.floor(rnd() * SMALL.length)], x, boatY, z, rnd() * 6.28, 7 + rnd() * 3, 'z');
+        }
+      }
+    }
+  }
+
+  /** Autobahnschilder (Kenney Roads) am rechten Fahrbahnrand, etwa alle 300 m. */
+  private buildHighwaySigns() {
+    const rnd = mulberry32(77);
+    for (const e of this.map.edges) {
+      if (e.type !== RoadType.Highway) continue;
+      for (let s = e.trimA + 60 + rnd() * 80; s < e.len - e.trimB - 40; s += 280 + rnd() * 120) {
+        const p = pointAt(e.pts, e.cum, s);
+        const off = e.width / 2 + e.sidewalk + 1.6;
+        const x = p.x - p.dz * off, z = p.z + p.dx * off;
+        const t = this.map.tileAt(x, z);
+        if (t === Tile.WATER || t === Tile.BUILDING || t === Tile.BRIDGE) continue;
+        const y = Math.max(0.05, this.map.terrainHeight(x, z));
+        this.kitProp(rnd() < 0.5 ? 'sign-highway' : 'sign-highway-wide', x, y, z, Math.atan2(-p.dx, -p.dz), 7);
+      }
+    }
   }
 
   // ------------------------------------------------------------------ Straßendeko
@@ -842,6 +1063,7 @@ export class WorldView {
     for (const l of this.map.lots) {
       const c = centroid(l.poly);
       const y = Math.max(0.05, this.map.terrainHeight(c[0], c[1])) + CURB_TOP + 0.02;
+      if (l.use === LotUse.Vacant && rnd() < 0.6 && this.constructionSite(l.poly, y)) continue;
       if (l.use === LotUse.Park || l.use === LotUse.Vacant) {
         for (let k = 0; k < 3; k++) {
           const t = rnd();
@@ -853,6 +1075,8 @@ export class WorldView {
           const a = l.poly[k % l.poly.length], t = rnd() * 0.7;
           this.addCover('flower', c[0] + (a[0] - c[0]) * t, y, c[1] + (a[1] - c[1]) * t, 1 + rnd() * 0.5);
         }
+      } else if (l.building >= 0 && this.frontYard(this.map.buildings[l.building], y)) {
+        continue;
       } else if (l.building >= 0 && rnd() < 0.15) {
         const b = this.map.buildings[l.building];
         if (b.style !== BuildingStyle.Warehouse && b.style !== BuildingStyle.Midrise && b.style !== BuildingStyle.Shop) continue;
@@ -864,6 +1088,73 @@ export class WorldView {
         this.prop('trash', x + 2 * co, y, z - 2 * s, rnd() * 6);
       }
     }
+  }
+
+
+  /** Baustelle auf einer Brache: Bauzaun-Barrieren an der Straßenseite, Kegel, Baulampen, Kisten. */
+  private constructionSite(poly: Vec2[], y: number): boolean {
+    if (!getModel('construction-barrier')) return false;
+    const rnd = this.rnd;
+    const c = centroid(poly);
+    // Barrieren entlang der ersten (meist straßenseitigen) Kante, leicht eingerückt
+    const a = poly[0], b = poly[1];
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 6) return false;
+    const ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
+    const rot = Math.atan2(ux, uz) + Math.PI / 2;
+    for (let s = 2; s < len - 2; s += 2.6) {
+      const t = s / len;
+      const px = a[0] + (b[0] - a[0]) * t + (c[0] - a[0]) * 0.12, pz = a[1] + (b[1] - a[1]) * t + (c[1] - a[1]) * 0.12;
+      if (this.map.tileAt(px, pz) === Tile.ROAD) continue;
+      this.kitProp(s % 13 < 2.6 ? 'construction-light' : 'construction-barrier', px, y, pz, rot, s % 13 < 2.6 ? 1.6 : 1.1);
+    }
+    for (let k = 0; k < 4; k++) {
+      const q = poly[k % poly.length], t = 0.3 + rnd() * 0.4;
+      const px = c[0] + (q[0] - c[0]) * t, pz = c[1] + (q[1] - c[1]) * t;
+      if (k < 2) this.kitProp('construction-cone', px, y, pz, rnd() * 6, 0.75);
+      else this.kitProp(rnd() < 0.5 ? 'crate-wide' : 'crate-medium', px, y, pz, rnd() * 6, 1.1);
+    }
+    this.decal('decal_sand', c[0], y + 0.01, c[1], rnd() * 6, 3);
+    return true;
+  }
+
+  /**
+   * Vorplatz je Gebäudeart: Café-Schirme vor Läden (Ocean Strip, Havana, Kleinstadt),
+   * Zaun und Pflanzkübel vor Wohnhäusern. false = nichts gebaut (dann normale Deko).
+   */
+  private frontYard(b: BuildingDef, y: number): boolean {
+    const rnd = this.rnd;
+    const s = Math.sin(b.rot), c = Math.cos(b.rot);
+    const L = (lx: number, lz: number): [number, number] => [b.x + lx * c + lz * s, b.z - lx * s + lz * c];
+    const free = (x: number, z: number) => { const t = this.map.tileAt(x, z); return t !== Tile.ROAD && t !== Tile.BUILDING && t !== Tile.WATER; };
+    if (b.style === BuildingStyle.Shop && rnd() < 0.6 && getModel('detail-parasol-a')) {
+      // 2–3 Sonnenschirme mit Tischen vor der Front
+      const n = 2 + Math.floor(rnd() * 2);
+      for (let i = 0; i < n; i++) {
+        const [x, z] = L((i - (n - 1) / 2) * 3.2, b.d / 2 + 2.6);
+        if (!free(x, z)) continue;
+        this.kitProp(rnd() < 0.5 ? 'detail-parasol-a' : 'detail-parasol-b', x, y, z, b.rot, 2.6);
+      }
+      return true;
+    }
+    if (b.style === BuildingStyle.House && b.d < 30 && rnd() < 0.7 && getModel('fence')) {
+      // Niedriger Gartenzaun an der Front (mit Lücke für den Weg) und Pflanzkübel neben der Tür
+      const fenceModel = getModel('fence')!;
+      const seg = 2.2, zf = b.d / 2 + 3.2;
+      const k = seg / fenceModel.size.x;
+      for (let u = -b.w / 2 - 1; u < b.w / 2 + 1 - seg / 2; u += seg) {
+        if (Math.abs(u + seg / 2) < 1.4) continue; // Gartentor
+        const [x, z] = L(u + seg / 2, zf);
+        if (!free(x, z) || this.map.tileAt(x, z) === Tile.SIDEWALK) continue;
+        this.chunkAt(x, z).solid.use('flat').addGeometry(fenceModel.body, m4(x, y, z, b.rot, k, 1.2 / fenceModel.size.y, k));
+      }
+      for (const side of [-1, 1]) {
+        const [x, z] = L(side * 1.8, b.d / 2 + 1);
+        if (free(x, z)) this.kitProp('planter', x, y, z, b.rot, 0.9);
+      }
+      return true;
+    }
+    return false;
   }
 
   // ------------------------------------------------------------------ Küste

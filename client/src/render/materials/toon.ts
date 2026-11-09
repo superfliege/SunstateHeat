@@ -293,7 +293,8 @@ export function addHeightWind(g: THREE.BufferGeometry, start = 0.35, strength = 
   const w = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     const t = (pos.getY(i) - y0) / h;
-    w[i] = Math.max(0, (t - start) / (1 - start)) ** 1.5 * strength * h * 0.25;
+    // start >= 1 (z. B. Seerosen) = kein Wind; sonst 0/0 -> NaN, das der Bloom übers ganze Bild verteilt
+    w[i] = start >= 1 ? 0 : Math.max(0, (t - start) / (1 - start)) ** 1.5 * strength * h * 0.25;
   }
   g.setAttribute('wind', new THREE.BufferAttribute(w, 1));
 }

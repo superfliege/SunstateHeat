@@ -5,6 +5,7 @@ import { Network } from './net/Network';
 import { loadAssets } from './render/assets';
 import { loadTextureOverrides } from './render/materials/atlas';
 import { loadQuaternius } from './render/quaternius';
+import { loadKenneyCharacters } from './render/kenneyCharacters';
 
 const loginEl = document.getElementById('login')!;
 const form = document.getElementById('login-form') as HTMLFormElement;
@@ -26,14 +27,15 @@ const status = document.getElementById('login-status')!;
 
 // Modelle schon laden, während der Spieler seinen Namen tippt: Kit-Modelle, Quaternius-Packs
 // (falls vorhanden) und verarbeitete Texturen (falls scripts/process-textures.ts gelaufen ist)
-const progress = { kit: [0, 0], q: [0, 0] };
+const progress = { kit: [0, 0], q: [0, 0], c: [0, 0] };
 const showProgress = () => {
-  const done = progress.kit[0] + progress.q[0], total = progress.kit[1] + progress.q[1];
+  const done = progress.kit[0] + progress.q[0] + progress.c[0], total = progress.kit[1] + progress.q[1] + progress.c[1];
   if (status.dataset.busy) status.textContent = `Lade Modelle … ${done}/${total}`;
 };
 const assets = Promise.all([
   loadAssets((d, t) => { progress.kit = [d, t]; showProgress(); }),
   loadQuaternius((d, t) => { progress.q = [d, t]; showProgress(); }),
+  loadKenneyCharacters((d, t) => { progress.c = [d, t]; showProgress(); }),
   loadTextureOverrides(),
 ]);
 const sfx = new Sfx();

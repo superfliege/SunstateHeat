@@ -1,6 +1,7 @@
 // Quaternius-Packs (CC0, siehe CREDITS.md) entdecken, laden und vereinheitlichen.
 //
 // Die Packs werden einfach unter client/public/assets/quaternius/<pack>/ abgelegt (glTF/GLB,
+// dazu das Kenney Nature Kit unter assets/kenney/nature-kit/ – Palmen, Laubbäume, Felsen;
 // Ordnerstruktur egal). Der Vite-Plugin in vite.config.ts liefert die Dateiliste als
 // assets/manifest.json; hier werden die Dateien anhand ihres Namens einsortiert:
 //   Vegetation: Palmen, Laubbäume, Kiefern, knorrige Bäume, Büsche, Felsen, Gras, Farne, Blumen,
@@ -14,7 +15,7 @@ import type { GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { addHeightWind, computeOutlineNormals, toonMaterial } from './materials/toon';
-import { palmaraize } from './palette';
+import { palmaraize, sunlit } from './palette';
 
 // ------------------------------------------------------------------ Manifest
 export async function fetchManifest(): Promise<string[]> {
@@ -33,8 +34,8 @@ const baseName = (p: string) => p.split('/').pop()!.replace(/\.(gltf|glb)$/i, ''
 // ------------------------------------------------------------------ Texturen vereinheitlichen
 const texCache = new Map<unknown, THREE.Texture>();
 
-/** Textur verkleinern (max. `max` px), Farben palmaraisieren, Nearest-Neighbor. */
-export function pixelizeTexture(src: THREE.Texture, max = 64): THREE.Texture {
+/** Textur verkleinern (max. `max` px), Farben palmaraisieren (Pflanzen: nur sanft), Nearest-Neighbor. */
+export function pixelizeTexture(src: THREE.Texture, max = 64, natural = false): THREE.Texture {
   const img = src.image as (CanvasImageSource & { width: number; height: number }) | undefined;
   if (!img || !img.width) return src;
   const hit = texCache.get(img);
@@ -48,7 +49,7 @@ export function pixelizeTexture(src: THREE.Texture, max = 64): THREE.Texture {
   ctx.drawImage(img, 0, 0, w, h);
   const d = ctx.getImageData(0, 0, w, h);
   for (let i = 0; i < d.data.length; i += 4) {
-    const p = palmaraize((d.data[i] << 16) | (d.data[i + 1] << 8) | d.data[i + 2]);
+    const p = (natural ? sunlit : palmaraize)((d.data[i] << 16) | (d.data[i + 1] << 8) | d.data[i + 2]);
     d.data[i] = (p >> 16) & 255; d.data[i + 1] = (p >> 8) & 255; d.data[i + 2] = p & 255;
     d.data[i + 3] = d.data[i + 3] < 128 ? 0 : 255; // harte Alpha-Kante
   }
@@ -83,7 +84,7 @@ export type VegCategory = (typeof VEG_CATEGORIES)[number];
 
 /** Ziel-Höhe in Metern (Bäume werden zusätzlich pro Exemplar skaliert) und max. Varianten. */
 const VEG_SPEC: Record<VegCategory, { height: number; max: number; wind: number; line: boolean }> = {
-  palm: { height: 7.5, max: 4, wind: 1.2, line: true },
+  palm: { height: 7.5, max: 6, wind: 1.2, line: true },
   broadleaf: { height: 6, max: 4, wind: 0.8, line: true },
   pine: { height: 8, max: 4, wind: 0.6, line: true },
   twisted: { height: 7, max: 3, wind: 0.6, line: true },
@@ -190,10 +191,10 @@ export function unifyMaterial(src: THREE.Material, wind = false): THREE.Material
   const hit = matCache.get(src);
   if (hit) return hit;
   const s = src as THREE.MeshStandardMaterial;
-  const map = s.map ? pixelizeTexture(s.map, 128) : null;
+  const map = s.map ? pixelizeTexture(s.map, 128, wind) : null;
   const cutout = !!map && (s.transparent || s.alphaTest > 0 || hasAlpha(s.map));
   const m = toonMaterial({
-    color: palmaraize(s.color?.getHex(THREE.SRGBColorSpace) ?? 0xffffff),
+    color: (wind ? sunlit : palmaraize)(s.color?.getHex(THREE.SRGBColorSpace) ?? 0xffffff),
     map,
     vertexColors: !!s.vertexColors,
     alphaTest: cutout ? 0.5 : 0,
@@ -217,21 +218,30 @@ function isCharacterPath(path: string): boolean {
 export interface QuaterniusStats { vegetation: number; characters: number; files: number }
 
 export async function loadQuaternius(onProgress?: (done: number, total: number) => void): Promise<QuaterniusStats> {
-  const files = (await fetchManifest()).filter((f) => /^quaternius\//i.test(f) && /\.(gltf|glb)$/i.test(f));
+  const files = (await fetchManifest()).filter((f) => /^(quaternius|kenney\/nature-kit)\//i.test(f) && /\.(gltf|glb)$/i.test(f));
   if (!files.length) return { vegetation: 0, characters: 0, files: 0 };
 
-  // Auswahl: je Kategorie die ersten N (sortiert), Figuren alle (begrenzt)
+  // Auswahl: je Kategorie bis zu N Modelle, reihum aus den Packs (damit sich Kenney und
+  // Quaternius mischen); Figuren alle (begrenzt)
   const vegPick: [string, VegCategory][] = [];
-  const counts = new Map<VegCategory, number>();
   const charPick: string[] = [];
+  const byCat = new Map<VegCategory, Map<string, string[]>>();
   for (const f of [...files].sort()) {
     if (isCharacterPath(f)) { if (charPick.length < 24) charPick.push(f); continue; }
     const cat = classifyVegetation(baseName(f));
     if (!cat) continue;
-    const n = counts.get(cat) ?? 0;
-    if (n >= VEG_SPEC[cat].max) continue;
-    counts.set(cat, n + 1);
-    vegPick.push([f, cat]);
+    const pack = f.split('/').slice(0, 2).join('/');
+    let packs = byCat.get(cat);
+    if (!packs) byCat.set(cat, (packs = new Map()));
+    let list = packs.get(pack);
+    if (!list) packs.set(pack, (list = []));
+    list.push(f);
+  }
+  for (const [cat, packs] of byCat) {
+    const lists = [...packs.values()];
+    for (let i = 0, n = 0; n < VEG_SPEC[cat].max && lists.some((l) => i < l.length); i++) {
+      for (const l of lists) if (i < l.length && n < VEG_SPEC[cat].max) { vegPick.push([l[i], cat]); n++; }
+    }
   }
 
   const loader = new GLTFLoader();

@@ -1,10 +1,11 @@
 // Einstiegspunkt des Spielservers.
 // - WebSocket-Endpunkt unter /ws
 // - liefert im Produktionsmodus (nach `npm run build`) auch den Client aus dist/client aus
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { MAX_NAME_LENGTH, SERVER_PORT, WS_PATH } from '../../shared/src/constants';
 import type { ClientMsg, ServerMsg } from '../../shared/src/protocol';
@@ -20,6 +21,19 @@ const MIME: Record<string, string> = {
   '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream', '.ogg': 'audio/ogg',
 };
 
+/** Gut komprimierbare Typen (Modelle, Skripte …) – Bilder und OGG sind schon komprimiert. */
+const GZIP = new Set(['.html', '.js', '.css', '.svg', '.json', '.gltf', '.glb', '.bin', '.fbx']);
+/** gzip-Ergebnis je Datei (Pfad -> [mtime, Daten]); die Assets ändern sich zur Laufzeit nicht. */
+const gzCache = new Map<string, [number, Buffer]>();
+function gzipped(file: string): Buffer {
+  const mtime = statSync(file).mtimeMs;
+  const hit = gzCache.get(file);
+  if (hit && hit[0] === mtime) return hit[1];
+  const data = gzipSync(readFileSync(file), { level: 9 });
+  gzCache.set(file, [mtime, data]);
+  return data;
+}
+
 // ---------------------------------------------------------------- HTTP (statische Dateien)
 const http = createServer((req, res) => {
   if (!existsSync(CLIENT_DIR)) {
@@ -31,7 +45,15 @@ const http = createServer((req, res) => {
   let file = normalize(join(CLIENT_DIR, urlPath));
   if (!file.startsWith(CLIENT_DIR)) { res.writeHead(403); res.end(); return; } // Path-Traversal-Schutz
   if (!existsSync(file) || statSync(file).isDirectory()) file = join(CLIENT_DIR, 'index.html');
-  res.writeHead(200, { 'Content-Type': MIME[extname(file)] ?? 'application/octet-stream' });
+  const type = MIME[extname(file)] ?? 'application/octet-stream';
+  // Kit-Modelle (GLB) schrumpfen mit gzip auf etwa ein Viertel
+  if (GZIP.has(extname(file)) && /\bgzip\b/.test(String(req.headers['accept-encoding'] ?? ''))) {
+    const body = gzipped(file);
+    res.writeHead(200, { 'Content-Type': type, 'Content-Encoding': 'gzip', 'Content-Length': body.length, Vary: 'Accept-Encoding' });
+    res.end(body);
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': type });
   createReadStream(file).pipe(res);
 });
 

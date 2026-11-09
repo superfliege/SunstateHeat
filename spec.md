@@ -181,6 +181,14 @@ Abweichend von Abschnitt 2 dürfen fertige 3D-Modelle und Sounds verwendet werde
 - Einheitlicher Look: alle Modelle bekommen per Shader/Material die Palmara-Farbpalette und dieselbe Beleuchtung, damit Kits verschiedener Quellen zusammenpassen.
 - Was in keinem Kit existiert (Art-déco-Hotels, Stelzenhütten, Mangroven, Airboat, Neonschilder), wird weiterhin prozedural im Code erzeugt.
 - Erfundene Markennamen auf Fahrzeugen/Gebäuden werden im Spiel ergänzt; Kenney-Modelle sind markenfrei.
+
+### Umsetzung
+Alle Kits der Tabelle sind eingebunden (Quelle: Spiegel `series-ai/jam-ready-assets`, feste Commits, Details in `CREDITS.md`):
+City Kit Commercial/Suburban/Industrial für Gebäude (umgefärbt in die Viertel-Farben), City Kit Roads für Laternen,
+Baustellen und Autobahnschilder, Car Kit als zusätzliche Fahrzeugvarianten inkl. Polizei, Krankenwagen und Feuerwehr
+(mit dem Schadensmodell der prozeduralen Autos), Watercraft für Boote, Airboat, Containerlager und Hafen-Deko,
+Blaster Kit für Schusswaffen (auf Metall umgefärbt), Nature Kit + Quaternius Stylized Nature für Vegetation sowie
+Kenney Impact/Interface Sounds. Die Straßen selbst bleiben prozedural, weil das Straßennetz nicht im Raster liegt.
 5. Audio
 
 Alle Sounds und Musik werden prozedural im Browser erzeugt (Web Audio API, z. B. mit Tone.js) oder sind selbst erstellt.

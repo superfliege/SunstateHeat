@@ -15,11 +15,13 @@ import { moodFor } from './render/palette';
 import { Particles } from './render/Particles';
 import { PostFX } from './render/PostFX';
 import { loadQuaternius } from './render/quaternius';
+import { loadKenneyCharacters } from './render/kenneyCharacters';
 import { Sky } from './render/Sky';
 import { WorldView } from './render/WorldView';
 import { PropsView } from './render/PropsView';
 import { FeaturesView } from './render/FeaturesView';
 import { profileOf } from '../../shared/src/sim/vehicle';
+import { CAR_VARIANTS } from '../../shared/src/sim/handling';
 
 const log = document.getElementById('log')!;
 const errors: string[] = [];
@@ -28,7 +30,7 @@ const report = (s: string) => { log.textContent += s + '\n'; };
 async function main() {
   const q = new URLSearchParams(location.search);
   const t0 = performance.now();
-  await Promise.all([loadAssets(), loadQuaternius(), loadTextureOverrides()]);
+  await Promise.all([loadAssets(), loadQuaternius(), loadKenneyCharacters(), loadTextureOverrides()]);
   const map = generateWorld(MAP_SEED);
   let x = Number(q.get('x') ?? map.spawn.x), z = Number(q.get('z') ?? map.spawn.z);
   const dname = q.get('district');
@@ -67,7 +69,7 @@ async function main() {
   const zoom = Number(q.get('zoom') ?? 1);
   sky.setMood(moodFor(map.zoneAt(x, z), map.districtAt(x, z)?.style ?? null));
   // Fahrzeug-Vitrine: alle Klassen nebeneinander, eines mit Beulen + Teileschaden (?cars=1 = näher ran)
-  const lineup = [0, 1, 2, 3, 4, 5, 6, 7, 8, 100];
+  const lineup = [...CAR_VARIANTS.keys(), 100];
   const props = new PropsView(map);
   const features = new FeaturesView(map);
   scene.add(props.group, features.group);
@@ -80,7 +82,7 @@ async function main() {
       views.setPed({ id: i, x: x + Math.cos(a) * (4 + i), z: z + Math.sin(a) * (4 + i), a: a + Math.PI / 2, color: i, running: false, h: 0, ragdoll: false, cop: false, gang: false, angry: i === 2 }, dt);
     }
     lineup.forEach((variant, k) => {
-      const vx = x - 22 + k * 5, vz = z - 6;
+      const vx = x - 28 + (k % 12) * 5, vz = z - 6 - Math.floor(k / 12) * 9;
       const kind = variant === 100 ? 1 : 0;
       const prof = profileOf(variant);
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.5 + Math.sin(U.uTime.value * 0.4 + k) * 0.2);
