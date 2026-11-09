@@ -38,6 +38,7 @@ import type { QuestState } from '../../../shared/src/protocol';
 import { generateShops, shopNear, type ShopDef } from '../../../shared/src/shops';
 import { Panels } from '../ui/Panels';
 import { WEAPONS, type WeaponId } from '../../../shared/src/weapons';
+import { taxiProfile } from '../../../shared/src/taxiHunt';
 import { PostFX, type GfxSettings } from '../render/PostFX';
 import { PropsView } from '../render/PropsView';
 import { SmartObjectsView } from '../render/SmartObjectsView';
@@ -162,7 +163,7 @@ export class Game {
     this.shops = generateShops(this.map);
     this.stores = new StoresView(this.map, this.shops);
     this.phones = payphones(this.map);
-    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
+    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.taxi ? { x: p.x, z: p.z, name: '🚕 Catch the Taxi', color: 0x3ad1ff } : p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
@@ -359,12 +360,15 @@ export class Game {
   private updateFire(dt: number) {
     this.fireT -= dt;
     // Im Fahrzeug nur mit Pistole (Drive-by); der Server prüft die Schussrichtung
-    const driveBy = this.predictor.inVehicle && WEAPONS[this.weaponId]?.slot === 'pistol';
-    if (!this.input.fire || this.input.blocked || (this.predictor.inVehicle && !driveBy) || this.fireT > 0) return;
+    // Catch the Taxi: das Taxi schießt immer mit der Pistole, Jäger gar nicht (Server prüft beides)
+    const hunt = this.questState?.hunt;
+    const weapon = hunt === 'taxi' ? 'pistol' : this.weaponId;
+    const driveBy = this.predictor.inVehicle && WEAPONS[weapon]?.slot === 'pistol';
+    if (!this.input.fire || this.input.blocked || hunt === 'hunter' || (this.predictor.inVehicle && !driveBy) || this.fireT > 0) return;
     const aim = this.aimAngle();
     if (aim === null) return;
     this.net.send({ t: 'attack', aim });
-    this.fireT = (WEAPONS[this.weaponId]?.cooldown ?? 0.4) * 0.95;
+    this.fireT = (WEAPONS[weapon]?.cooldown ?? 0.4) * 0.95;
   }
 
   private phoneNearMe(): PhoneDef | null {
@@ -635,6 +639,8 @@ export class Game {
       // Rennstart: Fahrzeug steht bis zum Countdown-Ende (Server erzwingt dasselbe)
       if (this.questState?.freeze && this.predictor.inVehicle) { s.ax = 0; s.ay = 0; buttons = Btn.BRAKE; }
       if (this.unflipFrames > 0) { buttons |= Btn.UNFLIP; this.unflipFrames--; }
+      // Catch the Taxi: unendlich Nitro (Server setzt dasselbe)
+      if (this.questState?.hunt === 'taxi' && this.predictor.sim) { const sim = this.predictor.sim; sim.prof = taxiProfile(sim.prof); sim.car.nitro = 1; }
       this.predictor.step(s.ax, s.ay, buttons, SIM_DT);
       this.buttons = buttons;
       this.acc -= SIM_DT;
@@ -1052,7 +1058,7 @@ export class Game {
     const dots: MapDot[] = [];
     for (const w of this.map.workshops) dots.push({ x: w.x, z: w.z, color: '#2af0e6', size: 3, ring: true });
     for (const s of this.shops) dots.push({ x: s.x, z: s.z, color: s.type === 'ammo' ? '#ff6a6a' : s.type === 'paint' ? '#c98bff' : s.type === 'gas' ? '#ffb33a' : '#4fd16b', size: 2, ring: true });
-    for (const ph of this.phones) dots.push({ x: ph.x, z: ph.z, color: ph.race ? '#ff8a3a' : '#ffe14d', size: 3, ring: true });
+    for (const ph of this.phones) dots.push({ x: ph.x, z: ph.z, color: ph.taxi ? '#3ad1ff' : ph.race ? '#ff8a3a' : '#ffe14d', size: ph.taxi ? 4 : 3, ring: true });
     for (const t of this.questState?.targets ?? []) dots.push({ x: t[0], z: t[1], color: t[3] === 5 ? '#ff3d5a' : t[3] === 2 ? '#ffd23a' : t[3] === 7 ? '#ffffff' : '#4dff9a', size: 4, ring: t[3] !== 5 });
     for (const c of this.copDots.values()) dots.push({ x: c[0], z: c[1], color: '#2a6bff', size: 3 });
     for (const v of vehicles.values()) {
