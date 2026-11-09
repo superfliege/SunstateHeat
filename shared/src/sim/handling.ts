@@ -52,7 +52,7 @@ export interface HandlingProfile {
   nitroTime: number;
 }
 
-export type HandlingClass = 'compact' | 'sedan' | 'sport' | 'muscle' | 'suv' | 'truck' | 'bike' | 'police' | 'boat' | 'airboat';
+export type HandlingClass = 'compact' | 'sedan' | 'sport' | 'muscle' | 'suv' | 'truck' | 'bike' | 'police' | 'boat' | 'airboat' | 'tank';
 
 const base = (p: Partial<HandlingProfile> & { name: string }): HandlingProfile => ({
   mass: 1300, length: 4.4, width: 1.85, height: 1.45, wheelbase: 2.65, track: 1.55,
@@ -127,6 +127,14 @@ export const HANDLING: Record<HandlingClass, HandlingProfile> = {
     name: 'Polizei', mass: 1650, length: 4.9, width: 1.95, wheelbase: 2.9, track: 1.62, cgHeight: 0.5,
     torque: 420, gears: 5, topSpeed: 52, drive: Drive.RWD, brake: 1.15, gripFront: 1.25, gripRear: 1.2, drift: 0.4,
     durability: 1.4, cylinders: 8,
+  }),
+  // Panzer (nur Polizei/Militär bei Fahndungsstufe 4): sehr schwer, langsam, kaum kaputtzukriegen
+  tank: base({
+    name: 'Panzer', mass: 16000, length: 7.0, width: 3.2, height: 2.4, wheelbase: 4.6, track: 2.6, cgHeight: 0.9, wheelRadius: 0.45,
+    suspFreq: 1.6, suspDamping: 0.6, suspTravel: 0.18, antiRoll: 0.9,
+    torque: 5200, redline: 2600, idleRpm: 600, gears: 4, topSpeed: 20, launch: 5.0, shiftTime: 0.4, drive: Drive.AWD, brake: 0.9,
+    gripFront: 1.3, gripRear: 1.3, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.9, handbrakeGrip: 0.9, drift: 0,
+    steerMax: 40, steerSpeedFalloff: 0.04, steerRate: 3, durability: 8, cylinders: 12,
   }),
 };
 
@@ -236,6 +244,7 @@ export const CAR_VARIANTS: VehicleVariant[] = [
 export const BIKE_VARIANT = 100;
 export const BOAT_VARIANT = 101;
 export const AIRBOAT_VARIANT = 102;
+export const TANK_VARIANT = 103;
 
 /** Variante zufällig nach Gewicht (rnd 0..1). */
 export function pickCarVariant(rnd: number): number {
@@ -249,6 +258,7 @@ export function variantInfo(variant: number): VehicleVariant {
   if (variant === BIKE_VARIANT) return { cls: 'bike', model: 'motorcycle', name: 'Sunburst 600', weight: 0 };
   if (variant === BOAT_VARIANT) return { cls: 'boat', model: 'boat', name: 'Keys Skiff', weight: 0 };
   if (variant === AIRBOAT_VARIANT) return { cls: 'airboat', model: 'airboat', name: 'Marsh Glider', weight: 0 };
+  if (variant === TANK_VARIANT) return { cls: 'tank', model: 'proc_tank', name: 'Panzer', weight: 0 };
   return CAR_VARIANTS[variant] ?? CAR_VARIANTS[0];
 }
 

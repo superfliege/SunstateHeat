@@ -230,7 +230,7 @@ export class TaxiHunt {
     if (!m) return;
     m.t -= dt;
     // Während der Runde: keine Fahndung, keine Verletzungen (nur das Taxi zählt)
-    if (m.phase !== 'lobby') for (const p of this.members(m)) { p.wanted = 0; p.searchT = 0; p.arrestT = 0; p.invuln = Math.max(p.invuln, 0.5); }
+    if (m.phase !== 'lobby') for (const p of this.members(m)) { p.wanted = 0; p.heat = 0; p.searchT = 0; p.arrestT = 0; p.reports.length = 0; p.invuln = Math.max(p.invuln, 0.5); }
     switch (m.phase) {
       case 'lobby':
         for (const p of this.members(m)) { const why = this.h.blocked(p); if (why) this.drop(p.id, `Catch the Taxi verlassen: ${why}`, false); }

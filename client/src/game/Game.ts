@@ -8,7 +8,7 @@ import { lerp, lerpAngle } from '../../../shared/src/math';
 import { Btn, DRIVER_COP_ID, VehFlag, type GameEvent, type ServerMsg, type SnapshotMsg, type VehicleInfoTuple, type VehicleTuple } from '../../../shared/src/protocol';
 import { createCar, groundHeight, setOrientation, type CarCollision, type CarState, type Impact } from '../../../shared/src/sim/car';
 import { enginePower, newDamage, partState, PART_COUNT, smokeStage, unpackDamage, Zone5, type CarDamage } from '../../../shared/src/sim/damage';
-import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
+import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, TANK_VARIANT, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
 import { ARCHETYPES } from '../../../shared/src/npc/archetypes';
 import { PROP_INFO, PropType } from '../../../shared/src/world/features';
 import type { PropHit } from '../../../shared/src/sim/props';
@@ -745,7 +745,7 @@ export class Game {
     this.views.beginFrame(0);
     const vehicles: [number, number, number][] = [
       ...CAR_VARIANTS.map((_, v): [number, number, number] => [VehicleKind.Car, v, -1]),
-      [VehicleKind.Car, 1, DRIVER_COP_ID], [VehicleKind.Bike, BIKE_VARIANT, -1], [VehicleKind.Boat, BOAT_VARIANT, -1], [VehicleKind.Airboat, AIRBOAT_VARIANT, -1],
+      [VehicleKind.Car, 1, DRIVER_COP_ID], [VehicleKind.Car, TANK_VARIANT, DRIVER_COP_ID], [VehicleKind.Bike, BIKE_VARIANT, -1], [VehicleKind.Boat, BOAT_VARIANT, -1], [VehicleKind.Airboat, AIRBOAT_VARIANT, -1],
     ];
     vehicles.forEach(([kind, variant, driver], i) => {
       const x = f.x + (i % 6) * 5 - 12, z = f.z + Math.floor(i / 6) * 6 - 6;
@@ -827,7 +827,7 @@ export class Game {
         if (s.flags & VehFlag.HORN || rec.hornUntil > this.clock) car.horn(id, variantInfo(variant).cls, own ? null : pos);
         if (rec.dmg.burn > 0 && !own) car.fire(id, pos, 1, dt);
         // Sirene: Streifenwagen bei Einsatzfahrt oder solange nach mir gefahndet wird
-        if (driver === DRIVER_COP_ID && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
+        if (driver === DRIVER_COP_ID && variant !== TANK_VARIANT && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
       }
       if (id !== myVehicle && driver !== -1 && !rec.dmg.wreck) engines.push({ id, d: Math.hypot(s.x - focus.x, s.z - focus.z), s, rpm });
     }

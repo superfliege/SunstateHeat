@@ -16,7 +16,7 @@ import {
   type CarCollision, type Impact,
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
-import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, variantInfo } from '../../../shared/src/sim/handling';
+import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, TANK_VARIANT, variantInfo } from '../../../shared/src/sim/handling';
 import { carBody, findFootSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
 import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, createPropBody, PROP_RESPAWN, PROP_RESPAWN_RANGE, stepPropBody, type PropBody, type PropHit } from '../../../shared/src/sim/props';
@@ -37,7 +37,7 @@ import { QUEST_BY_ID } from '../../../shared/src/questData';
 import type { GangId } from '../../../shared/src/gangs';
 import { ITEMS, BACKPACK_SLOTS } from '../../../shared/src/items';
 import { generateShops, shopCatalog, storeToWorld, MECHANIC_RANGE, RESPRAY_PRICE, SHOP_SERVER_RANGE, type ShopDef } from '../../../shared/src/shops';
-import { Police } from '../sim/Police';
+import { HEAT, HEAT_LEVELS, MAX_WANTED, Police } from '../sim/Police';
 import { CARRY_SLOTS, WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { aimAssist, dirOf, meleeTarget, shootRay, wallDistance, type Target } from '../sim/Combat';
 
@@ -58,6 +58,12 @@ const CMD_BUDGET_MAX = 24;
 const CMD_REFILL_PER_TICK = (1 / SIM_DT / SERVER_TICK_HZ) * 1.15; // 15 % Toleranz für Jitter
 const PARKED_RESET_TIME = 60;
 const ABANDONED_DESPAWN_TIME = 45;
+/** Verwaiste Fahrzeuge (ohne Fahrer) verschwinden nach dieser Zeit, auch wenn Spieler in der Nähe sind. */
+const ORPHAN_TIME = 180;
+/** … außer ein Spieler steht direkt daneben (sonst verschwindet das Auto vor seiner Nase). */
+const ORPHAN_KEEP_RANGE = 12;
+const ROCKET_RADIUS = 7;
+const ROCKET_IDX = Object.keys(WEAPONS).indexOf('rocket');
 /** Interest-Management: Radius, in dem ein Client Fahrzeuge/Fußgänger/Props bekommt. */
 const INTEREST = 170;
 const DENT_MAX = 48;
@@ -148,6 +154,7 @@ export class WorldRoom {
       departCar: (v) => { if (!this.traffic.adopt(v)) v.driver = DRIVER_NONE; },
     });
     this.peds.brain = this.brain;
+    this.peds.avoid = (ped, dx, dz) => this.avoidVehicles(ped, dx, dz);
     this.pop = new Population(map, this.peds, this.brain, () => this.dayPhase(), playerPos);
     this.perception = new Perception({
       map, peds: this.peds, vehicles: this.vehicles, players: this.players,
@@ -174,7 +181,8 @@ export class WorldRoom {
       positionOf: (p) => this.positionOf(p),
       hurtPlayer: (p, dmg) => this.hurtPlayer(p, dmg),
       stepCar: (v, ax, ay) => { const n = Math.round(1 / SERVER_TICK_HZ / SIM_DT); for (let k = 0; k < n; k++) this.physicsStep(v, ax, ay, 0, null); },
-      createCopCar: (x, z, a, target) => this.createCopCar(x, z, a, target),
+      createCopCar: (x, z, a, target, tank) => this.createCopCar(x, z, a, target, tank),
+      rocket: (id, x0, z0, x1, z1) => this.tankRocket(id, x0, z0, x1, z1),
       emit: (x, z, ev) => this.emit(x, z, ev),
       notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
       arrest: (p) => this.arrest(p),
@@ -361,7 +369,7 @@ export class WorldRoom {
       view, stunts: newStuntTracker(), repairT: 0, buttons: 0,
       health: profile.health > 0 ? Math.min(profile.health, BALANCE.player.maxHealth) : BALANCE.player.maxHealth,
       armor: Math.min(profile.armor, BALANCE.player.maxArmor),
-      weapon: 'pistol' in profile.weapons ? 'pistol' : 'fists', hold: false, atkCd: 0, pvp: false, noAmmoCd: 0, wanted: 0, searchT: 0, arrestT: 0, reports: [],
+      weapon: 'pistol' in profile.weapons ? 'pistol' : 'fists', hold: false, atkCd: 0, pvp: false, noAmmoCd: 0, wanted: 0, heat: 0, searchT: 0, arrestT: 0, reports: [],
       sinceHurt: 99, downT: 0, invuln: BALANCE.player.spawnProtection, saveT: SAVE_INTERVAL,
       level: levelFromXp(profile.xp).level,
     };
@@ -513,7 +521,7 @@ export class WorldRoom {
     // Autodiebstahl: Fahrer herausziehen bzw. geparktes Auto knacken (nur mit Zeugen ein Verbrechen)
     if (best.home || best.driver === DRIVER_NPC) {
       this.perception.event(NpcEv.Theft, best.sim.car.x, best.sim.car.z, p.id);
-      this.police.crime(p, 1, best.sim.car.x, best.sim.car.z);
+      this.police.crime(p, HEAT.theft, best.sim.car.x, best.sim.car.z);
     }
     best.driver = p.id;
     best.idleTime = 0;
@@ -574,7 +582,9 @@ export class WorldRoom {
       if (!ids.length) say('/waffe <' + Object.keys(WEAPONS).join('|') + '|alle>');
       for (const id of ids) this.giveWeapon(p, id, WEAPONS[id].ammoPack * 3);
     } else if (cmd === 'fahndung' || cmd === 'wanted') {
-      p.wanted = Math.max(0, Math.min(3, Number(arg) || 0)); p.searchT = 0;
+      const lvl = Math.max(0, Math.min(MAX_WANTED, Number(arg) || 0));
+      this.police.clear(p);
+      if (lvl > 0) this.police.raise(p, lvl);
     } else if (cmd === 'rennen' || cmd === 'race') {
       // Zum Renntelefon teleportieren (1–3)
       const list = this.phones.filter((ph) => ph.race);
@@ -934,12 +944,58 @@ export class WorldRoom {
 
   // ------------------------------------------------------------------ Polizei, Festnahme, Läden
   /** Streifenwagen für die Verfolgung erzeugen (Limousine, helle Lackierung). */
-  private createCopCar(x: number, z: number, a: number, target: number): ServerVehicle | null {
-    const sim = createSimVehicle(this.map, VehicleKind.Car, 1, x, z, a);
+  private createCopCar(x: number, z: number, a: number, target: number, tank = false): ServerVehicle | null {
+    const sim = createSimVehicle(this.map, VehicleKind.Car, tank ? TANK_VARIANT : 1, x, z, a);
     const id = this.allocId();
-    const v: ServerVehicle = { id, kind: VehicleKind.Car, color: 3, sim, driver: DRIVER_COP, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false, cop: target };
+    const v: ServerVehicle = { id, kind: VehicleKind.Car, color: tank ? 6 : 3, sim, driver: DRIVER_COP, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false, cop: target };
     this.vehicles.set(id, v);
     return v;
+  }
+
+  /** Panzerrakete (Fahndungsstufe 4): fliegt bis zum Ziel oder zur ersten Wand und explodiert. */
+  private tankRocket(shooter: number, x0: number, z0: number, x1: number, z1: number) {
+    const d = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const a = Math.atan2(x1 - x0, z1 - z0);
+    const dist = Math.min(d, wallDistance(this.map, x0, z0, a, d));
+    const [dx, dz] = dirOf(a);
+    const ex = x0 + dx * dist, ez = z0 + dz * dist;
+    this.emit(x0, z0, ['shot', shooter, r2(x0), r2(z0), r2(ex), r2(ez), ROCKET_IDX]);
+    this.blast(ex, ez, ROCKET_RADIUS);
+  }
+
+  /** Explosion ohne Verursacher-Spieler (kein Verbrechen): Flächenschaden an Fahrzeugen, Spielern, Passanten. */
+  private blast(x: number, z: number, R: number) {
+    this.emit(x, z, ['boom', -1, r2(x), r2(this.map.surfaceY(x, z) + 0.5), r2(z)]);
+    this.peds.scare(x, z, 40);
+    for (const o of [...this.nearVehicles(x, z)]) {
+      if (o.sim.variant === TANK_VARIANT || isWaterVehicle(o.kind)) continue;
+      const oc = o.sim.car;
+      const dx = oc.x - x, dz = oc.z - z, dist = Math.hypot(dx, dz);
+      if (dist > R) continue;
+      const k = 1 - dist / R;
+      const nx = dx / (dist || 1), nz = dz / (dist || 1);
+      if (o.driver === DRIVER_NPC) this.traffic.onHit(o.id, 12 * k + 4);
+      oc.sleep = 0;
+      applyImpulse(oc, derive(o.sim.prof), oc.x - nx * 0.5, oc.y - 0.4, oc.z - nz * 0.5, nx * o.sim.prof.mass * 8 * k, o.sim.prof.mass * 7 * k, nz * o.sim.prof.mass * 8 * k);
+      this.hurt(o, oc.x - nx * o.sim.prof.width / 2, oc.y, oc.z - nz * o.sim.prof.width / 2, nx, 0, nz, 14 * k + 6);
+      const dm = o.sim.dmg;
+      dm.hp = Math.max(0, dm.hp - 550 * k);
+      if (dm.hp <= 0 && !dm.burn && !dm.wreck) dm.burn = 0.0001;
+      o.dmgVer++;
+      if (o.driver >= 0) { const p = this.players.get(o.driver); if (p) this.hurtPlayer(p, 12 * k); }
+    }
+    for (const p of this.players.values()) {
+      if (p.vehicleId >= 0 || p.downT > 0) continue;
+      const dx = p.pawn.x - x, dz = p.pawn.z - z, dist = Math.hypot(dx, dz);
+      if (dist >= R) continue;
+      const k = 1 - dist / R;
+      knockPawn(p.pawn, (dx / (dist || 1)) * 9 * k, (dz / (dist || 1)) * 9 * k, 7, 2);
+      this.hurtPlayer(p, 75 * k);
+    }
+    for (const ped of this.peds.peds.values()) {
+      const dx = ped.x - x, dz = ped.z - z, dist = Math.hypot(dx, dz);
+      if (dist < R) this.peds.knock(ped, (dx / (dist || 1)) * 9 * (1 - dist / R), (dz / (dist || 1)) * 9 * (1 - dist / R), 7);
+    }
   }
 
   /** Festnahme (Spec 7.3): 15 % Bargeld und illegale Gegenstände weg, Respawn beim Revier (= Spawn). */
@@ -947,7 +1003,7 @@ export class WorldRoom {
     const cost = Math.floor(p.profile.money * BALANCE.player.arrestCostShare);
     if (cost > 0) this.addMoney(p, -cost, 'arrest');
     for (const id of Object.keys(p.profile.inventory)) if (ITEMS[id]?.kind === 'illegal') delete p.profile.inventory[id];
-    p.wanted = 0; p.searchT = 0; p.arrestT = 0; p.reports.length = 0;
+    this.police.clear(p);
     const ang = Math.random() * Math.PI * 2;
     const spot = findFootSpot(this.map, this.map.spawn.x + Math.cos(ang) * 5, this.map.spawn.z + Math.sin(ang) * 5, 10) ?? this.map.spawn;
     p.pawn = newPawn(spot.x, spot.z, Math.PI);
@@ -1023,10 +1079,10 @@ export class WorldRoom {
       done = true;
     } else if (key === 'respray') {
       if (p.wanted === 0) return bad('Du wirst nicht gesucht.');
-      if (p.wanted > 2) return bad('Bei Stufe 3 hilft kein Lack mehr.');
+      if (p.wanted > 2) return bad('Ab Stufe 3 hilft kein Lack mehr.');
       if (this.police.copInSight(p)) return bad('Nicht bei Sichtkontakt zur Polizei!');
       this.addMoney(p, -RESPRAY_PRICE, 'shop:respray');
-      p.wanted = 0; p.searchT = 0;
+      this.police.clear(p);
       done = true;
     }
     if (done) p.conn.send({ t: 'notice', text: `${entry.name} gekauft (−$${entry.price}).`, kind: 'good' });
@@ -1090,8 +1146,8 @@ export class WorldRoom {
       this.blood(t.x, t.z, Math.min(1, dmg / 40) + (defeated ? 0.5 : 0), dx, dz, 0);
       if (ped.gang) this.gangs.provoke(ped, p);
       if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
-      if (ped.cop) this.police.raise(p, defeated ? 3 : 2); // Polizisten angreifen: sofort bekannt
-      else this.police.crime(p, defeated ? 2 : 1, ped.x, ped.z);
+      if (ped.cop) this.police.raise(p, defeated ? 3 : 2, defeated ? HEAT.copKill : HEAT.copHit); // Polizisten angreifen: sofort bekannt
+      else this.police.crime(p, defeated ? HEAT.kill : HEAT.punch, ped.x, ped.z);
       if (defeated && !ped.cop) this.addMoney(p, 5 + Math.floor(Math.random() * 36), 'loot');
     } else if (t.ref.veh) {
       const v = t.ref.veh, d = v.sim.dmg;
@@ -1100,7 +1156,7 @@ export class WorldRoom {
       v.dmgVer++; v.sim.car.sleep = 0;
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 2]);
       if (v.driver === DRIVER_NPC) this.traffic.onHit(v.id, 9);
-      if (v.cop !== undefined) this.police.raise(p, 2);
+      if (v.cop !== undefined) this.police.raise(p, 2, HEAT.copHit * 0.3);
     } else if (t.ref.player) {
       this.hurtPlayer(t.ref.player, dmg);
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 1]);
@@ -1148,7 +1204,7 @@ export class WorldRoom {
     }
     this.peds.scare(ox, oz, 30);
     this.perception.event(NpcEv.Shot, ox, oz, p.id);
-    this.police.crime(p, 2, ox, oz); // Schusswaffe in der Öffentlichkeit
+    this.police.gunfire(p, ox, oz); // Schusswaffe in der Öffentlichkeit
     aim = aimAssist(ox, oz, aim, def.range, targets);
     if (def.area > 0) {
       // Wurf/Rakete: landet am Ziel in Reichweite bzw. an der ersten Wand, Flächenschaden mit Abfall
@@ -1158,7 +1214,7 @@ export class WorldRoom {
       this.emit(ox, oz, ['shot', p.id, r2(ox), r2(oz), r2(ex), r2(ez), wid]);
       this.emit(ex, ez, ['boom', -1, r2(ex), r2(this.map.surfaceY(ex, ez) + 0.5), r2(ez)]);
       this.peds.scare(ex, ez, 40);
-      this.police.crime(p, 3, ex, ez); // Explosion
+      this.police.crime(p, HEAT.explosion, ex, ez); // Explosion
       for (const t of targets) {
         const d = Math.hypot(t.x - ex, t.z - ez);
         if (d <= def.area) this.applyHit(p, t, def.damage * (1 - 0.6 * d / def.area), ex, ez);
@@ -1296,7 +1352,9 @@ export class WorldRoom {
             this.peds.knock(ped, c.vx * k - hit[0] * 2, c.vz * k - hit[1] * 2, up);
             const dp = v.driver >= 0 ? this.players.get(v.driver) : undefined;
             if (ped.cop) ped.hp -= speed * 3;
-            if (dp) this.police.crime(dp, ped.cop ? 2 : 1, ped.x, ped.z);
+            // Polizisten umfahren = Angriff; Passanten zählen erst bei echtem Tempo (kein Anrempeln)
+            if (dp && ped.cop) this.police.raise(dp, 2, HEAT.copHit);
+            else if (dp && speed > 6) this.police.crime(dp, HEAT.runover, ped.x, ped.z);
           }
           else {
             knockPawn(pawn as never, c.vx * k - hit[0] * 2, c.vz * k - hit[1] * 2, up, 1.7);
@@ -1327,6 +1385,33 @@ export class WorldRoom {
       }
     }
     this.separatePawns();
+  }
+
+  /**
+   * Fußgänger weichen stehenden Fahrzeugen aus (z. B. auf dem Gehweg abgestellte Autos), statt sich
+   * daran festzulaufen: um die Seite herum, die frei ist – meist also über die Straße.
+   */
+  private avoidVehicles(ped: Ped, dx: number, dz: number): [number, number] | null {
+    const px = ped.x + dx * 1.5, pz = ped.z + dz * 1.5;
+    for (const v of this.nearVehicles(px, pz)) {
+      const c = v.sim.car;
+      if (Math.hypot(c.vx, c.vz) > 2 || v.kind === VehicleKind.Boat) continue;
+      const prof = v.sim.prof;
+      if (!boxCircle(c, prof, px, pz, PAWN_RADIUS + 0.3) && !boxCircle(c, prof, ped.x + dx * 0.7, ped.z + dz * 0.7, PAWN_RADIUS + 0.2)) continue;
+      // Umgehungspunkte links/rechts des Autos (quer zur Laufrichtung)
+      const off = Math.hypot(prof.length, prof.width) / 2 + 0.9;
+      const side = Math.sign((ped.x - c.x) * -dz + (ped.z - c.z) * dx) || 1;
+      for (const s of [side, -side]) {
+        const tx = c.x - dz * s * off, tz = c.z + dx * s * off;
+        if (!footFree(this.map, tx, tz)) continue;
+        const ex = tx - ped.x, ez = tz - ped.z, el = Math.hypot(ex, ez);
+        if (el < 0.3) return [dx, dz];
+        // etwas Vorwärtsdrang behalten, damit der Bogen flüssig wirkt
+        const mx = ex / el + dx * 0.35, mz = ez / el + dz * 0.35, ml = Math.hypot(mx, mz) || 1;
+        return [mx / ml, mz / ml];
+      }
+    }
+    return null;
   }
 
   /** Blutspritzer: kind 0 = Treffer (Waffe/Schlag), 1 = angefahren, 2 = überfahren. */
@@ -1472,28 +1557,42 @@ export class WorldRoom {
     const players = [...this.players.values()].map((p) => this.positionOf(p));
     const nobodyNear = (x: number, z: number, r: number) => players.every((p) => dist2(p.x, p.z, x, z) > r * r);
     for (const v of this.vehicles.values()) {
-      if (v.driver !== DRIVER_NONE) { v.idleTime = 0; continue; }
+      if (v.driver !== DRIVER_NONE) { v.idleTime = 0; v.orphanT = 0; continue; }
       const s = v.sim.car;
+      // Verwaist (bewegt/beschädigt, ohne Fahrer): nach 3 Minuten weg – auch wenn Spieler in der Gegend sind
+      const displaced = !v.home || dist2(s.x, s.z, v.home.x, v.home.z) > 10 * 10 || v.dmgVer > 0;
+      v.orphanT = displaced && v.race === undefined ? (v.orphanT ?? 0) + dt : 0;
+      if (v.orphanT > ORPHAN_TIME && nobodyNear(s.x, s.z, ORPHAN_KEEP_RANGE)) {
+        v.orphanT = 0;
+        if (!v.home) { this.vehicles.delete(v.id); continue; }
+        this.resetParked(v);
+        continue;
+      }
       if (v.home) {
         const moved = dist2(s.x, s.z, v.home.x, v.home.z) > 10 * 10 || v.dmgVer > 0;
         if (!moved || !nobodyNear(s.x, s.z, 60)) { v.idleTime = 0; continue; }
         v.idleTime += dt;
-        if (v.idleTime > PARKED_RESET_TIME && nobodyNear(v.home.x, v.home.z, 60)) {
-          placeCar(this.map, s, v.sim.prof, v.home.x, v.home.z, v.home.a);
-          resetDamage(v.sim.dmg);
-          v.dents = [];
-          v.dmgVer = 0;
-          v.idleTime = 0;
-          // Clients, die das Fahrzeug kennen, sollen es neu aufbauen
-          for (const p of this.players.values()) p.view.dmg.delete(v.id);
-          this.emit(s.x, s.z, ['repair', v.id], v.id);
-        }
+        if (v.idleTime > PARKED_RESET_TIME && nobodyNear(v.home.x, v.home.z, 60)) this.resetParked(v);
       } else {
         if (!nobodyNear(s.x, s.z, 80)) { v.idleTime = 0; continue; }
         v.idleTime += dt;
         if (v.idleTime > ABANDONED_DESPAWN_TIME) this.vehicles.delete(v.id);
       }
     }
+  }
+
+  /** Geparktes Auto repariert zurück auf seinen Parkplatz stellen. */
+  private resetParked(v: ServerVehicle) {
+    const s = v.sim.car, h = v.home!;
+    placeCar(this.map, s, v.sim.prof, h.x, h.z, h.a);
+    resetDamage(v.sim.dmg);
+    v.dents = [];
+    v.dmgVer = 0;
+    v.idleTime = 0;
+    v.orphanT = 0;
+    // Clients, die das Fahrzeug kennen, sollen es neu aufbauen
+    for (const p of this.players.values()) p.view.dmg.delete(v.id);
+    this.emit(s.x, s.z, ['repair', v.id], v.id);
   }
 
   // ------------------------------------------------------------------ Snapshots
