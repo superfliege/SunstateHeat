@@ -54,6 +54,7 @@ import { DebugOverlay } from '../ui/DebugOverlay';
 import { DriveHud } from '../ui/DriveHud';
 import { Hud } from '../ui/Hud';
 import { Minimap, playerDotColor, type MapDot } from '../ui/Minimap';
+import { MINIGAMES } from '../../../shared/src/minigames';
 import { applyTune, TuningPanel } from '../ui/TuningPanel';
 import { EntityViews, type PlayerState, type VehicleViewState } from './EntityViews';
 
@@ -169,7 +170,7 @@ export class Game {
     this.shops = generateShops(this.map);
     this.stores = new StoresView(this.map, this.shops);
     this.phones = payphones(this.map);
-    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.taxi ? { x: p.x, z: p.z, name: '🚕 Catch the Taxi', color: 0x3ad1ff } : p.mg ? { x: p.x, z: p.z, name: '🏟 Minispiele', color: 0xff4f8b } : p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
+    this.phonesView = new ShopsView(this.map, this.phones.map((p) => (p.taxi ? { x: p.x, z: p.z, name: '🚕 Catch the Taxi', color: 0x3ad1ff } : p.mg ? { x: p.x, z: p.z, name: `${MINIGAMES[p.mg].icon} ${MINIGAMES[p.mg].name}`, color: 0xff4f8b } : p.race ? { x: p.x, z: p.z, name: '🏁 Rennen', color: 0xffd23a } : { x: p.x, z: p.z, name: '☎ Auftrag', color: 0xffe14d })));
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
@@ -1065,16 +1066,45 @@ export class Game {
       } else {
         const shop = this.shopNearMe();
         const ph = this.phoneNearMe();
-        this.hud.setHint(shop ? `<b>F</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
+        this.hud.setHint(shop ? `<b>F</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.mg ? `<b>F</b> Arena-Telefon (${MINIGAMES[ph.mg].icon} ${MINIGAMES[ph.mg].name})` : ph.taxi ? '<b>F</b> Catch the Taxi' : ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
       }
     }
   }
 
+  private staticDotList: MapDot[] | null = null;
+
+  /** Feste Kartenpunkte (Werkstätten, Läden, Telefone) mit Tooltip-Text für die große Karte. */
+  private staticDots(): MapDot[] {
+    if (this.staticDotList) return this.staticDotList;
+    const dots: MapDot[] = [];
+    const where = (x: number, z: number) => this.map.districtAt(x, z)?.name ?? 'Umland';
+    for (const w of this.map.workshops) dots.push({ x: w.x, z: w.z, color: '#2af0e6', size: 3, ring: true, label: ['🔧 Werkstatt', `${where(w.x, w.z)} · Reparatur & Tuning`] });
+    for (const s of this.shops) dots.push({ x: s.x, z: s.z, color: s.type === 'ammo' ? '#ff6a6a' : s.type === 'paint' ? '#c98bff' : s.type === 'gas' ? '#ffb33a' : '#4fd16b', size: 2, ring: true, label: [s.name, `${where(s.x, s.z)} · Laden`] });
+    for (const ph of this.phones) {
+      if (ph.mg) {
+        const m = MINIGAMES[ph.mg], c = m.config;
+        const others = this.phones.filter((q) => q.mg === ph.mg && q !== ph).map((q) => where(q.x, q.z));
+        dots.push({
+          x: ph.x, z: ph.z, color: '#ff4f8b', size: 3, ring: true, icon: m.icon,
+          label: [
+            `${m.icon} Minispiel: ${m.name}`,
+            `Arena-Telefon · ${where(ph.x, ph.z)}`,
+            m.intro[0],
+            `${c.players.min}–${c.players.max} Teilnehmer · ca. ${Math.round(c.timeLimit / 60 * 10) / 10} min · Sieg: $${c.rewards[0]?.[0] ?? 0}`,
+            ...(others.length ? [`Auch in: ${[...new Set(others)].join(', ')}`] : []),
+          ],
+        });
+        continue;
+      }
+      const label = ph.taxi ? [ph.name, 'Spielmodus · Taxi jagen'] : ph.race ? [`🏁 ${ph.name}`, 'Renntelefon'] : [`☎ ${ph.name}`, 'Missionstelefon · Aufträge'];
+      dots.push({ x: ph.x, z: ph.z, color: ph.taxi ? '#3ad1ff' : ph.race ? '#ff8a3a' : '#ffe14d', size: ph.taxi ? 4 : 3, ring: true, label });
+    }
+    return (this.staticDotList = dots);
+  }
+
   private drawMinimap(latest: SnapshotMsg, vehicles: Map<number, VehicleViewState>, me: ReturnType<Predictor['view']>) {
     const dots: MapDot[] = [];
-    for (const w of this.map.workshops) dots.push({ x: w.x, z: w.z, color: '#2af0e6', size: 3, ring: true });
-    for (const s of this.shops) dots.push({ x: s.x, z: s.z, color: s.type === 'ammo' ? '#ff6a6a' : s.type === 'paint' ? '#c98bff' : s.type === 'gas' ? '#ffb33a' : '#4fd16b', size: 2, ring: true });
-    for (const ph of this.phones) dots.push({ x: ph.x, z: ph.z, color: ph.taxi ? '#3ad1ff' : ph.race ? '#ff8a3a' : '#ffe14d', size: ph.taxi ? 4 : 3, ring: true });
+    dots.push(...this.staticDots());
     for (const t of this.questState?.targets ?? []) dots.push({ x: t[0], z: t[1], color: t[3] === 5 ? '#ff3d5a' : t[3] === 2 ? '#ffd23a' : t[3] === 7 ? '#ffffff' : '#4dff9a', size: 4, ring: t[3] !== 5 });
     for (const c of this.copDots.values()) dots.push({ x: c[0], z: c[1], color: '#2a6bff', size: 3 });
     for (const v of vehicles.values()) {

@@ -1,11 +1,18 @@
 // Minimap im Stil eines zweiten DS-Bildschirms: pixelige Karte, Norden oben,
-// zentriert auf den Spieler. M schaltet eine große Gesamtkarte ein.
+// zentriert auf den Spieler. M schaltet eine große Gesamtkarte ein; dort zeigt ein Tooltip
+// beim Überfahren (Maus) bzw. Antippen (Touch) eines Punkts, was sich dahinter verbirgt.
 import { CELL, GRID_SIZE, OUTFIT_COLORS, WORLD_SIZE } from '../../../shared/src/constants';
 import { Tile } from '../../../shared/src/world/tiles';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { groundColor } from '../render/WorldView';
 
-export interface MapDot { x: number; z: number; color: string; size: number; ring?: boolean }
+export interface MapDot {
+  x: number; z: number; color: string; size: number; ring?: boolean;
+  /** Tooltip auf der großen Karte: erste Zeile = Titel, danach Beschreibung. */
+  label?: string[];
+  /** Symbol auf der großen Karte (z. B. Minispiel-Emoji). */
+  icon?: string;
+}
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
@@ -38,16 +45,26 @@ export class Minimap {
   private ctx: CanvasRenderingContext2D;
   private bigCtx: CanvasRenderingContext2D;
   private bigEl: HTMLElement;
+  /** Zeiger über der großen Karte (Canvas-Pixel) oder null. */
+  private hover: { x: number; y: number } | null = null;
 
   constructor(map: WorldMap, canvas: HTMLCanvasElement, bigCanvas: HTMLCanvasElement) {
     this.ctx = canvas.getContext('2d')!;
     this.bigCtx = bigCanvas.getContext('2d')!;
     this.bigEl = bigCanvas.parentElement!;
     this.base = renderMapImage(map);
+    const track = (e: PointerEvent) => {
+      const b = bigCanvas.getBoundingClientRect();
+      if (!b.width) return;
+      this.hover = { x: (e.clientX - b.left) * (bigCanvas.width / b.width), y: (e.clientY - b.top) * (bigCanvas.height / b.height) };
+    };
+    bigCanvas.addEventListener('pointermove', track);
+    bigCanvas.addEventListener('pointerdown', track);
+    bigCanvas.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') this.hover = null; });
   }
 
   get bigVisible() { return !this.bigEl.classList.contains('hidden'); }
-  toggleBig() { this.bigEl.classList.toggle('hidden'); }
+  toggleBig() { this.bigEl.classList.toggle('hidden'); this.hover = null; }
 
   draw(px: number, pz: number, pa: number, zoomOut: boolean, dots: MapDot[]) {
     const ctx = this.ctx;
@@ -66,7 +83,7 @@ export class Minimap {
     for (const d of dots) {
       let { sx, sy } = toScreen(d.x, d.z);
       const out = sx < 6 || sy < 6 || sx > W - 6 || sy > W - 6;
-      if (out && !d.ring) continue;
+      if (out && (!d.ring || d.icon)) continue; // Minispiel-Telefone nicht am Rand stapeln
       // Quest-Ziele außerhalb werden am Rand festgeklemmt
       sx = Math.max(6, Math.min(W - 6, sx));
       sy = Math.max(6, Math.min(W - 6, sy));
@@ -126,8 +143,74 @@ export class Minimap {
     label('PORT CORALIA', 1300, 730);
     label('GATOR FLATS', 900, 1420);
     label('CORAL KEYS', 900, 1990);
-    for (const d of dots) this.dot(ctx, d.x * s, d.z * s, { ...d, size: d.size + 1 });
+    for (const d of dots) if (!d.icon) this.dot(ctx, d.x * s, d.z * s, { ...d, size: d.size + 1 });
+    for (const d of dots) if (d.icon) this.iconDot(ctx, d.x * s, d.z * s, d); // Symbole obenauf
     this.arrow(ctx, px * s, pz * s, pa);
+
+    // Tooltip: nächster beschrifteter Punkt unter dem Zeiger
+    const h = this.hover;
+    if (!h) return;
+    let best: MapDot | null = null, bd = 12 * 12;
+    for (const d of dots) {
+      if (!d.label) continue;
+      const q = (d.x * s - h.x) ** 2 + (d.z * s - h.y) ** 2;
+      if (q < bd) { bd = q; best = d; }
+    }
+    if (best) this.tooltip(ctx, best.x * s, best.z * s, best);
+  }
+
+  private iconDot(ctx: CanvasRenderingContext2D, sx: number, sy: number, d: MapDot) {
+    ctx.fillStyle = d.color;
+    ctx.strokeStyle = '#120d1f';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(sx - 9, sy - 9, 18, 18, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(d.icon!, sx, sy + 1);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  private tooltip(ctx: CanvasRenderingContext2D, sx: number, sy: number, d: MapDot) {
+    const W = ctx.canvas.width, maxW = 280, pad = 8, lh = 16;
+    // Zeilen umbrechen
+    const lines: { text: string; bold: boolean }[] = [];
+    d.label!.forEach((raw, i) => {
+      ctx.font = i === 0 ? 'bold 14px Trebuchet MS, sans-serif' : '12px Trebuchet MS, sans-serif';
+      let cur = '';
+      for (const word of raw.split(' ')) {
+        const next = cur ? `${cur} ${word}` : word;
+        if (cur && ctx.measureText(next).width > maxW) { lines.push({ text: cur, bold: i === 0 }); cur = word; } else cur = next;
+      }
+      if (cur) lines.push({ text: cur, bold: i === 0 });
+    });
+    let w = 0;
+    for (const l of lines) { ctx.font = l.bold ? 'bold 14px Trebuchet MS, sans-serif' : '12px Trebuchet MS, sans-serif'; w = Math.max(w, ctx.measureText(l.text).width); }
+    const bw = w + pad * 2, bh = lines.length * lh + pad * 2 - 2;
+    let bx = sx + 14, by = sy - bh / 2;
+    if (bx + bw > W - 4) bx = sx - 14 - bw;
+    by = Math.max(4, Math.min(W - bh - 4, by));
+    // Markierung um den Punkt
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, 13, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(18, 13, 31, 0.92)';
+    ctx.strokeStyle = d.color;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 6);
+    ctx.fill(); ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    lines.forEach((l, i) => {
+      ctx.font = l.bold ? 'bold 14px Trebuchet MS, sans-serif' : '12px Trebuchet MS, sans-serif';
+      ctx.fillStyle = l.bold ? '#ffffff' : '#d6cfe8';
+      ctx.fillText(l.text, bx + pad, by + pad + i * lh);
+    });
+    ctx.textBaseline = 'alphabetic';
   }
 }
 

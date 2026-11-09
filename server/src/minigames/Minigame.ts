@@ -26,8 +26,8 @@ export interface MinigameHost {
   map: WorldMap;
   players: Map<number, ServerPlayer>;
   vehicles: Map<number, ServerVehicle>;
-  /** Startpunkt (Minispiel-Telefon): Rückkehrpunkt nach der Runde. */
-  start: { x: number; z: number };
+  /** Rückkehrpunkt nach der Runde: das Minispiel-Telefon, an dem sich der Spieler angemeldet hat. */
+  home(pid: number): { x: number; z: number };
   positionOf(p: ServerPlayer): { x: number; z: number; inVehicle: boolean };
   notice(p: ServerPlayer, text: string, kind: 'info' | 'good' | 'bad'): void;
   chat(p: ServerPlayer, text: string): void;
@@ -233,11 +233,11 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     if (this.members.length >= this.cfg.players.maxHumans) this.t = Math.min(this.t, 1);
   }
 
-  /** Lobby öffnen: Spieler in der Nähe einladen. */
-  open(first: ServerPlayer | null) {
+  /** Lobby öffnen: Spieler in der Nähe des Telefons (at) einladen. */
+  open(first: ServerPlayer | null, at?: { x: number; z: number }) {
     if (this.opts.instant || this.opts.botsOnly || !first) { this.t = 0.5; if (first) this.members.push(first.id); return; }
     this.members.push(first.id);
-    const s = this.h.start, r = this.cfg.joinRange;
+    const s = at ?? this.h.home(first.id), r = this.cfg.joinRange;
     const nearby = [...this.h.players.values()].filter((o) => {
       if (o === first || this.h.blocked(o)) return false;
       const q = this.h.positionOf(o);
@@ -494,7 +494,7 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
   abort(why: string) { if (this.phase === 'lobby') { this.phase = 'end'; this.t = 0; } else this.finish(null, why, 2); }
 
   private sendHome(p: ServerPlayer) {
-    const s = this.h.start;
+    const s = this.h.home(p.id);
     const a = Math.random() * Math.PI * 2, r = 2 + Math.random() * 4;
     const spot = findFootSpot(this.h.map, s.x + Math.cos(a) * r, s.z + Math.sin(a) * r, 10) ?? s;
     this.h.placeOnFoot(p, spot.x, spot.z, Math.atan2(s.x - spot.x, s.z - spot.z));

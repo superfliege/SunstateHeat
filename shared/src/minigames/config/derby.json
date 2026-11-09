@@ -1,5 +1,6 @@
 {
-  "_doc": "Destruction Derby: Wer kein fahrbares Auto mehr hat (zerstört oder Motor tot), scheidet aus. damage.scale: Gesamtfaktor auf das Aufprall-Tempo; front/rear/side: Faktor je getroffener Zone (Heck/Seite empfindlicher als Front); wall: Faktor bei Wand/Explosion. engineDead: Motorschaden (0..1), ab dem das Auto als tot gilt. botAI.fleeBelow: unter diesem HP-Anteil fliehen NPCs und greifen nur noch an, wenn ein schwächerer Gegner näher als opportunisticRange Meter ist. Zeitlimit: danach gewinnt das Auto mit den meisten HP (tieGap = HP-Unterschied, der als Gleichstand zählt).",
+  "_doc": "phones: Anzahl der Minispiel-Telefone auf der Karte (2–5, Orte werden automatisch verteilt). Destruction Derby: Wer kein fahrbares Auto mehr hat (zerstört oder Motor tot), scheidet aus. damage.scale: Gesamtfaktor auf das Aufprall-Tempo; front/rear/side: Faktor je getroffener Zone (Heck/Seite empfindlicher als Front); wall: Faktor bei Wand/Explosion. engineDead: Motorschaden (0..1), ab dem das Auto als tot gilt. botAI.fleeBelow: unter diesem HP-Anteil fliehen NPCs und greifen nur noch an, wenn ein schwächerer Gegner näher als opportunisticRange Meter ist. Zeitlimit: danach gewinnt das Auto mit den meisten HP (tieGap = HP-Unterschied, der als Gleichstand zählt).",
+  "phones": 3,
   "arena": "bowl",
   "lobbyTime": 15,
   "joinRange": 70,

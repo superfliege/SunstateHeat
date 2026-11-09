@@ -1,5 +1,6 @@
 {
-  "_doc": "Fallout (im Fahrzeug): Boden aus Kacheln, die nach und nach verschwinden. Wer auf einer fehlenden Kachel steht, fällt ins Wasser und scheidet aus. variant: 'random' (zufällig), 'trail' (Kacheln fallen, nachdem man darübergefahren ist) oder 'mixed'. grace: Sekunden ohne Verschwinden am Anfang. warnTime: Vorwarnung (Kachel blinkt rot) in Sekunden. random: alle interval Sekunden verschwinden batch Kacheln, das Intervall sinkt um accel pro Sekunde bis minInterval. trail: delay = Sekunden nach dem Überfahren bis zur Vorwarnung, chance = Wahrscheinlichkeit, dass eine überfahrene Kachel fällt. keepMin: so viele Kacheln bleiben mindestens. damageScale 0 = kein Fahrzeugschaden.",
+  "_doc": "phones: Anzahl der Minispiel-Telefone auf der Karte (2–5, Orte werden automatisch verteilt). Fallout (im Fahrzeug): Boden aus Kacheln, die nach und nach verschwinden. Wer auf einer fehlenden Kachel steht, fällt ins Wasser und scheidet aus. variant: 'random' (zufällig), 'trail' (Kacheln fallen, nachdem man darübergefahren ist) oder 'mixed'. grace: Sekunden ohne Verschwinden am Anfang. warnTime: Vorwarnung (Kachel blinkt rot) in Sekunden. random: alle interval Sekunden verschwinden batch Kacheln, das Intervall sinkt um accel pro Sekunde bis minInterval. trail: delay = Sekunden nach dem Überfahren bis zur Vorwarnung, chance = Wahrscheinlichkeit, dass eine überfahrene Kachel fällt. keepMin: so viele Kacheln bleiben mindestens. damageScale 0 = kein Fahrzeugschaden.",
+  "phones": 3,
   "arena": "tiles",
   "lobbyTime": 15,
   "joinRange": 70,

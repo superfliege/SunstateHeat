@@ -32,6 +32,7 @@ import { Races } from '../quests/Races';
 import { TaxiHunt } from '../quests/TaxiHunt';
 import { MinigameManager } from '../minigames/MinigameManager';
 import { MG_MARK } from '../minigames/Minigame';
+import { MG_PREFIX } from '../../../shared/src/minigames';
 import { TAXI_HUNT_ID } from '../../../shared/src/taxiHunt';
 import { Gangs, GANG_OUTFIT } from '../sim/Gangs';
 import { payphones, questLocations, type PhoneDef } from '../../../shared/src/questLocations';
@@ -310,10 +311,8 @@ export class WorldRoom {
       grantXp: (p, xp) => this.grantXp(p, xp),
       persist: (p) => this.persist(p),
     });
-    const mgPhone = this.phones.find((ph) => ph.mg) ?? { x: map.spawn.x, z: map.spawn.z };
     this.mg = new MinigameManager({
       map, players: this.players, vehicles: this.vehicles,
-      start: { x: mgPhone.x, z: mgPhone.z },
       positionOf: (p) => this.positionOf(p),
       notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
       chat: (p, text) => p.conn.send({ t: 'chat', from: 'Arenaleiter', text, color: 8, system: true }),
@@ -362,7 +361,7 @@ export class WorldRoom {
       addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
       grantXp: (p, xp) => this.grantXp(p, xp),
       persist: (p) => this.persist(p),
-    });
+    }, { x: map.spawn.x, z: map.spawn.z });
     this.timer = setInterval(() => this.tick(1 / SERVER_TICK_HZ), 1000 / SERVER_TICK_HZ);
   }
 
@@ -996,14 +995,15 @@ export class WorldRoom {
   private openPhone(p: ServerPlayer, id: string) {
     const ph = this.phoneNear(p, id);
     if (!ph || p.downT > 0) return;
-    const quests = ph.mg ? this.mg.listing(p) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level);
+    const quests = ph.mg ? this.mg.listing(p, ph.mg) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level);
     p.conn.send({ t: 'phone', id: ph.id, name: ph.name, quests });
   }
 
   private acceptQuest(p: ServerPlayer, id: string) {
     if (this.mg.isRequest(id)) {
-      if (!this.phones.some((ph) => ph.mg && this.phoneNear(p, ph.id))) { p.conn.send({ t: 'notice', text: 'Du musst am Arena-Telefon stehen.', kind: 'bad' }); return; }
-      this.mg.request(p, id);
+      const ph = this.phones.find((q) => q.mg && MG_PREFIX + q.mg === id && this.phoneNear(p, q.id));
+      if (!ph) { p.conn.send({ t: 'notice', text: 'Du musst an einem Arena-Telefon für dieses Minispiel stehen.', kind: 'bad' }); return; }
+      this.mg.request(p, id, ph);
       return;
     }
     if (id === TAXI_HUNT_ID) {

@@ -25,10 +25,17 @@ const FACTORIES: Record<MinigameId, Factory> = {
   bombbus: (h, o) => new BombBus(h, o),
 };
 
+type Spot = { x: number; z: number };
+
 export class MinigameManager {
   private games = new Map<MinigameId, Minigame>();
+  /** Telefon, an dem sich der Spieler zuletzt angemeldet hat (Rückkehrpunkt). */
+  private homes = new Map<number, Spot>();
 
-  constructor(private h: MinigameHost) {}
+  constructor(private h: Omit<MinigameHost, 'home'>, private fallback: Spot) {
+    this.host = { ...h, home: (pid) => this.homes.get(pid) ?? this.fallback } as MinigameHost;
+  }
+  private host: MinigameHost;
 
   private gameOf(pid: number): Minigame | undefined {
     for (const g of this.games.values()) if (g.has(pid)) return g;
@@ -64,9 +71,10 @@ export class MinigameManager {
   }
 
   // ------------------------------------------------------------------ Telefon
-  listing(p: ServerPlayer): PhoneQuest[] {
+  /** Telefon-Angebot; mode = Modus dieses Telefons (ohne: alle Modi). */
+  listing(p: ServerPlayer, mode?: MinigameId): PhoneQuest[] {
     const blocked = this.h.blocked(p) || (this.has(p.id) ? 'Du bist bereits angemeldet.' : '');
-    return (Object.keys(MINIGAMES) as MinigameId[]).map((id) => {
+    return (mode ? [mode] : Object.keys(MINIGAMES) as MinigameId[]).map((id) => {
       const m = MINIGAMES[id], c = m.config, g = this.games.get(id);
       let title = `${m.icon} ${m.name}`;
       let reason = blocked;
@@ -86,20 +94,22 @@ export class MinigameManager {
     });
   }
 
-  request(p: ServerPlayer, id: string) {
+  /** Anmeldung am Telefon `at` (dorthin kehrt der Spieler nach der Runde zurück). */
+  request(p: ServerPlayer, id: string, at: Spot) {
     const mode = id.slice(MG_PREFIX.length);
     if (!isMinigame(mode)) return;
     const why = this.h.blocked(p) || (this.has(p.id) ? 'Du bist bereits angemeldet.' : '');
     if (why) { this.h.notice(p, why, 'bad'); return; }
+    this.homes.set(p.id, { x: at.x, z: at.z });
     const g = this.games.get(mode);
     if (g) { g.join(p); return; }
-    this.start(mode, p, {});
+    this.start(mode, p, {}, at);
   }
 
-  private start(mode: MinigameId, first: ServerPlayer | null, opts: MinigameOptions): Minigame {
-    const g = FACTORIES[mode](this.h, opts);
+  private start(mode: MinigameId, first: ServerPlayer | null, opts: MinigameOptions, at?: Spot): Minigame {
+    const g = FACTORIES[mode](this.host, opts);
     this.games.set(mode, g);
-    g.open(first);
+    g.open(first, at);
     return g;
   }
 
@@ -112,6 +122,7 @@ export class MinigameManager {
 
   onPlayerLeave(pid: number) {
     this.gameOf(pid)?.leave(pid, true);
+    this.homes.delete(pid);
     for (const g of this.games.values()) g.watchers = g.watchers.filter((id) => id !== pid);
   }
 
@@ -159,6 +170,8 @@ export class MinigameManager {
     if (a1 === 'mit') {
       const why = this.h.blocked(p) || (this.has(p.id) ? 'Du bist schon angemeldet.' : '');
       if (why) { say(why); return; }
+      const pos = this.h.positionOf(p);
+      this.homes.set(p.id, { x: pos.x, z: pos.z });
       this.start(mode, p, { instant: true, difficulty: diff });
       say(`${MINIGAMES[mode].name}: Start mit NPCs${diff ? ` (${diff})` : ''}.`);
       return;
