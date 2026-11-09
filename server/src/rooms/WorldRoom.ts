@@ -45,7 +45,10 @@ import { logTransaction } from '../services/Ledger';
 import type { PlayerProfile, PlayerStore } from '../services/PlayerStore';
 import { Pedestrians, type Ped } from '../sim/Pedestrians';
 import { Population } from '../sim/Population';
-import { DAY_PARTS, DAY_PART_NAMES, type DayPart } from '../../../shared/src/npc/population';
+import { NpcBrain } from '../sim/NpcBrain';
+import { Perception } from '../sim/Perception';
+import { NpcEv } from '../../../shared/src/npc/reactions';
+import { DAY_PARTS, DAY_PART_NAMES, type DayPart, type Weather } from '../../../shared/src/npc/population';
 import { Traffic } from '../sim/Traffic';
 
 const CMD_BUDGET_MAX = 24;
@@ -77,6 +80,11 @@ export class WorldRoom {
   private readonly traffic: Traffic;
   private readonly peds: Pedestrians;
   private readonly pop: Population;
+  private readonly brain: NpcBrain;
+  private readonly perception: Perception;
+  /** Spieler, die den NPC-Debug-Tab offen haben (nur Dev) */
+  private npcDebug = new Set<number>();
+  private npcDebugT = 0;
   private readonly quests: QuestEngine;
   private readonly gangs: Gangs;
   private readonly phones: PhoneDef[];
@@ -126,7 +134,23 @@ export class WorldRoom {
       });
     }
     this.peds = new Pedestrians(map, () => this.allocId());
-    this.pop = new Population(map, this.peds, () => this.dayPhase(), () => [...this.players.values()].map((p) => this.positionOf(p)));
+    const playerPos = () => [...this.players.values()].map((p) => this.positionOf(p));
+    this.brain = new NpcBrain({
+      map, peds: this.peds, vehicles: this.vehicles,
+      part: () => this.pop.part,
+      player: (id) => { const p = this.players.get(id); if (!p) return null; const q = this.positionOf(p); return { x: q.x, z: q.z, veh: q.inVehicle }; },
+      players: playerPos,
+      bark: (p, sit) => this.perception.bark(p, sit),
+      departCar: (v) => { if (!this.traffic.adopt(v)) v.driver = DRIVER_NONE; },
+    });
+    this.peds.brain = this.brain;
+    this.pop = new Population(map, this.peds, this.brain, () => this.dayPhase(), playerPos);
+    this.perception = new Perception({
+      map, peds: this.peds, vehicles: this.vehicles, players: this.players,
+      positionOf: (p) => this.positionOf(p),
+      emit: (x, z, ev) => this.emit(x, z, ev),
+      part: () => this.pop.part, weather: () => this.pop.weather, isNight: () => this.isNight(),
+    }, this.brain);
     this.traffic = new Traffic({
       map, vehicles: this.vehicles,
       allocId: () => this.allocId(),
@@ -150,6 +174,7 @@ export class WorldRoom {
       emit: (x, z, ev) => this.emit(x, z, ev),
       notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
       arrest: (p) => this.arrest(p),
+      witness: (ped, p, x, z) => this.perception.onWitness(ped, p, x, z),
     });
     this.phones = payphones(map);
     this.gangs = new Gangs({
@@ -247,7 +272,10 @@ export class WorldRoom {
     return v ? { x: v.sim.car.x, z: v.sim.car.z, inVehicle: true } : { x: p.pawn.x, z: p.pawn.z, inVehicle: false };
   }
 
-  private emit(x: number, z: number, ev: GameEvent, vid = -1) { this.events.push({ x, z, ev, vid }); }
+  private emit(x: number, z: number, ev: GameEvent, vid = -1) {
+    this.events.push({ x, z, ev, vid });
+    this.perception?.fromGameEvent(x, z, ev);
+  }
 
   // ------------------------------------------------------------------ Spieler kommen & gehen
   addPlayer(conn: Connection, requestedName: string, profile: PlayerProfile): ServerPlayer {
@@ -325,6 +353,7 @@ export class WorldRoom {
       case 'shop': if (typeof msg.shop === 'string' && typeof msg.item === 'string') this.buy(player, msg.shop, msg.item); break;
       case 'useItem': if (typeof msg.id === 'string') this.useItem(player, msg.id); break;
       case 'tune': if (DEV) this.tune(msg); break;
+      case 'npcDebug': if (DEV) { if (msg.on) this.npcDebug.add(player.id); else this.npcDebug.delete(player.id); } break;
     }
   }
 
@@ -405,10 +434,13 @@ export class WorldRoom {
       this.traffic.release(best.id);
       const s = best.sim.car;
       const spot = findFootSpot(this.map, s.x + Math.cos(s.a) * 2.6, s.z - Math.sin(s.a) * 2.6, 6);
-      if (spot) this.peds.spawnFleeing(spot.x, spot.z);
+      if (spot) this.perception.bark(this.peds.spawnFleeing(spot.x, spot.z), 'car_stolen');
     }
     // Autodiebstahl: Fahrer herausziehen bzw. geparktes Auto knacken (nur mit Zeugen ein Verbrechen)
-    if (best.home || best.driver === DRIVER_NPC) this.police.crime(p, 1, best.sim.car.x, best.sim.car.z);
+    if (best.home || best.driver === DRIVER_NPC) {
+      this.perception.event(NpcEv.Theft, best.sim.car.x, best.sim.car.z, p.id);
+      this.police.crime(p, 1, best.sim.car.x, best.sim.car.z);
+    }
     best.driver = p.id;
     best.idleTime = 0;
     best.kinematic = false;
@@ -532,10 +564,16 @@ export class WorldRoom {
       else if (a in names) this.pop.forcePart = names[a];
       else if (a) { say('/pop <' + DAY_PARTS.map((d) => DAY_PART_NAMES[d].toLowerCase()).join('|') + '|auto>'); return; }
       say(this.pop.describe());
+    } else if (cmd === 'wetter' || cmd === 'weather') {
+      // Wetter erzwingen (Population Tables / Barks): /wetter klar|regen|hitze
+      const names: Record<string, Weather> = { klar: 'clear', regen: 'rain', hitze: 'heat', clear: 'clear', rain: 'rain', heat: 'heat' };
+      if (!arg || !(arg in names)) { say('/wetter <klar|regen|hitze>'); return; }
+      this.pop.weather = names[arg];
+      say(`Wetter: ${arg}`);
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /tp <viertel>');
+      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel>');
     }
   }
 
@@ -962,6 +1000,7 @@ export class WorldRoom {
       const defeated = this.peds.hit(ped, dmg, dx, dz);
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 0]);
       if (ped.gang) this.gangs.provoke(ped, p);
+      if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
       if (ped.cop) this.police.raise(p, defeated ? 3 : 2); // Polizisten angreifen: sofort bekannt
       else this.police.crime(p, defeated ? 2 : 1, ped.x, ped.z);
       if (defeated && !ped.cop) this.addMoney(p, 5 + Math.floor(Math.random() * 36), 'loot');
@@ -1011,6 +1050,7 @@ export class WorldRoom {
       return;
     }
     this.peds.scare(ox, oz, 30);
+    this.perception.event(NpcEv.Shot, ox, oz, p.id);
     this.police.crime(p, 2, ox, oz); // Schusswaffe in der Öffentlichkeit
     aim = aimAssist(ox, oz, aim, def.range, targets);
     if (def.area > 0) {
@@ -1080,6 +1120,7 @@ export class WorldRoom {
       }
       const ped = this.peds.spawnAngry(spot.x, spot.z, lx, lz);
       this.emit(spot.x, spot.z, ['shout', ped.id]);
+      this.perception.bark(ped, 'scold');
     } else {
       this.peds.spawnFleeing(spot.x, spot.z);
     }
@@ -1112,7 +1153,17 @@ export class WorldRoom {
       if (v) { p.pawn.x = v.sim.car.x; p.pawn.z = v.sim.car.z; p.pawn.a = v.sim.car.a; }
     }
     this.pop.update(dt);
-    this.peds.update(dt, [...this.vehicles.values()].map((v) => ({ x: v.sim.car.x, z: v.sim.car.z, speed: v.sim.car.s })));
+    this.perception.update(dt);
+    if (this.npcDebug.size && (this.npcDebugT -= dt) <= 0) {
+      this.npcDebugT = 0.5;
+      for (const id of this.npcDebug) {
+        const p = this.players.get(id);
+        if (!p) { this.npcDebug.delete(id); continue; }
+        const pos = this.positionOf(p);
+        p.conn.send({ t: 'npcDebug', ...this.perception.debugView(pos.x, pos.z), pop: this.pop.describe() });
+      }
+    }
+    this.peds.update(dt, [...this.vehicles.values()].map((v) => ({ x: v.sim.car.x, z: v.sim.car.z, speed: v.sim.car.s, vx: v.sim.car.vx, vz: v.sim.car.vz })));
     this.updateProps(dt);
     this.updateFire(dt);
     this.updateWorkshops(dt);
@@ -1316,7 +1367,10 @@ export class WorldRoom {
     const R2 = INTEREST * INTEREST;
     const pedStr = new Map<number, string>();
     for (const ped of this.peds.peds.values()) {
-      pedStr.set(ped.id, JSON.stringify([ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act]));
+      const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
+      // Kurzzeitgedächtnis: Spieler, den der NPC ängstlich im Blick behält (Kopfdrehung rechnet der Client)
+      if (ped.mind?.fear) tup.push(ped.mind.fear.pid);
+      pedStr.set(ped.id, JSON.stringify(tup));
     }
     const propStr = new Map<number, string>();
     for (const b of this.props.values()) {

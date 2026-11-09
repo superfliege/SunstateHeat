@@ -10,9 +10,10 @@ import { knockPawn, stepPawn } from '../../../shared/src/sim/movement';
 import { offsetPolyline, type Vec2 } from '../../../shared/src/world/geometry';
 import { drivablePath } from '../../../shared/src/world/roads';
 import { Zone, type RoadEdge, type WorldMap } from '../../../shared/src/world/WorldMap';
+import type { Mind } from './NpcBrain';
 
 const STROLL_SPEED = 1.5;
-const FLEE_SPEED = 4.5;
+export const FLEE_SPEED = 4.5;
 const PED_HP = 30;
 const PED_COUNT = Math.round(56 * NPC_DENSITY);
 
@@ -68,15 +69,26 @@ export interface Ped {
   /** Sekunden seit dem Spawn (Population tauscht alte NPCs außerhalb der Sicht aus). */
   age: number;
   scn: PedScenario | null;
+  /** Mini-Lebenszyklus, Wahrnehmung, Gedächtnis (nur von der Population verwaltete NPCs, siehe NpcBrain). */
+  mind: Mind | null;
 }
 
-export interface Threat { x: number; z: number; speed: number }
+/** Steuerung für verwaltete NPCs (NpcBrain): übernimmt Bewegung und Entscheidungen. */
+export interface PedBrain {
+  tick(p: Ped, dt: number, threats: Threat[]): void;
+  /** Am Ende eines Gehwegs: gibt die Route einen Gehweg vor? */
+  routeNext(p: Ped, node: number, options: Walkway[]): Walkway | null;
+}
+
+export interface Threat { x: number; z: number; speed: number; vx: number; vz: number }
 
 export class Pedestrians {
   readonly peds = new Map<number, Ped>();
   walkways: Walkway[] = [];
   /** Gehwege je Knoten (Anfang oder Ende der Kante liegt am Knoten). */
-  private byNode = new Map<number, Walkway[]>();
+  readonly byNode = new Map<number, Walkway[]>();
+  /** Gehirn der verwalteten NPCs (wird von WorldRoom gesetzt). */
+  brain: PedBrain | null = null;
 
   constructor(private map: WorldMap, private allocId: () => number) {
     for (const e of map.edges) {
@@ -116,7 +128,7 @@ export class Pedestrians {
       walk, dir: 1, idx: 0, wait: Math.random() * 3, flee: 0, fdx: 0, fdz: 0, ttl: Infinity,
       h: 0, vx: 0, vy: 0, vz: 0, rt: 0, angry: 0, hp: PED_HP, cop: 0,
       ext: false, gang: '', tag: '', run: 0, hostile: false, tgt: 'players', provoked: 0, provokedBy: 0, home: { x, z }, shotCd: 0, think: 0, wx: x, wz: z,
-      arch: -1, act: 0, spd: STROLL_SPEED, pop: false, age: 0, scn: null,
+      arch: -1, act: 0, spd: STROLL_SPEED, pop: false, age: 0, scn: null, mind: null,
     };
     this.peds.set(ped.id, ped);
     return ped;
@@ -211,6 +223,7 @@ export class Pedestrians {
   knock(p: Ped, vx: number, vz: number, up: number) {
     knockPawn(p, vx, vz, up, 1.6);
     if (p.scn) { p.scn = null; p.act = 0; }
+    if (p.mind) { p.mind.react = null; p.act = 0; }
     const l = Math.hypot(vx, vz) || 1;
     p.fdx = vx / l; p.fdz = vz / l;
     p.angry = 0;
@@ -221,6 +234,7 @@ export class Pedestrians {
     p.hp -= dmg;
     const dead = p.hp <= 0;
     if (p.scn) { p.scn = null; p.act = 0; }
+    if (p.mind) { p.mind.react = null; p.act = 0; }
     knockPawn(p, dx * (dead ? 5 : 2), dz * (dead ? 5 : 2), dead ? 5 : 2, dead ? 2.2 : 0.7);
     p.fdx = dx; p.fdz = dz; p.angry = 0;
     return dead;
@@ -229,7 +243,7 @@ export class Pedestrians {
   /** Schüsse/Explosionen: Passanten im Umkreis rennen vom Ursprung weg. */
   scare(x: number, z: number, radius: number) {
     for (const p of this.peds.values()) {
-      if (p.rt > 0 || p.hp <= 0 || p.cop || p.ext) continue;
+      if (p.rt > 0 || p.hp <= 0 || p.cop || p.ext || p.mind) continue; // verwaltete NPCs: Perception entscheidet
       const d2 = dist2(p.x, p.z, x, z);
       if (d2 > radius * radius) continue;
       const d = Math.sqrt(d2) || 1;
@@ -244,6 +258,13 @@ export class Pedestrians {
     const w = p.walk!;
     const node = p.dir === 1 ? w.edge.b : w.edge.a; // Gehweg-Punkte laufen immer von a nach b
     const options = (this.byNode.get(node) ?? []).filter((o) => o !== w);
+    const routed = p.mind && this.brain ? this.brain.routeNext(p, node, options) : null;
+    if (routed) {
+      p.walk = routed;
+      p.dir = routed.edge.a === node ? 1 : -1;
+      p.idx = p.dir === 1 ? 0 : routed.pts.length - 1;
+      return;
+    }
     if (!options.length) { p.dir = (p.dir * -1) as 1 | -1; p.idx = p.dir === 1 ? 0 : w.pts.length - 1; return; }
     // Bevorzugt Gehwege, deren Ende nah liegt (gleiche Straßenecke), manchmal die Straße queren
     options.sort((a, b) => endDist(a, node, p) - endDist(b, node, p));
@@ -262,6 +283,10 @@ export class Pedestrians {
       if (p.rt > 0) {
         stepPawn(this.map, p, 0, 0, 0, dt);
         if (p.rt <= 0) { if (p.hp <= 0) this.peds.delete(p.id); else p.flee = 4; }
+        continue;
+      }
+      if (p.mind && this.brain) {
+        this.brain.tick(p, dt, threats);
         continue;
       }
       if (p.angry > 0) p.angry -= dt;
@@ -294,23 +319,29 @@ export class Pedestrians {
       } else if (!p.walk) {
         p.flee = 5; // temporäre Fußgänger (ausgestiegene Fahrer) laufen davon
       } else if (p.walk) {
-        const target = p.walk.pts[p.idx];
-        const dx = target[0] - p.x, dz = target[1] - p.z;
-        if (dx * dx + dz * dz < 1.2) {
-          p.idx += p.dir;
-          if (p.idx < 0 || p.idx >= p.walk.pts.length) {
-            this.nextWalkway(p);
-            if (Math.random() < 0.3) p.wait = 1 + Math.random() * 3; // an der Ecke kurz warten
-          }
-        } else {
-          const d = Math.hypot(dx, dz);
-          const stuck = stepPawn(this.map, p, dx / d, -dz / d, 0, dt, p.spd);
-          if (stuck) { p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(p.walk.pts.length - 1, p.idx + p.dir)); }
-        }
+        this.walkStep(p, dt);
       }
 
       p.ttl -= dt;
       if (p.ttl <= 0) this.peds.delete(p.id);
+    }
+  }
+
+  /** Einen Tick auf dem Gehweg weiterlaufen (Wegpunkte, Kreuzungen). speed = Tempo-Faktor. */
+  walkStep(p: Ped, dt: number, speed = 1) {
+    const w = p.walk!;
+    const target = w.pts[p.idx];
+    const dx = target[0] - p.x, dz = target[1] - p.z;
+    if (dx * dx + dz * dz < 1.2) {
+      p.idx += p.dir;
+      if (p.idx < 0 || p.idx >= w.pts.length) {
+        this.nextWalkway(p);
+        if (!p.mind && Math.random() < 0.3) p.wait = 1 + Math.random() * 3; // an der Ecke kurz warten
+      }
+    } else {
+      const d = Math.hypot(dx, dz);
+      const stuck = stepPawn(this.map, p, dx / d, -dz / d, 0, dt, p.spd * speed);
+      if (stuck) { p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(w.pts.length - 1, p.idx + p.dir)); }
     }
   }
 
@@ -324,7 +355,7 @@ function endDist(w: Walkway, node: number, p: Ped) {
   return Math.hypot(q[0] - p.x, q[1] - p.z);
 }
 
-function nearestIdx(w: Walkway, x: number, z: number): number {
+export function nearestIdx(w: Walkway, x: number, z: number): number {
   let best = 0, bd = Infinity;
   for (let i = 0; i < w.pts.length; i++) { const d = dist2(w.pts[i][0], w.pts[i][1], x, z); if (d < bd) { bd = d; best = i; } }
   return best;

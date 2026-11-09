@@ -23,6 +23,8 @@ import { createWeaponMesh } from '../render/weaponModels';
 import { createKenneyCharacter, type KenneyCharacter } from '../render/kenneyCharacters';
 import { archetypeOf } from '../../../shared/src/npc/archetypes';
 import { Act } from '../../../shared/src/npc/scenarios';
+import { BARK_DURATION, barkText } from '../../../shared/src/npc/barks';
+import { wrapAngle } from '../../../shared/src/math';
 
 export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number }
 export interface VehicleViewState {
@@ -36,7 +38,9 @@ export interface VehicleViewState {
 }
 export interface PedState { id: number; x: number; z: number; a: number; color: number; running: boolean; h: number; ragdoll: boolean; angry: boolean; cop: boolean; gang: boolean;
   /** Archetyp-Index (-1 = klassischer Passant) und Animations-ID (Act) vom Server */
-  arch?: number; act?: number }
+  arch?: number; act?: number;
+  /** Spieler, den der NPC nach einem Vorfall ängstlich beobachtet (-1 = keiner) */
+  fear?: number }
 
 /** Gemeinsame Schnittstelle: Quaternius-Figur (animiert) oder prozeduraler Ersatz. */
 interface Figure { root: THREE.Group; animate(speed: number, dt: number, seated?: boolean, dist?: number): void; dispose(): void }
@@ -46,7 +50,12 @@ interface CharView {
   held: THREE.Mesh | null; heldIdx: number; swing: number; kick: number;
   /** Hund an der Leine (Hundebesitzer): Mesh + Leine */
   dog?: THREE.Mesh; leash?: THREE.Line; dogX?: number; dogZ?: number; dogA?: number;
+  arch: number;
 }
+/** Comic-Sprechblase (Bark) über einem NPC. */
+interface Bubble { sprite: THREE.Sprite; t: number; w: number; h: number }
+/** Höchstens so viele Sprechblasen gleichzeitig sichtbar (die nächsten zur Kamera). */
+const MAX_BUBBLES = 4;
 const SWING_TIME = 0.28, KICK_TIME = 0.12;
 interface VehView {
   root: THREE.Group; car: CarModel | null; legacy: THREE.Mesh | null; lights?: THREE.Mesh; fan?: THREE.Mesh;
@@ -60,6 +69,48 @@ const UP = new THREE.Vector3(0, 1, 0), FWD = new THREE.Vector3(0, 0, 1), XAX = n
 const tmpPos = new THREE.Vector3(), tmpScale = new THREE.Vector3(), tmpV = new THREE.Vector3();
 const tmpQuat = new THREE.Quaternion(), tmpQ2 = new THREE.Quaternion(), tmpMat = new THREE.Matrix4();
 const SWEAR = ['#@!%&!', '$%#@!!', '&*!#?!', '@#$%!!', '!!#*&%'];
+
+/** Sprechblase im DS-Stil: weiße Blase, dicke dunkle Kontur, harter Schatten, Zipfel nach unten. */
+function makeBarkBubble(text: string): { sprite: THREE.Sprite; w: number; h: number } {
+  const c = document.createElement('canvas');
+  const ctx = c.getContext('2d')!;
+  const font = 'bold 30px Trebuchet MS, sans-serif';
+  ctx.font = font;
+  // Umbrechen auf max. 3 Zeilen à ~300 px
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    const t = cur ? cur + ' ' + w : w;
+    if (ctx.measureText(t).width > 300 && cur) { lines.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) lines.push(cur);
+  const tw = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  const W = Math.ceil(tw + 52), lh = 34, H = lines.length * lh + 30 + 24;
+  c.width = W + 8; c.height = H + 8;
+  const g = c.getContext('2d')!;
+  const bubble = (ox: number, oy: number) => {
+    g.beginPath();
+    g.roundRect(4 + ox, 4 + oy, W - 6, H - 30, 16);
+    g.moveTo(W * 0.32 + ox, H - 28 + oy); g.lineTo(W * 0.26 + ox, H - 2 + oy); g.lineTo(W * 0.46 + ox, H - 28 + oy);
+  };
+  g.fillStyle = 'rgba(26,16,48,0.85)'; bubble(5, 5); g.fill(); // harter Schatten
+  g.fillStyle = '#fffdf4'; g.strokeStyle = '#1a1030'; g.lineWidth = 5; g.lineJoin = 'round';
+  bubble(0, 0); g.fill(); g.stroke();
+  // Naht am Zipfel überdecken
+  g.fillStyle = '#fffdf4'; g.fillRect(W * 0.32 - 2, H - 31, W * 0.14 + 2, 6);
+  g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#1a1030';
+  lines.forEach((l, i) => g.fillText(l, (W + 2) / 2, 4 + 16 + lh / 2 + i * lh - 2));
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  // Farbe < Bloom-Schwelle (PostFX 0.92), sonst überstrahlt die weiße Blase nachts den Text
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false, transparent: true, color: 0xd8d8d8, toneMapped: false }));
+  sprite.renderOrder = 11;
+  sprite.center.set(0.3, 0); // Zipfel sitzt über dem Kopf
+  const k = 1 / 100; // 100 px = 1 m
+  return { sprite, w: c.width * k, h: c.height * k };
+}
 
 function makeLabel(text: string, color: number, bubble = false): THREE.Sprite {
   const c = document.createElement('canvas');
@@ -108,6 +159,9 @@ export class EntityViews {
   readonly group = new THREE.Group();
   private players = new Map<number, CharView>();
   private peds = new Map<number, CharView>();
+  private bubbles = new Map<number, Bubble>();
+  /** Eigener Spieler (für Blickkontakt): Position, Tempo, zu Fuß? */
+  local = { id: -1, x: 0, z: 0, speed: 0, onFoot: true };
   private vehicles = new Map<number, VehView>();
   private packages = new Map<number, THREE.Mesh>();
   private sirens = new Map<number, THREE.Group>();
@@ -391,7 +445,7 @@ export class EntityViews {
   private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0) {
     let c = map.get(id);
     if (!c) {
-      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch), lastX: x, lastZ: z, seen: true, tumble: 0, held: null, heldIdx: -1, swing: 0, kick: 0 };
+      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch), lastX: x, lastZ: z, seen: true, tumble: 0, held: null, heldIdx: -1, swing: 0, kick: 0, arch };
       map.set(id, c);
       this.group.add(c.model.root);
     }
@@ -486,8 +540,9 @@ export class EntityViews {
   setPed(s: PedState, dt: number) {
     const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0);
     this.updateDog(c, s);
-    // Schimpfender Fahrer: Comic-Sprechblase
-    if (s.angry && !c.bubble) {
+    this.updateLook(c, s);
+    // Schimpfender Fahrer: Comic-Sprechblase (nicht gleichzeitig mit einem Bark)
+    if (s.angry && !c.bubble && !this.bubbles.has(s.id)) {
       c.bubble = makeLabel(SWEAR[s.id % SWEAR.length], 0, true);
       c.bubble.scale.set(4.2, 1.05, 1);
       this.group.add(c.bubble);
@@ -498,6 +553,76 @@ export class EntityViews {
       const p = c.model.root.position;
       c.bubble.position.set(p.x, p.y + 3.2 + Math.abs(Math.sin(this.clock * 10)) * 0.25, p.z);
     }
+  }
+
+  /**
+   * Kopfdrehung (lokal, spec Schritt 4): NPCs schauen den eigenen Spieler an, wenn er langsam nah
+   * vorbeigeht; nach einem Vorfall behalten sie den Verursacher ängstlich im Blick (Kurzzeitgedächtnis).
+   */
+  private updateLook(c: CharView, s: PedState) {
+    const m = c.model as Partial<KenneyCharacter>;
+    if (!m.setLook) return;
+    let tx = 0, tz = 0, w = 0, anx = false;
+    const fear = s.fear ?? -1;
+    const feared = fear >= 0 ? this.players.get(fear) : undefined;
+    if (feared && !s.ragdoll) {
+      tx = feared.model.root.position.x; tz = feared.model.root.position.z; w = 1; anx = true;
+    } else if (!s.ragdoll && !s.cop && this.local.onFoot && this.local.speed < 2.8) {
+      const d = Math.hypot(this.local.x - s.x, this.local.z - s.z);
+      if (d < 6.5) { tx = this.local.x; tz = this.local.z; w = Math.min(1, (6.5 - d) / 2); }
+    }
+    if (w > 0) {
+      const rel = wrapAngle(Math.atan2(tx - s.x, tz - s.z) - s.a);
+      if (Math.abs(rel) > 1.9) w = 0; // hinter dem Rücken: nicht den Kopf verrenken
+      m.setLook(rel, w, anx);
+    } else m.setLook(0, 0);
+  }
+
+  /** Bark eines NPCs anzeigen (Text aus der Bark-Tabelle nach Archetyp). */
+  bark(pedId: number, sit: number, variant: number) {
+    const c = this.peds.get(pedId);
+    if (!c) return;
+    const text = barkText(sit, c.arch, variant);
+    if (!text) return;
+    this.removeBubble(pedId);
+    if (c.bubble) { this.group.remove(c.bubble); c.bubble.material.map?.dispose(); c.bubble.material.dispose(); c.bubble = undefined; }
+    const b = makeBarkBubble(text);
+    b.sprite.scale.set(0.01, 0.01, 1);
+    this.group.add(b.sprite);
+    this.bubbles.set(pedId, { sprite: b.sprite, t: 0, w: b.w, h: b.h });
+  }
+
+  private removeBubble(id: number) {
+    const b = this.bubbles.get(id);
+    if (!b) return;
+    this.group.remove(b.sprite); b.sprite.material.map?.dispose(); b.sprite.material.dispose();
+    this.bubbles.delete(id);
+  }
+
+  /** Sprechblasen: Aufploppen, über dem Kopf mitführen, ausblenden; nur die nächsten MAX_BUBBLES zeigen. */
+  private updateBubbles(dt: number) {
+    if (!this.bubbles.size) return;
+    const order: [number, number][] = [];
+    for (const [id, b] of this.bubbles) {
+      b.t += dt;
+      const c = this.peds.get(id);
+      if (!c || b.t > BARK_DURATION) { this.removeBubble(id); continue; }
+      const p = c.model.root.position;
+      order.push([id, Math.hypot(p.x - this.focus.x, p.z - this.focus.z)]);
+    }
+    order.sort((a, b) => a[1] - b[1]);
+    order.forEach(([id, d], i) => {
+      const b = this.bubbles.get(id)!, c = this.peds.get(id)!;
+      const vis = i < MAX_BUBBLES && d < 70;
+      b.sprite.visible = vis;
+      if (!vis) return;
+      const p = c.model.root.position;
+      const pop = b.t < 0.18 ? 0.4 + (b.t / 0.18) * 0.8 : b.t < 0.3 ? 1.2 - ((b.t - 0.18) / 0.12) * 0.2 : 1; // Überschwinger
+      const k = 1.25 * pop;
+      b.sprite.scale.set(b.w * k, b.h * k, 1);
+      b.sprite.position.set(p.x, p.y + 2.35, p.z);
+      (b.sprite.material as THREE.SpriteMaterial).opacity = Math.min(1, (BARK_DURATION - b.t) / 0.35);
+    });
   }
 
   /** Hund an der Leine für Hundebesitzer (reine Deko, läuft clientseitig hinterher). */
@@ -586,6 +711,7 @@ export class EntityViews {
 
   /** Entitäten, die in diesem Frame nicht mehr vorkamen, entfernen. */
   endFrame() {
+    this.updateBubbles(this.lastDt);
     const sweepChars = (m: Map<number, CharView>) => {
       for (const [id, c] of m) {
         if (c.seen) continue;

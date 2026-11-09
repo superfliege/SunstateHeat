@@ -35,10 +35,11 @@ const PROPS: Record<PropId, PropDef> = {
 const ACT_PROP: Partial<Record<number, PropId>> = {
   [Act.Phone]: 'phone', [Act.Smoke]: 'cig', [Act.Photo]: 'camera', [Act.Eat]: 'taco', [Act.Drink]: 'cup',
   [Act.Read]: 'paper', [Act.Fish]: 'rod', [Act.Busk]: 'guitar', [Act.Hoop]: 'ball',
+  [Act.Film]: 'phone', [Act.Call]: 'phone',
 };
 
 /** Acts, bei denen die Figur sitzt (Sitz-Clip). */
-export const SEATED_ACTS = new Set<number>([Act.Sit, Act.Drink]);
+export const SEATED_ACTS = new Set<number>([Act.Sit, Act.Drink, Act.Cower]);
 /** Acts ohne eigene Pose-Berechnung (normales Laufen/Stehen). */
 const NO_POSE = new Set<number>([Act.None, Act.Jog, Act.Dog]);
 
@@ -53,6 +54,12 @@ export class NpcActs {
   private t = 0;
   private prop: THREE.Mesh | null = null;
   private propId: PropId | null = null;
+  /** Kopfdrehung (lokal berechnet): Ziel-Gierwinkel relativ zum Körper, Gewicht 0–1 (weich überblendet) */
+  private lookYaw = 0;
+  private lookW = 0;
+  private lookWant = 0;
+  private lookWantW = 0;
+  private lookAnx = false;
 
   constructor(private skeletonRoot: THREE.Object3D, private inner: THREE.Group, private root: THREE.Group) {
     skeletonRoot.traverse((o) => {
@@ -74,6 +81,7 @@ export class NpcActs {
     if (lieOff) { this.inner.rotation.x = -1.42; this.inner.position.set(0, base + 0.42, -0.35); }
     else if (act === Act.Sit || act === Act.Drink) this.inner.position.set(0, base + SIT_DROP, SIT_BACK);
     else if (act === Act.Lean) { this.inner.rotation.x = -0.2; this.inner.position.set(0, base, -0.28); }
+    else if (act === Act.Cower) this.inner.position.set(0, base + COWER_DROP, 0.1); // auf dem Boden hocken
     const want = ACT_PROP[act] ?? null;
     if (want !== this.propId) {
       if (this.prop) { this.root.remove(this.prop); this.prop = null; }
@@ -101,6 +109,23 @@ export class NpcActs {
     // new = M⁻¹ · R · M · old
     tmpQ.copy(tmpM).invert().multiply(tmpR).multiply(tmpM);
     b.quaternion.premultiply(tmpQ);
+  }
+
+  /**
+   * Kopf zu einem Ziel drehen (Blickkontakt, ängstliches Beobachten). yaw = Winkel relativ zur Blickrichtung
+   * des Körpers, w = Gewicht (0 = geradeaus). anxious = leicht eingezogener Kopf.
+   */
+  setLook(yaw: number, w: number, anxious = false) { this.lookWant = yaw; this.lookWantW = w; this.lookAnx = anxious; }
+
+  /** Kopfdrehung anwenden (nach mixer.update() und apply()). dt = vergangene Zeit seit dem letzten Aufruf. */
+  applyLook(dt: number) {
+    const k = Math.min(1, dt * 5);
+    this.lookW += (this.lookWantW - this.lookW) * k;
+    this.lookYaw += (this.lookWant - this.lookYaw) * Math.min(1, dt * 7);
+    if (this.lookW < 0.02) return;
+    const y = Math.max(-1.15, Math.min(1.15, this.lookYaw)) * this.lookW;
+    this.rot('neck', 0, y * 0.35, 0);
+    this.rot('head', this.lookAnx ? 0.18 * this.lookW : -0.04 * this.lookW, y * 0.65, 0);
   }
 
   /** Pose berechnen (nur für nahe NPCs aufrufen). Nach mixer.update(). */
@@ -217,6 +242,64 @@ export class NpcActs {
         this.rot('rArm', -0.6, 0, -0.1); this.rot('rFore', -0.9, -0.3, 0);
         this.rot('head', 0.05, 0.4 * s(t * 0.3), 0);
         break;
+      // ---------------------------------------------------------------- Reaktionen
+      case Act.Look: // hinschauen: Hand über die Augen, Oberkörper leicht vor
+        this.rot('spine', 0.06, 0, 0);
+        this.rot('rArm', -0.5, 0, -0.75); this.rot('rFore', -2.2, 0, 0);
+        this.rot('head', -0.08, 0.12 * s(t * 0.7), 0);
+        break;
+      case Act.Flinch: { // erschrecken: Arme schützend vors Gesicht, zurücklehnen, zittern
+        const tr = 0.04 * s(t * 40);
+        this.rot('spine', -0.2, 0, 0);
+        this.rot('rArm', -1.25 + tr, 0, -0.45); this.rot('rFore', -1.7, 0, 0);
+        this.rot('lArm', -1.25 - tr, 0, 0.45); this.rot('lFore', -1.7, 0, 0);
+        this.rot('head', 0.25, 0, 0);
+        break;
+      }
+      case Act.Scold: { // schimpfen: Faust schütteln, andere Hand in die Hüfte, vorgebeugt
+        const sh = s(t * 11);
+        this.rot('spine', 0.12, 0, 0);
+        this.rot('rArm', -1.7 + 0.25 * sh, 0, -0.2); this.rot('rFore', -1.0 + 0.3 * sh, 0, 0);
+        this.rot('lArm', 0.15, 0, 0.55); this.rot('lFore', -1.7, 0, 0);
+        this.rot('head', 0.12 + 0.06 * s(t * 7), 0.15 * s(t * 3), 0);
+        break;
+      }
+      case Act.Film: // Handy hochhalten und filmen
+        this.rot('rArm', -1.55, 0, -0.1); this.rot('rFore', -0.75, 0, 0);
+        this.rot('lArm', -0.3, 0, 0.15); this.rot('lFore', -1.0, 0, 0);
+        this.rot('head', 0.0, 0.08 * s(t * 0.9), 0);
+        break;
+      case Act.Cower: // ducken: hocken, Arme über dem Kopf
+        this.rot('spine', 0.6, 0, 0); this.rot('chest', 0.35, 0, 0);
+        this.rot('rArm', -2.5, 0, -0.35); this.rot('rFore', -1.5, 0, 0);
+        this.rot('lArm', -2.5, 0, 0.35); this.rot('lFore', -1.5, 0, 0);
+        this.rot('head', 0.55, 0.05 * s(t * 30), 0);
+        break;
+      case Act.Point: // auf den Gesuchten zeigen, andere Hand am Mund
+        this.rot('rArm', -1.5, 0, -0.05 + 0.04 * s(t * 6)); this.rot('rFore', -0.08, 0, 0);
+        this.rot('lArm', -0.35, 0, 0.3); this.rot('lFore', -2.1, 0, 0);
+        this.rot('head', -0.05, 0, 0);
+        break;
+      case Act.Call: { // Polizei rufen: Handy am Ohr, aufgeregte Gestik
+        const g = Math.max(0, s(t * 3.2));
+        this.rot('rArm', -0.35, 0, -0.55); this.rot('rFore', -2.3, 0, 0);
+        this.rot('lArm', -0.6 - 0.6 * g, 0, 0.35); this.rot('lFore', -0.8 - 0.6 * g, 0, 0);
+        this.rot('head', 0.05, 0.35 * s(t * 1.7), 0.1);
+        break;
+      }
+      case Act.Panic: { // rennt mit hochgerissenen, rudernden Armen
+        const f = s(t * 13);
+        this.rot('rArm', -2.6 + 0.35 * f, 0, -0.35); this.rot('rFore', -0.4, 0, 0);
+        this.rot('lArm', -2.6 - 0.35 * f, 0, 0.35); this.rot('lFore', -0.4, 0, 0);
+        this.rot('head', -0.15, 0.2 * s(t * 5), 0);
+        break;
+      }
+      case Act.Wave: // winken
+        this.rot('rArm', -0.2, 0, -2.5); this.rot('rFore', 0, 0, -0.6 + 0.5 * s(t * 10));
+        break;
+      case Act.Enter: // Tür öffnen / Autotür greifen
+        this.rot('rArm', -1.2, 0, -0.1); this.rot('rFore', -0.35, 0, 0);
+        break;
       case Act.Lie: // liegend: Arme locker, Kopf ruht
         this.rot('rArm', 0.3, 0, -0.1); this.rot('lArm', 0.2, 0, 0.1);
         this.rot('head', 0, 0, 0);
@@ -249,3 +332,5 @@ export class NpcActs {
 /** Sitzhöhe: wie weit die Figur beim Sitzen abgesenkt wird (m) und nach hinten (z), je nach Skelett-Pose abgestimmt. */
 export const SIT_DROP = -0.5;
 export const SIT_BACK = -0.05;
+/** Ducken: Figur hockt (Sitz-Clip, tiefer abgesenkt). */
+export const COWER_DROP = -0.78;

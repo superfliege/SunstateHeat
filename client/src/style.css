@@ -239,3 +239,16 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
   25% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.85; }
 }
+
+/* F3 → NPC-Tab: Absichtsketten, Bedürfnisse, Ereignisse */
+#npc-debug {
+  position: fixed; right: 12px; top: 56px; bottom: 12px; z-index: 51; width: 470px; padding: 8px 10px; overflow: hidden;
+  background: rgba(10, 5, 25, 0.86); border: 2px solid var(--cyan); border-radius: 8px; font: 11px/1.4 var(--mono); color: #e8e0ff;
+  display: flex; flex-direction: column; gap: 6px;
+}
+#npc-debug .row { display: flex; flex-wrap: wrap; gap: 4px; }
+#npc-debug button { font: bold 11px var(--font); padding: 2px 8px; border-radius: 5px; border: 1px solid #4b4466; background: #221d33; color: #c8bfe8; cursor: pointer; }
+#npc-debug button:hover { border-color: var(--cyan); }
+#npc-debug canvas { width: 450px; height: 260px; border-radius: 6px; background: #0d0a1c; flex: none; }
+#npc-debug .pop { white-space: normal; color: #ffe14d; }
+#npc-debug pre { margin: 0; overflow-y: auto; white-space: pre-wrap; flex: 1; }

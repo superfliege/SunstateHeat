@@ -63,7 +63,7 @@ export interface ServerPlayer {
   wanted: number;
   searchT: number;
   arrestT: number;
-  reports: { t: number; level: number }[];
+  reports: { t: number; level: number; /** Zeuge (Ped-ID) */ by?: number }[];
   /** Stufe zuletzt gemeldet (für Aufstiegs-Hinweis). */
   level: number;
 }

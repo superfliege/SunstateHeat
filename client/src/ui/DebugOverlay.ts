@@ -5,6 +5,14 @@
 import { CELL, CHUNK, WORLD_SIZE } from '../../../shared/src/constants';
 import { centroid } from '../../../shared/src/world/geometry';
 import { LOT_USE_NAMES, ROAD_TYPE_NAMES, type WorldMap } from '../../../shared/src/world/WorldMap';
+import { NEED_IDS, NEED_NAMES } from '../../../shared/src/npc/intents';
+import { NPC_EVENTS, type NpcEvId } from '../../../shared/src/npc/reactions';
+import { ACT_NAMES } from '../../../shared/src/npc/scenarios';
+import type { NpcDebugPed, ServerMsg } from '../../../shared/src/protocol';
+
+type Tab = 'map' | 'vehicle' | 'npc';
+type NpcMsg = Extract<ServerMsg, { t: 'npcDebug' }>;
+const EVENT_COLORS = ['#ffe14d', '#9be7ff', '#ff9ad0', '#5aa8ff', '#ffa23a', '#ff4f4f', '#ff7af0', '#ff4f9a', '#ff2a2a', '#ff7a00'];
 
 const ROAD_COLORS = ['#ff3b3b', '#ffffff', '#ffe14d', '#d08a4a', '#9b6b43'];
 const LOT_COLORS = ['rgba(181,154,200,0.55)', 'rgba(70,190,90,0.6)', 'rgba(60,90,255,0.5)', 'rgba(255,140,0,0.6)', 'rgba(150,100,50,0.5)'];
@@ -54,7 +62,7 @@ export class DebugOverlay {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'F3') { e.preventDefault(); this.toggle(); return; }
       if (!this.open) return;
-      if (e.code === 'Tab') { e.preventDefault(); this.setTab(this.tab === 'map' ? 'vehicle' : 'map'); return; }
+      if (e.code === 'Tab') { e.preventDefault(); this.setTab(this.tab === 'map' ? 'vehicle' : this.tab === 'vehicle' ? 'npc' : 'map'); return; }
       if (!this.visible) return;
       if (e.code === 'KeyC') { this.cx = this.player.x; this.cz = this.player.z; this.draw(); }
       const keys = ['terrain', 'roads', 'blocks', 'lots', 'districts', 'chunks'] as const;
@@ -65,7 +73,7 @@ export class DebugOverlay {
     this.tabsEl = document.createElement('div');
     this.tabsEl.id = 'debug-tabs';
     this.tabsEl.className = 'hidden';
-    for (const [id, text] of [['map', 'Karte'], ['vehicle', 'Fahrzeug']] as const) {
+    for (const [id, text] of [['map', 'Karte'], ['vehicle', 'Fahrzeug'], ['npc', 'NPC']] as const) {
       const b = document.createElement('button');
       b.textContent = text;
       b.dataset.tab = id;
@@ -77,13 +85,114 @@ export class DebugOverlay {
     this.vehEl.id = 'veh-debug';
     this.vehEl.className = 'hidden';
     document.body.appendChild(this.vehEl);
-    try { if (localStorage.getItem('sunstate.debugTab') === 'vehicle') this.tab = 'vehicle'; } catch { /* egal */ }
+    this.npcEl = this.buildNpcPanel();
+    try { const t = localStorage.getItem('sunstate.debugTab'); if (t === 'vehicle' || t === 'npc') this.tab = t; } catch { /* egal */ }
+  }
+
+  // ------------------------------------------------------------------ NPC-Tab
+  /** NPC-Tab an/aus (Server schickt dann ~2x pro Sekunde Debugdaten). */
+  onNpcTab: (on: boolean) => void = () => {};
+  /** Chatbefehl senden (Tageszeit/Wetter erzwingen). */
+  onCommand: (text: string) => void = () => {};
+  private npcEl: HTMLDivElement;
+  private npcCanvas!: HTMLCanvasElement;
+  private npcPop!: HTMLDivElement;
+  private npcText!: HTMLPreElement;
+  private npcData: NpcMsg | null = null;
+  private npcOn = false;
+
+  private buildNpcPanel(): HTMLDivElement {
+    const el = document.createElement('div');
+    el.id = 'npc-debug';
+    el.className = 'hidden';
+    const row = (items: [string, string][]) => {
+      const r = document.createElement('div');
+      r.className = 'row';
+      for (const [label, cmd] of items) {
+        const b = document.createElement('button');
+        b.textContent = label;
+        b.addEventListener('click', () => this.onCommand(cmd));
+        r.appendChild(b);
+      }
+      el.appendChild(r);
+    };
+    row([['Morgen', '/pop morgen'], ['Mittag', '/pop mittag'], ['Nachm.', '/pop nachmittag'], ['Abend', '/pop abend'], ['Nacht', '/pop nacht'], ['Auto', '/pop auto']]);
+    row([['Uhr 8', '/zeit 8'], ['Uhr 13', '/zeit 13'], ['Uhr 23', '/zeit 23'], ['Klar', '/wetter klar'], ['Regen', '/wetter regen'], ['Hitze', '/wetter hitze']]);
+    this.npcPop = document.createElement('div');
+    this.npcPop.className = 'pop';
+    el.appendChild(this.npcPop);
+    this.npcCanvas = document.createElement('canvas');
+    this.npcCanvas.width = 900; this.npcCanvas.height = 520;
+    el.appendChild(this.npcCanvas);
+    this.npcText = document.createElement('pre');
+    el.appendChild(this.npcText);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  setNpcData(msg: NpcMsg) {
+    this.npcData = msg;
+    if (this.open && this.tab === 'npc') this.drawNpc();
+  }
+
+  /** Draufsicht (±32 m um den Spieler): NPCs nach Zustand, Ziel-Linien, wahrgenommene Ereignisse als Kreise. */
+  private drawNpc() {
+    const d = this.npcData;
+    if (!d) return;
+    this.npcPop.textContent = d.pop;
+    const c = this.npcCanvas, ctx = c.getContext('2d')!;
+    const W = c.width, H = c.height, s = W / 64;
+    const X = (x: number) => W / 2 + (x - this.player.x) * s, Z = (z: number) => H / 2 + (z - this.player.z) * s;
+    ctx.fillStyle = '#0d0a1c'; ctx.fillRect(0, 0, W, H);
+    // Straßen als Orientierung
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineCap = 'round';
+    for (const e of this.map.edges) {
+      if (!e.pts.some((p) => Math.abs(p[0] - this.player.x) < 60 && Math.abs(p[1] - this.player.z) < 50)) continue;
+      ctx.lineWidth = e.width * s;
+      ctx.beginPath(); e.pts.forEach((p, i) => (i ? ctx.lineTo(X(p[0]), Z(p[1])) : ctx.moveTo(X(p[0]), Z(p[1])))); ctx.stroke();
+    }
+    for (const [ev, x, z, r, age] of d.events) {
+      const a = Math.max(0, 1 - age / 4);
+      ctx.globalAlpha = 0.25 + a * 0.6;
+      ctx.strokeStyle = EVENT_COLORS[ev] ?? '#fff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(X(x), Z(z), r * s, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = 'bold 16px Consolas, monospace'; ctx.textAlign = 'center';
+      ctx.fillText(NPC_EVENTS[ev as NpcEvId]?.name ?? '?', X(x), Z(z) - 6);
+    }
+    ctx.globalAlpha = 1;
+    ctx.font = '14px Consolas, monospace'; ctx.textAlign = 'left';
+    for (const p of d.peds) {
+      if (p.goal) {
+        ctx.strokeStyle = 'rgba(42,240,230,0.55)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(X(p.x), Z(p.z)); ctx.lineTo(X(p.goal[0]), Z(p.goal[1])); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.fillStyle = p.react ? '#ff4f4f' : p.fear ? '#ffa23a' : p.obj && !p.goal ? '#4dff9a' : p.lod ? '#8a83a8' : '#e8e0ff';
+      ctx.beginPath(); ctx.arc(X(p.x), Z(p.z), 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#c8bfe8'; ctx.fillText(String(p.id), X(p.x) + 8, Z(p.z) + 4);
+    }
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ff4f9a'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(W / 2, H / 2, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#8a83a8'; ctx.font = '13px Consolas, monospace';
+    ctx.fillText('weiß läuft · grün Szenario · rot Reaktion · orange Gedächtnis · grau Mittel-LOD · Linie = Ziel', 8, H - 8);
+    // Liste: nächste NPCs zuerst
+    const near = [...d.peds].sort((a, b) => dist(a, this.player) - dist(b, this.player)).slice(0, 14);
+    this.npcText.textContent = near.map((p) => {
+      const chain = p.chain.map((st, i) => (i === p.step - 1 ? `[${st}]` : i < p.step - 1 ? `✓${st}` : st)).join(' → ');
+      const needs = NEED_IDS.map((k, i) => `${NEED_NAMES[k].slice(0, 4)} ${p.needs[i].toFixed(2)}`).join(' · ');
+      return `#${p.id} ${p.arch} · ${dist(p, this.player).toFixed(0)} m · ${ACT_NAMES[p.act] ?? p.act}${p.lod ? ' · LOD Mittel' : ''}\n`
+        + `  Kette: ${chain}\n  ${needs}\n`
+        + (p.obj ? `  Objekt: ${p.obj}\n` : '')
+        + (p.react ? `  Reaktion: ${p.react}\n` : '')
+        + (p.fear ? `  Gedächtnis: meidet Spieler noch ${p.fear} s\n` : '')
+        + (p.seen.length ? `  Wahrgenommen: ${p.seen.join(', ')}\n` : '')
+        + `  » ${p.last}`;
+    }).join('\n') || 'Keine verwalteten NPCs in der Nähe (Population Tables gibt es bisher für Ocean Strip).';
   }
 
   private tabsEl: HTMLDivElement;
   private vehEl: HTMLDivElement;
   private open = false;
-  tab: 'map' | 'vehicle' = 'map';
+  tab: Tab = 'map';
 
   get isOpen() { return this.open; }
   /** Fahrzeug-Tab aktiv (Kräfte-Pfeile im Spiel anzeigen) */
@@ -95,13 +204,17 @@ export class DebugOverlay {
     this.setTab(this.tab);
   }
 
-  private setTab(tab: 'map' | 'vehicle') {
+  private setTab(tab: Tab) {
     this.tab = tab;
     try { localStorage.setItem('sunstate.debugTab', tab); } catch { /* egal */ }
     for (const b of this.tabsEl.querySelectorAll('button')) b.classList.toggle('on', b.dataset.tab === tab);
     this.visible = this.open && tab === 'map';
     this.canvas.classList.toggle('hidden', !this.visible);
     this.vehEl.classList.toggle('hidden', !(this.open && tab === 'vehicle'));
+    const npc = this.open && tab === 'npc';
+    this.npcEl.classList.toggle('hidden', !npc);
+    if (npc !== this.npcOn) { this.npcOn = npc; this.onNpcTab(npc); }
+    if (npc) this.drawNpc();
     if (this.visible) { this.cx = this.player.x; this.cz = this.player.z; this.draw(); }
   }
 
@@ -233,3 +346,5 @@ export class DebugOverlay {
     });
   }
 }
+
+function dist(p: NpcDebugPed, q: { x: number; z: number }) { return Math.hypot(p.x - q.x, p.z - q.z); }
