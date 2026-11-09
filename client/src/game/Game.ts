@@ -70,7 +70,10 @@ interface VehRec {
   burnSince: number; // Client-Zeit Brandbeginn
 }
 
-const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
+const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3(), tmpV3 = new THREE.Vector3();
+/** Quaternionen der Fahrzeugdarstellung je Fahrzeug-ID wiederverwenden (keine Neuanlage pro Bild) */
+const vehQuats = new Map<number, THREE.Quaternion>();
+const vehQuat = (id: number) => { let q = vehQuats.get(id); if (!q) vehQuats.set(id, (q = new THREE.Quaternion())); return q; };
 const UP = new THREE.Vector3(0, 1, 0);
 
 export class Game {
@@ -138,6 +141,9 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Statistik über alle Passes eines Bildes sammeln (Schatten, Szene, Bloom …) – sonst zeigt die
+    // Anzeige nur den letzten Post-Processing-Pass (1 Draw-Call)
+    this.renderer.info.autoReset = false;
 
     this.rig = new CameraRig(window.innerWidth / window.innerHeight);
     this.sky = new Sky(this.scene, this.gfx.shadows);
@@ -623,6 +629,7 @@ export class Game {
     for (const p of this.props.sprays) this.fx.splash(p.x, p.y + 0.8, p.z, 0, 7, 0, 2);
     this.features.update(dt);
     this.views.setFocus(this.rig.target);
+    this.views.setCamera(this.rig.camera); // Sichtfeld fürs nächste Bild (Animationen außerhalb sparen)
     this.particles.update(dt, this.rig.target);
     this.fx.update(dt);
     this.tracers.update(dt);
@@ -643,6 +650,7 @@ export class Game {
       this.drawMinimap(latest, vehicleStates, me);
     }
 
+    this.renderer.info.reset();
     this.post.render();
     this.hud.tickFps(rawDt, this.renderer.info.render.calls);
 
@@ -682,7 +690,7 @@ export class Game {
         if (c.rev) flags |= VehFlag.REVERSE;
         if (c.boost) flags |= VehFlag.BOOST;
         if (this.buttons & Btn.HORN) flags |= VehFlag.HORN;
-        s = { id, kind, variant, color, driver, x: me.x, y: me.y, z: me.z, q: this.predictor.viewQuat(new THREE.Quaternion()), vx: c.vx, vz: c.vz, steer: c.steer, flags, comp: c.comp, spin: c.spin, tires: rec.dmg.tires };
+        s = { id, kind, variant, color, driver, x: me.x, y: me.y, z: me.z, q: this.predictor.viewQuat(vehQuat(id)), vx: c.vx, vz: c.vz, steer: c.steer, flags, comp: c.comp, spin: c.spin, tires: rec.dmg.tires };
         rpm = c.rpm;
       } else {
         const va = a.vehicles.get(id) ?? vb;
@@ -690,7 +698,7 @@ export class Game {
         const prof = profileOf(variant);
         if (!isWaterVehicle(kind)) r.fixY(groundHeight(this.map, r.x, r.z) + prof.cgHeight * 0.5);
         tmpE.set(r.pitch, r.yaw, r.roll, 'YXZ');
-        s = { id, kind, variant, color, driver, x: r.x, y: r.fixY(-99), z: r.z, q: new THREE.Quaternion().setFromEuler(tmpE), vx: r.vx, vz: r.vz, steer: r.steer, flags: r.flags, tires: rec.dmg.tires };
+        s = { id, kind, variant, color, driver, x: r.x, y: r.fixY(-99), z: r.z, q: vehQuat(id).setFromEuler(tmpE), vx: r.vx, vz: r.vz, steer: r.steer, flags: r.flags, tires: rec.dmg.tires };
         rpm = r.rpm;
       }
       const isNew = !this.views.hasVehicle(id);
@@ -743,6 +751,8 @@ export class Game {
     } else {
       this.views.setQuestMarkers(null, null);
     }
+    // Wiederverwendete Quaternionen verschwundener Fahrzeuge freigeben
+    if (vehQuats.size > vehicleStates.size + 64) for (const id of vehQuats.keys()) if (!vehicleStates.has(id)) vehQuats.delete(id);
     return vehicleStates;
   }
 
@@ -786,7 +796,7 @@ export class Game {
       const surf = ownCar ? ownCar.surf[i] : this.map.tileAt(s.x, s.z);
       const key = `${s.id}:${i}`;
       if ((ownCar && surf === 255) || (tpl.bike && w.w <= 0)) { this.fx.skidEnd(key); continue; }
-      const p = this.views.worldPoint(s.id, tmpV2.set(w.x, tpl.wheelBaseY - w.r * 0.9, w.z), new THREE.Vector3())!;
+      const p = this.views.worldPoint(s.id, tmpV2.set(w.x, tpl.wheelBaseY - w.r * 0.9, w.z), tmpV3)!;
       const gy = groundHeight(this.map, p.x, p.z);
       const asphalt = surf === Tile.ROAD || surf === Tile.BRIDGE || surf === Tile.PLAZA || surf === Tile.SIDEWALK || surf === Tile.DOCK;
       const loose = surf === Tile.SAND || surf === Tile.DIRT || surf === Tile.DESERT || surf === Tile.BADLANDS;
@@ -809,7 +819,7 @@ export class Game {
     const boost = (s.flags & VehFlag.BOOST) !== 0;
     if (boost || (own && this.backfired)) {
       for (const ex of tpl.exhaust) {
-        const p = this.views.worldPoint(s.id, ex, new THREE.Vector3())!;
+        const p = this.views.worldPoint(s.id, ex, tmpV3)!;
         this.fx.exhaustFlame(p.x, p.y, p.z, -fwd.x, -fwd.z, boost);
       }
     }

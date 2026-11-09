@@ -1,5 +1,6 @@
 // Render-Vorschau ohne Server (nur im Dev-Modus): http://localhost:5173/preview.html
 // Parameter: ?x=..&z=.. (Position, Standard = Spawn), ?day=0.5 (Tageszeit), ?district=Ocean Strip,
+//            ?ragdoll=1 (Passanten werden reihum weggeschleudert – Ragdoll testen),
 //            ?retro=1, ?zoom=1.4 (Kameraabstand-Faktor). Shader-Fehler werden auf der Seite angezeigt.
 import * as THREE from 'three';
 import { MAP_SEED } from '../../shared/src/constants';
@@ -22,6 +23,7 @@ import { PropsView } from './render/PropsView';
 import { FeaturesView } from './render/FeaturesView';
 import { profileOf } from '../../shared/src/sim/vehicle';
 import { CAR_VARIANTS } from '../../shared/src/sim/handling';
+import { knockPawn, newPawn, stepPawn } from '../../shared/src/sim/movement';
 
 const log = document.getElementById('log')!;
 const errors: string[] = [];
@@ -75,11 +77,27 @@ async function main() {
   scene.add(props.group, features.group);
   const dentDemo = [[0.3, 0.1, 2.3, 0, 0, -1, 0.9], [-0.9, 0.2, 0.4, 1, 0, 0, 0.6]];
   let damaged = false;
+  const ragdollDemo = q.get('ragdoll') === '1';
+  const pawns = Array.from({ length: 6 }, (_, i) => newPawn(x - 5 + i * 2, z + 3, 0));
+  let ragT = 0;
   const frame = (dt: number) => {
     views.beginFrame(dt);
-    for (let i = 0; i < 6; i++) {
-      const a = U.uTime.value * 0.3 + i;
-      views.setPed({ id: i, x: x + Math.cos(a) * (4 + i), z: z + Math.sin(a) * (4 + i), a: a + Math.PI / 2, color: i, running: false, h: 0, ragdoll: false, cop: false, gang: false, angry: i === 2 }, dt);
+    if (ragdollDemo) {
+      // Ragdoll-Test: dieselbe Flug-Simulation wie auf dem Server, alle ~3,5 s wird reihum jemand umgefahren
+      ragT += dt;
+      pawns.forEach((p, i) => {
+        if (p.rt <= 0 && ragT > 1 + i * 0.6 && (ragT - i * 0.6) % 3.5 < dt) {
+          const ang = i * 1.7 + ragT;
+          knockPawn(p, Math.sin(ang) * (6 + i * 2), Math.cos(ang) * (6 + i * 2), 4 + i, 1.9);
+        }
+        stepPawn(map, p, 0, 0, 0, dt);
+        views.setPed({ id: i, x: p.x, z: p.z, a: p.a, color: i, running: false, h: p.h, ragdoll: p.rt > 0, cop: false, gang: false, angry: false }, dt);
+      });
+    } else {
+      for (let i = 0; i < 6; i++) {
+        const a = U.uTime.value * 0.3 + i;
+        views.setPed({ id: i, x: x + Math.cos(a) * (4 + i), z: z + Math.sin(a) * (4 + i), a: a + Math.PI / 2, color: i, running: false, h: 0, ragdoll: false, cop: false, gang: false, angry: i === 2 }, dt);
+      }
     }
     lineup.forEach((variant, k) => {
       const vx = x - 28 + (k % 12) * 5, vz = z - 6 - Math.floor(k / 12) * 9;
@@ -104,6 +122,7 @@ async function main() {
     props.update(dt);
     views.night = sky.night;
     views.setFocus(rig.target);
+    views.setCamera(rig.camera);
     particles.update(dt, rig.target);
     U.uOutlineScale.value = rig.zoom * (U.uResolution.value.y / 720);
     post.update(sky.mood, sky.night);

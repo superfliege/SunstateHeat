@@ -9,10 +9,11 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { addOutline, computeOutlineNormals, LINE, toonMaterial } from './materials/toon';
-import type { Style } from './characters';
+import { addOutline, computeOutlineNormals, LINE, toonMaterial, U } from './materials/toon';
+import { setFigureBounds, type Style } from './characters';
 import { Act } from '../../../shared/src/npc/scenarios';
 import { NpcActs, SEATED_ACTS } from './npcActs';
+import { RagdollPose, type RagdollFrame } from './ragdoll';
 
 const DIR = 'assets/kenney/animated-characters/';
 
@@ -181,17 +182,19 @@ export class KenneyCharacter {
   private attackT = 0;
   /** Szenario-Posen (NPCs): Animations-ID vom Server → Pose + Gegenstand */
   readonly acts: NpcActs;
-  private lastDt = 0;
+  /** Ragdoll-Glieder (lokal berechnet, siehe ragdoll.ts) */
+  private rag: RagdollPose;
+  private ragFrame: RagdollFrame | null = null;
 
-  constructor(material: THREE.Material) {
+  constructor(material: THREE.Material, seed = 0) {
     const clone = SkeletonUtils.clone(base!);
     clone.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
       if (!m.isMesh) return;
       m.material = material;
-      m.frustumCulled = false; // Bounding-Box passt bei Animation nicht
       this.hull = addOutline(m, LINE.character);
-      this.hull.frustumCulled = false;
+      if ((m as THREE.SkinnedMesh).isSkinnedMesh) setFigureBounds(m, this.hull);
+      else { m.frustumCulled = false; this.hull.frustumCulled = false; }
     });
     // Kopf etwas kleiner: erwachsenere Proportionen als im Original (weniger "Spielzeug")
     clone.traverse((o) => { if ((o as THREE.Bone).isBone && /^head$/i.test(o.name)) o.scale.setScalar(HEAD_SCALE); });
@@ -203,6 +206,7 @@ export class KenneyCharacter {
     inner.add(clone);
     this.root.add(inner);
     this.acts = new NpcActs(clone, inner, this.root);
+    this.rag = new RagdollPose(clone, inner, seed);
 
     this.mixer = new THREE.AnimationMixer(clone);
     for (const k of Object.keys(CLIPS) as ClipName[]) {
@@ -237,6 +241,9 @@ export class KenneyCharacter {
   /** Kopfdrehung (Blickkontakt): yaw relativ zum Körper, w = Gewicht. */
   setLook(yaw: number, w: number, anxious = false) { this.acts.setLook(yaw, w, anxious); }
 
+  /** Ragdoll-Zustand für dieses Bild (null = keiner); vor animate() aufrufen. */
+  ragdoll(f: RagdollFrame | null) { this.ragFrame = f; }
+
   /** speed in m/s; seated = sitzt (Motorrad/Boot); dist = Abstand zur Kamera (Animations-LOD). */
   animate(speed: number, dt: number, seated = false, dist = 0) {
     this.attackT = Math.max(0, this.attackT - dt);
@@ -249,18 +256,24 @@ export class KenneyCharacter {
       if (this.current === this.actions.walk) this.current!.timeScale = Math.max(0.6, speed / 1.7);
       else if (this.current === this.actions.run) this.current!.timeScale = act === Act.Jog ? 0.62 : Math.max(0.7, speed / 5.5);
     }
-    // LOD: nah jedes Bild, weiter weg jedes 2./4./8. Bild (Zeit wird aufgesammelt)
-    const skip = dist < 45 ? 1 : dist < 90 ? 2 : dist < 150 ? 4 : 8;
+    this.rag.update(this.ragFrame, dt);
+    const ragOn = this.rag.w > 0;
+    // LOD: nah jedes Bild, weiter weg jedes 2./4./8. Bild (Zeit wird aufgesammelt); eine Ragdoll-Figur in
+    // Kamera-Nähe immer flüssig, damit die schlackernden Glieder nicht ruckeln
+    const skip = dist < 45 || (ragOn && dist < 90) ? 1 : dist < 90 ? 2 : dist < 150 ? 4 : 8;
     this.acc += dt;
     if (++this.frame % skip === 0) {
       this.mixer.update(this.acc);
       // Szenario-Posen nur für Figuren in Kamera-Nähe (Detailstufe Nah/Mittel)
       if (act !== Act.None && dist < 70) this.acts.apply(this.acc);
       if (dist < 45) this.acts.applyLook(this.acc);
+      if (ragOn) this.rag.apply();
       this.acc = 0;
+      // Gegenstand nur nachführen, wenn sich die Pose geändert hat (hängt am root, bewegt sich also mit)
+      if (act !== Act.None) this.acts.syncProp();
     }
-    if (act !== Act.None) this.acts.syncProp();
-    if (this.hull) this.hull.visible = dist < 140;
+    // Umriss nur in der Nähe – und nur, wenn Umrisslinien eingeschaltet sind (Grafikstufe „niedrig“)
+    if (this.hull) this.hull.visible = dist < 140 && U.uOutlineScale.value > 0;
   }
 
   dispose() { this.acts.dispose(); this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); }
@@ -276,6 +289,6 @@ export function createKenneyCharacter(role: KenneyRole, id: number, shirt?: numb
   if (!list.length) return null;
   const h = (Math.imul(id + 1, 2654435761) >>> 0) / 4294967296;
   const name = list[Math.floor(h * list.length)];
-  if (role === 'cop') return new KenneyCharacter(skinMaterial(name, POLICE_SHIRT, POLICE_PANTS));
-  return new KenneyCharacter(skinMaterial(name, shirt));
+  if (role === 'cop') return new KenneyCharacter(skinMaterial(name, POLICE_SHIRT, POLICE_PANTS), id);
+  return new KenneyCharacter(skinMaterial(name, shirt), id);
 }

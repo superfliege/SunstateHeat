@@ -203,6 +203,11 @@ export class WorldView {
     trees.forEach((t, i) => { this.treeRefs[i] = this.addTree(t); });
     this.buildGroundCover();
     this.assemble();
+    // Die Welt ist statisch (Baum-Wackeln ändert nur Instanz-Matrizen): Weltmatrizen einmal berechnen und
+    // vom Matrix-Update jedes Bildes ausnehmen – spart das Durchlaufen von ~2000 Objekten pro Bild
+    this.group.updateMatrixWorld(true);
+    this.group.traverse((o) => { o.matrixAutoUpdate = false; });
+    this.group.matrixWorldAutoUpdate = false;
   }
 
   // ------------------------------------------------------------------ Hilfen
