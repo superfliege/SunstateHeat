@@ -60,6 +60,19 @@ aus den offiziellen Repositories geladen (feste Commits, siehe `scripts/fetch-as
   - *Impact Sounds:* Schläge, Metall-/Blech-/Glas-Treffer bei Crashs, Schritte (Beton, Gras, Holz).
   - *Interface Sounds:* Meldungen, Menüs, Geld.
 
+## Kenney – Animated Characters (Bundle, Protagonists)
+
+- **Urheber:** Kenney – https://kenney.nl
+- **Quelle:** wie oben über https://github.com/series-ai/jam-ready-assets (Ordner `kenney-animated-characters-bundle`
+  und `kenney-animated-characters-protagonists`, Commit wie oben)
+- **Lizenz:** CC0 1.0 – siehe `client/public/assets/kenney/animated-characters/License.txt`
+- **Ordner:** `client/public/assets/kenney/animated-characters/`
+- **Verwendet:** Spielerfigur, Passanten, Gangmitglieder und Polizisten: Modell `characterMedium`, 20 Skins
+  (Business, Casual, Sport, Skater, Farmer, Survivor, Militär, Criminal), Animationen Stehen, Gehen, Rennen,
+  Schlagen, Sitzen.
+- **Anpassung:** Kopf etwas kleiner skaliert; Oberteil/Hose der Skins werden für Spieler- und Gangfarben bzw.
+  die Polizeiuniform umgefärbt (`client/src/render/kenneyCharacters.ts`).
+
 ## Quaternius – Stylized Nature MegaKit
 
 - **Urheber:** Quaternius (Tomás Laulhé) – https://quaternius.com
@@ -112,6 +125,6 @@ Jede so verwendete Quelle bitte hier mit Name, URL und Lizenz nachtragen.
 
 ## Weiterhin prozedural
 
-Figuren, Art-déco-Hotels, Spiegelglas-Türme (wenn kein Kit-Hochhaus passt), Little-Havana-Häuser, Scheunen,
+Ersatzfiguren (falls die Kenney-Figuren fehlen), Art-déco-Hotels, Spiegelglas-Türme (wenn kein Kit-Hochhaus passt), Little-Havana-Häuser, Scheunen,
 Trailer, Stelzenhütten in Gator Flats, Mangroven/Zypressen/Orangenbäume, Neon, Boden, Wasser, Brücken und Stege,
 Nahkampfwaffen und Molotov sowie die Ersatzmodelle, falls ein Kit fehlt.

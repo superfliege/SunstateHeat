@@ -15,6 +15,7 @@ import { moodFor } from './render/palette';
 import { Particles } from './render/Particles';
 import { PostFX } from './render/PostFX';
 import { loadQuaternius } from './render/quaternius';
+import { loadKenneyCharacters } from './render/kenneyCharacters';
 import { Sky } from './render/Sky';
 import { WorldView } from './render/WorldView';
 import { PropsView } from './render/PropsView';
@@ -29,7 +30,7 @@ const report = (s: string) => { log.textContent += s + '\n'; };
 async function main() {
   const q = new URLSearchParams(location.search);
   const t0 = performance.now();
-  await Promise.all([loadAssets(), loadQuaternius(), loadTextureOverrides()]);
+  await Promise.all([loadAssets(), loadQuaternius(), loadKenneyCharacters(), loadTextureOverrides()]);
   const map = generateWorld(MAP_SEED);
   let x = Number(q.get('x') ?? map.spawn.x), z = Number(q.get('z') ?? map.spawn.z);
   const dname = q.get('district');

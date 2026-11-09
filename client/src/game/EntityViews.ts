@@ -20,6 +20,7 @@ import { addOutline, LINE } from '../render/materials/toon';
 import { CharacterModel, fanGeometry, lightsMat, toonVC, vehicleGeometry, vehicleMat } from '../render/models';
 import { moodFor } from '../render/palette';
 import { createWeaponMesh } from '../render/weaponModels';
+import { createKenneyCharacter, type KenneyCharacter } from '../render/kenneyCharacters';
 
 export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number }
 export interface VehicleViewState {
@@ -365,6 +366,9 @@ export class EntityViews {
     const mood = moodFor(this.map.zoneAt(x, z), district?.style ?? null);
     const style = cop ? 'business' : player ? 'casual' : styleForMood(mood, ((id * 2654435761) >>> 0) / 4294967296);
     const shirt = cop ? 0x2850c8 : player || gang ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined;
+    // Kenney Animated Characters (bevorzugt), sonst Quaternius-Packs, sonst prozedural
+    const k = createKenneyCharacter(cop ? 'cop' : gang ? 'gang' : player ? 'player' : style, id, cop ? undefined : shirt);
+    if (k) return k;
     const q = createQuaterniusCharacter(style, id, shirt);
     return q ?? new CharacterModel(cop ? 6 : outfit);
   }
@@ -449,7 +453,7 @@ export class EntityViews {
   playAttack(id: number, kind: 'swing' | 'shot') {
     const c = this.players.get(id) ?? this.peds.get(id);
     if (!c) return;
-    if (kind === 'swing') c.swing = SWING_TIME; else c.kick = KICK_TIME;
+    if (kind === 'swing') { c.swing = SWING_TIME; (c.model as Partial<KenneyCharacter>).attack?.(); } else c.kick = KICK_TIME;
   }
 
   setPlayer(s: PlayerState, dt: number, seatedOn: VehicleViewState | null, isMe: boolean) {

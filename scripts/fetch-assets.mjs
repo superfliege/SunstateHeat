@@ -118,6 +118,22 @@ const SOURCES = [
     'click_001', 'click_002', 'confirmation_001', 'confirmation_002', 'error_004', 'select_001', 'open_001', 'close_001',
     'drop_002', 'maximize_006', 'pluck_001', 'switch_002', 'tick_001',
   ]),
+  // Kenney Animated Characters: ein Menschenmodell + Skins (Texturen) + Animationen (FBX)
+  {
+    dest: 'kenney/animated-characters', repo: JRA, commit: JRA_COMMIT, lfs: true,
+    base: 'kenney-animated-characters-bundle/3D/characters',
+    files: [
+      'Models/characterMedium.fbx',
+      ...['idle', 'walk', 'run', 'punch', 'racingIdle'].map((a) => `Animations/${a}.fbx`),
+      ...['businessMaleA', 'businessMaleB', 'casualFemaleA', 'casualFemaleB', 'casualMaleA', 'casualMaleB',
+        'athleteFemaleBlue', 'athleteFemaleYellow', 'athleteMaleGreen', 'athleteMaleRed', 'farmerA', 'farmerB',
+        'survivorFemaleA', 'survivorFemaleB', 'survivorMaleA', 'survivorMaleB', 'militaryMaleA'].map((n) => `Skins/${n}.png`),
+    ],
+    extra: [
+      ['kenney-animated-characters-bundle/3D/characters/License.txt', 'License.txt'],
+      ...['criminalMaleA', 'skaterFemaleA', 'skaterMaleA'].map((n) => [`kenney-animated-characters-protagonists/3D/characters/Skins/${n}.png`, `Skins/${n}.png`]),
+    ],
+  },
   // ---------------------------------------------------------------- Quaternius Stylized Nature
   // Landet unter assets/quaternius/ -> wird von client/src/render/quaternius.ts automatisch erkannt.
   {

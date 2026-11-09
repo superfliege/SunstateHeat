@@ -22,7 +22,7 @@ const MIME: Record<string, string> = {
 };
 
 /** Gut komprimierbare Typen (Modelle, Skripte …) – Bilder und OGG sind schon komprimiert. */
-const GZIP = new Set(['.html', '.js', '.css', '.svg', '.json', '.gltf', '.glb', '.bin']);
+const GZIP = new Set(['.html', '.js', '.css', '.svg', '.json', '.gltf', '.glb', '.bin', '.fbx']);
 /** gzip-Ergebnis je Datei (Pfad -> [mtime, Daten]); die Assets ändern sich zur Laufzeit nicht. */
 const gzCache = new Map<string, [number, Buffer]>();
 function gzipped(file: string): Buffer {
