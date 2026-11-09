@@ -839,7 +839,7 @@ export class WorldRoom {
     p.conn.send({ t: 'notice', text: 'Du wurdest ausgeknockt!', kind: 'bad' });
   }
 
-  /** Respawn im Krankenhaus (derzeit der Standard-Spawn): kostet 10 % des Bargelds, max. 1.000 $. */
+  /** Respawn im Krankenhaus (derzeit der Standard-Spawn): kostet 10 % des Bargelds, max. 1.000 $; setzt die Fahndung zurück. */
   private respawn(p: ServerPlayer) {
     const cost = Math.min(BALANCE.player.respawnCostMax, Math.floor(p.profile.money * BALANCE.player.respawnCostShare));
     if (cost > 0) this.addMoney(p, -cost, 'respawn');
@@ -849,6 +849,7 @@ export class WorldRoom {
     p.downT = 0;
     p.health = BALANCE.player.maxHealth;
     p.armor = 0;
+    this.police.clear(p); // Fahndungslevel zurücksetzen
     p.invuln = BALANCE.player.spawnProtection;
     p.conn.send({ t: 'notice', text: cost > 0 ? `Im Krankenhaus aufgewacht. Behandlung: −$${cost}` : 'Im Krankenhaus aufgewacht.', kind: 'info' });
     this.persist(p);
