@@ -59,6 +59,8 @@ export interface Ped {
   shotCd: number;
   think: number;
   wx: number; wz: number;
+  /** Sekunden, die der Passant beim Gehen festhängt (vor dem Umdrehen) */
+  blk: number;
   /** Archetyp (Index in ARCHETYPES, -1 = klassischer Passant ohne Archetyp) und Animations-ID (Act). */
   arch: number;
   act: number;
@@ -132,7 +134,7 @@ export class Pedestrians {
       color: Math.floor(Math.random() * OUTFIT_COLORS.length),
       walk, dir: 1, idx: 0, wait: Math.random() * 3, flee: 0, fdx: 0, fdz: 0, ttl: Infinity,
       h: 0, vx: 0, vy: 0, vz: 0, rt: 0, angry: 0, hp: PED_HP, cop: 0,
-      ext: false, gang: '', tag: '', run: 0, hostile: false, tgt: 'players', provoked: 0, provokedBy: 0, home: { x, z }, shotCd: 0, think: 0, wx: x, wz: z,
+      ext: false, gang: '', tag: '', run: 0, hostile: false, tgt: 'players', provoked: 0, provokedBy: 0, home: { x, z }, shotCd: 0, think: 0, wx: x, wz: z, blk: 0,
       arch: -1, act: 0, spd: STROLL_SPEED, pop: false, age: 0, scn: null, mind: null,
     };
     this.peds.set(ped.id, ped);
@@ -348,9 +350,35 @@ export class Pedestrians {
       let mx = dx / d, mz = dz / d;
       const av = this.avoid?.(p, mx, mz);
       if (av) [mx, mz] = av;
+      const ap = this.avoidPeds(p, mx, mz);
+      if (ap) [mx, mz] = ap;
       const stuck = stepPawn(this.map, p, mx, -mz, 0, dt, p.spd * speed);
-      if (stuck && !av) { p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(w.pts.length - 1, p.idx + p.dir)); }
+      if (stuck && !av) {
+        // Festgelaufen: erst seitlich versuchen, erst nach längerer Blockade umdrehen
+        p.blk += dt;
+        if (p.blk > 1.5) { p.blk = 0; p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(w.pts.length - 1, p.idx + p.dir)); }
+        else stepPawn(this.map, p, -mz * (p.id % 2 ? 1 : -1), -mx * (p.id % 2 ? -1 : 1), 0, dt, p.spd * speed * 0.7);
+      } else p.blk = Math.max(0, p.blk - dt);
     }
+  }
+
+  /** Anderen Fußgängern/Spielern auf dem Weg seitlich ausweichen (Rechtsverkehr bei Gegenverkehr). */
+  private avoidPeds(p: Ped, mx: number, mz: number): [number, number] | null {
+    let best: Ped | null = null, bd = 1.7;
+    for (const q of this.peds.values()) {
+      if (q === p || q.rt > 0) continue;
+      const rx = q.x - p.x, rz = q.z - p.z;
+      const along = rx * mx + rz * mz;
+      if (along < 0.1 || along > bd) continue;
+      if (Math.abs(rx * -mz + rz * mx) > 0.85) continue;
+      best = q; bd = along;
+    }
+    if (!best) return null;
+    const lat = (best.x - p.x) * -mz + (best.z - p.z) * mx; // > 0: links von uns
+    const side = Math.abs(lat) < 0.15 ? (p.id % 2 ? 1 : -1) : lat > 0 ? -1 : 1; // -1 = links, 1 = rechts
+    const k = 1.1 * (1 - bd / 1.8) + 0.5;
+    const ox = mx + mz * side * k, oz = mz - mx * side * k, l = Math.hypot(ox, oz) || 1;
+    return [ox / l, oz / l];
   }
 
   /** "Läuft gerade" für die Animation auf dem Client. */

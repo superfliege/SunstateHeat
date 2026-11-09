@@ -10,6 +10,7 @@ import { dist2, wrapAngle } from '../../../shared/src/math';
 import { Btn, type GameEvent } from '../../../shared/src/protocol';
 import { groundHeight, placeCar, setYaw, syncDerived, upVector } from '../../../shared/src/sim/car';
 import { pickCarVariant, variantInfo } from '../../../shared/src/sim/handling';
+import { footFree } from '../../../shared/src/sim/movement';
 import { createSimVehicle } from '../../../shared/src/sim/vehicle';
 import { VehicleKind } from '../../../shared/src/sim/vehicleDefs';
 import { offsetPolyline, type Vec2 } from '../../../shared/src/world/geometry';
@@ -40,6 +41,8 @@ interface Brain {
   severity: number;
   /** Ausweichen: seitlicher Versatz (m, + = rechts) und Restzeit */
   evade: number; evadeT: number;
+  /** Umfahren eines stehenden Hindernisses (Sekunden Restzeit, Fahrzeug-ID des Hindernisses); evade hält den Seitenversatz */
+  detourT: number; detourId: number;
   honkCd: number;
   blockedByPlayer: number;
   /** Ausgeparktes Auto: Parkplatz, auf den es später (außer Sicht) zurückkehrt */
@@ -115,7 +118,7 @@ export class Traffic {
     this.brains.set(v.id, {
       path: rest, turning: rest.map(() => false), edge: best.e.id, toNode: best.fwd ? best.e.b : best.e.a, lane: 0,
       cruise: CRUISE[best.e.type], speed: 0, stuck: 0, ignore: 0, mode: 'depart', timer: 0, severity: 0,
-      evade: 0, evadeT: 0, honkCd: 2, blockedByPlayer: 0, home: v.home, age: 0,
+      evade: 0, evadeT: 0, detourT: 0, detourId: -1, honkCd: 2, blockedByPlayer: 0, home: v.home, age: 0,
     });
     v.home = null;
     return true;
@@ -194,7 +197,7 @@ export class Traffic {
       this.brains.set(id, {
         path: rest, turning: rest.map(() => false), edge: e.id, toNode: forward ? e.b : e.a, lane,
         cruise: CRUISE[e.type], speed: 0, stuck: 0, ignore: 0, mode: 'drive', timer: 0, severity: 0,
-        evade: 0, evadeT: 0, honkCd: 0, blockedByPlayer: 0,
+        evade: 0, evadeT: 0, detourT: 0, detourId: -1, honkCd: 0, blockedByPlayer: 0,
       });
       return true;
     }
@@ -296,6 +299,32 @@ export class Traffic {
     this.host.event(['honk', v.id]);
   }
 
+  /**
+   * Stehendes Hindernis (geparkt, liegen geblieben, Spieler): seitlich daran vorbeifahren – bevorzugt auf der
+   * Gegenspur, sonst auf dem Gehweg –, sofern dort Platz ist (kein Auto, keine Wand/Wasser).
+   */
+  private startDetour(v: ServerVehicle, brain: Brain, o: ServerVehicle, vehicles: Map<number, ServerVehicle>): boolean {
+    const s = v.sim.car, fx = Math.sin(s.a), fz = Math.cos(s.a), rx = -fz, rz = fx;
+    const need = o.sim.prof.width / 2 + v.sim.prof.width / 2 + 0.9;
+    for (const [side, off] of [[-1, need + 0.6], [1, need + 0.6], [1, need + 2.2], [-1, need + 2.2]] as const) {
+      let free = true;
+      for (let along = 2; along <= 11 && free; along += 3) {
+        const x = s.x + fx * along + rx * side * off, z = s.z + fz * along + rz * side * off;
+        if (!footFree(this.host.map, x, z)) { free = false; break; }
+        for (const w of vehicles.values()) {
+          if (w === v) continue;
+          // eigenes Hindernis zählt nur, wenn es den versetzten Streifen wirklich schneidet
+          const c = w.sim.car, dx = c.x - x, dz = c.z - z;
+          if (dx * dx + dz * dz < (w === o ? 2.2 : 3.2) ** 2 && (w !== o || Math.abs((c.x - s.x) * rx + (c.z - s.z) * rz - side * off) < 1.6)) { free = false; break; }
+        }
+      }
+      if (!free) continue;
+      brain.evade = side * off; brain.evadeT = 0.2; brain.detourT = 8; brain.detourId = o.id; brain.ignore = 0;
+      return true;
+    }
+    return false;
+  }
+
   // ------------------------------------------------------------------ kinematisch
   private driveKinematic(v: ServerVehicle, brain: Brain, dt: number, vehicles: Map<number, ServerVehicle>, pawns: { x: number; z: number }[], fast: [number, number, number, number][]) {
     const s = v.sim.car;
@@ -333,18 +362,32 @@ export class Traffic {
     if (angleDiff > 0.6) want = 4; // enge Kurve: langsam, sonst kreist das Auto um den Punkt
     if (brain.evadeT > 0) want *= 0.5;
 
-    // Hindernis voraus? (Kegel vor dem Auto)
+    // Umfahren läuft: Seitenversatz halten, bis das Hindernis hinter uns liegt
+    if (brain.detourT > 0) {
+      brain.detourT -= dt;
+      brain.evadeT = Math.max(brain.evadeT, 0.2);
+      const o = vehicles.get(brain.detourId);
+      if (!o || (o.sim.car.x - s.x) * fx + (o.sim.car.z - s.z) * fz < -3.5) brain.detourT = Math.min(brain.detourT, 0.3);
+    }
+
+    // Hindernis voraus? (Kegel vor dem Auto; beim Umfahren seitlich versetzt und schmaler)
     const look = 8 + Math.abs(brain.speed) * 0.6;
-    const ahead = (x: number, z: number) => {
+    const detouring = brain.detourT > 0;
+    const coneC = detouring ? brain.evade : 0, coneW = detouring ? 1.7 : 2.4;
+    const ahead = (x: number, z: number, c = coneC, w = coneW) => {
       const dx = x - s.x, dz = z - s.z;
       const along = dx * fx + dz * fz;
       if (along <= 0 || along > look) return false;
-      return Math.abs(dx * fz - dz * fx) < 2.4;
+      return Math.abs(dx * fz - dz * fx - c) < w;
     };
-    let blocked = false, byPlayer = false;
+    let blocked = false, byPlayer = false, still: ServerVehicle | null = null;
     if (brain.ignore <= 0) {
       for (const o of vehicles.values()) {
-        if (o !== v && ahead(o.sim.car.x, o.sim.car.z)) { blocked = true; byPlayer = o.driver >= 0 || o.driver === DRIVER_NONE; break; }
+        if (o !== v && ahead(o.sim.car.x, o.sim.car.z)) {
+          blocked = true; byPlayer = o.driver >= 0 || o.driver === DRIVER_NONE;
+          if (Math.hypot(o.sim.car.vx, o.sim.car.vz) < 1) still = o;
+          break;
+        }
       }
       if (!blocked) blocked = pawns.some((p) => ahead(p.x, p.z));
     } else {
@@ -353,11 +396,13 @@ export class Traffic {
     if (blocked) want = 0;
     // Hupen, wenn ein Spieler(-auto) im Weg steht
     if (blocked && byPlayer) { brain.blockedByPlayer += dt; if (brain.blockedByPlayer > 1.2) this.honk(v, brain); } else brain.blockedByPlayer = 0;
+    if (detouring && !blocked) want = Math.min(want, 5);
 
-    // Verklemmung an Kreuzungen auflösen
+    // Verklemmung: stehendes Hindernis umfahren (Gegenspur oder Gehweg), sonst nach einer Weile durchfahren
     if (Math.abs(brain.speed) < 0.5 && blocked) {
       brain.stuck += dt;
-      if (brain.stuck > 3.5) { brain.ignore = 2; brain.stuck = 0; }
+      if (still && !detouring && brain.stuck > 1.2 && this.startDetour(v, brain, still, vehicles)) brain.stuck = 0;
+      else if (brain.stuck > (still ? 6 : 3.5)) { brain.ignore = 2; brain.stuck = 0; brain.detourT = 0; }
     } else {
       brain.stuck = 0;
     }
