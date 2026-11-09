@@ -30,6 +30,8 @@ export class BotDriver {
   private stopDist = 0;
   /** Drift-Assistent: in Kurven Handbremse antippen (Drift-Wettbewerb). */
   private drifty = false;
+  /** Direktes Ziel (Straßenfahrt): überstimmt die Richtungswahl der Bausteine. */
+  private direct: [number, number] | null = null;
   // Ausgabe (gehalten bis zur nächsten Entscheidung)
   private out: BotInput = { ax: 0, ay: 0, buttons: 0 };
   private decideT = 0;
@@ -59,6 +61,7 @@ export class BotDriver {
     this.hazardDist = Infinity;
     this.stopDist = 0;
     this.drifty = false;
+    this.direct = null;
     return this;
   }
 
@@ -95,6 +98,12 @@ export class BotDriver {
     const c = this.car!;
     this.addInterest(Math.atan2(x - c.x, z - c.z), w, 2);
   }
+
+  /**
+   * SteerTo: Punkt direkt anpeilen (genaue Spurführung auf Straßen). Die Bausteine liefern dann
+   * nur noch Bremsen bei Gefahr; Zielfehler und Fehlerrate wirken weiter.
+   */
+  steerTo(x: number, z: number) { this.direct = [x, z]; }
 
   /** Drift-Assistent für diesen Tick einschalten. */
   driftStyle() { this.drifty = true; }
@@ -215,16 +224,21 @@ export class BotDriver {
     const sl = this.interest[l] - this.danger[l] * 2, sr = this.interest[r] - this.danger[r] * 2, sb = best;
     const den = sl - 2 * sb + sr;
     const off = den < -1e-6 ? clamp((0.5 * (sl - sr)) / den, -0.5, 0.5) : 0;
-    const want = DIRS[bi] + off * ((Math.PI * 2) / N);
+    const want = this.direct
+      ? Math.atan2(this.direct[0] - c.x, this.direct[1] - c.z) + this.aimOff * 0.25
+      : DIRS[bi] + off * ((Math.PI * 2) / N);
     this.heading = want;
     const diff = wrapAngle(want - c.a);
     let ax = clamp(-diff * 2.2, -1, 1);
-    let ay = speed < this.speedWant ? 1 : 0.2;
+    // Wunschtempo 0 = anhalten (Straßensperre, Startverzögerung)
+    let ay = this.speedWant <= 0 ? (fwd > 0.5 ? -1 : 0) : speed < this.speedWant ? 1 : 0.2;
     let buttons = 0;
     // Ziel liegt hinter uns und vorne droht Gefahr: rückwärts herausdrehen
+    if (this.speedWant <= 0) return { ax: 0, ay, buttons: speed < 1 ? Btn.BRAKE : 0 };
     if (Math.abs(diff) > 2.0 && this.danger[this.dirIndex(c.a)] > 0.4) {
       return { ax: clamp(diff * 2, -1, 1), ay: -1, buttons: 0 };
     }
+    if (this.speedWant > 0 && speed > this.speedWant + 3) ay = -0.7; // deutlich zu schnell (Kurve voraus): bremsen
     if (Math.abs(diff) > 1.2 && speed > 9) ay = -0.5;
     if (Math.abs(diff) > 1.6 && speed > 5 && speed < 15) buttons = Btn.BRAKE; // Handbremswende
     // Drift: in der Kurve kurz die Handbremse ziehen und mit Gas halten, gegenlenken übernimmt die Physik

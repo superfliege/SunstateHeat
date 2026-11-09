@@ -9,13 +9,14 @@ import hotPotatoConfig from './config/hotpotato.json';
 import falloutConfig from './config/fallout.json';
 import falloutFootConfig from './config/fallout_fuss.json';
 import driftConfig from './config/drift.json';
+import bombBusConfig from './config/bombbus.json';
 import type { DriftRules } from './drift';
 
 /** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
 export const MG_PHONE_ID = 'minigames';
 export const MG_PREFIX = 'mg:';
 
-export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss' | 'drift';
+export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss' | 'drift' | 'bombbus';
 
 // ------------------------------------------------------------------ Arenen
 export type DeathZone =
@@ -113,6 +114,24 @@ export interface DriftConfig extends BaseModeConfig, DriftRules {
   botSpread: number;
 }
 
+export interface BombBusConfig extends BaseModeConfig {
+  busVehicle: string;
+  hunterVehicles: string[];
+  armAfter: number;
+  minSpeed: number;
+  fuse: number;
+  warnMargin: number;
+  goal: { enabled: boolean; distance: number; radius: number };
+  hunterRespawn: number;
+  lostDistance: number;
+  respawnAhead: number;
+  busDamageScale: number;
+  hunterHeadStart: number;
+  busAI: { turnCost: number; trafficCost: number; lanesBonus: number; goalBonus: number; sharpTurnCost: number; roadTypeCost: number[] };
+  blockerShare: number;
+  clearTraffic: { enabled: boolean; from: number; to: number; width: number };
+}
+
 export interface MinigameMeta { id: MinigameId; name: string; icon: string; intro: string[]; config: BaseModeConfig }
 
 export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
@@ -163,6 +182,14 @@ export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
       'Wand- oder Fahrzeugkontakt löscht den laufenden Drift und die Combo. Höchste Punktzahl nach Ablauf der Zeit gewinnt.',
     ],
     config: driftConfig as unknown as DriftConfig,
+  },
+  bombbus: {
+    id: 'bombbus', name: 'Bomb Bus', icon: '🚌',
+    intro: [
+      'Einer fährt den Bomben-Bus durch die Stadt – fällt er unter das Mindesttempo, fliegt er in die Luft!',
+      'Bus: überleben oder das Ziel erreichen. Jäger: blockieren, ausbremsen, Straßen sperren.',
+    ],
+    config: bombBusConfig as unknown as BombBusConfig,
   },
 };
 export const isMinigame = (s: string): s is MinigameId => s in MINIGAMES;

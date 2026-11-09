@@ -570,6 +570,7 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     return {
       ...base, stage: me.alive ? this.meta.intro[1] ?? '' : `Ausgeschieden – Platz ${me.place}. Zuschauen …`,
       prog: `${alive}/${this.parts.length} im Spiel`, timer, targets, mg: hud,
+      freeze: me.alive && this.frozen(p.id) ? true : undefined,
       count: this.elapsed < 1.2 && Date.now() - this.started < 1500 ? 0 : undefined,
     };
   }

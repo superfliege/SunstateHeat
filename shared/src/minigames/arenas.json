@@ -248,6 +248,28 @@
           ]
         ]
       }
+    },
+    {
+      "id": "city",
+      "name": "Innenstadt (Straßennetz rund um den Spawn)",
+      "center": [
+        1360,
+        971
+      ],
+      "bounds": 1100,
+      "death": [
+        {
+          "type": "water"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.1
+      },
+      "spectate": [
+        1360,
+        971
+      ]
     }
   ]
 }

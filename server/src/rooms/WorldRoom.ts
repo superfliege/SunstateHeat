@@ -31,6 +31,7 @@ import { QuestEngine } from '../quests/QuestEngine';
 import { Races } from '../quests/Races';
 import { TaxiHunt } from '../quests/TaxiHunt';
 import { MinigameManager } from '../minigames/MinigameManager';
+import { MG_MARK } from '../minigames/Minigame';
 import { TAXI_HUNT_ID } from '../../../shared/src/taxiHunt';
 import { Gangs, GANG_OUTFIT } from '../sim/Gangs';
 import { payphones, questLocations, type PhoneDef } from '../../../shared/src/questLocations';
@@ -1445,6 +1446,10 @@ export class WorldRoom {
     for (const p of this.players.values()) {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       if (v && Math.hypot(v.sim.car.vx, v.sim.car.vz) > 10) fast.push([v.sim.car.x, v.sim.car.z, v.sim.car.vx, v.sim.car.vz]);
+    }
+    // Minispiel-NPCs (z. B. Bomb Bus) behandelt der Verkehr wie schnelle Spieler: ausweichen
+    for (const v of this.vehicles.values()) {
+      if (v.race === MG_MARK && v.driver === DRIVER_NPC && Math.hypot(v.sim.car.vx, v.sim.car.vz) > 10) fast.push([v.sim.car.x, v.sim.car.z, v.sim.car.vx, v.sim.car.vz]);
     }
     this.traffic.update(dt, fast);
     // Freie Fahrzeuge (ohne Fahrer) rollen aus, fallen, werden geschoben – bis sie einschlafen
