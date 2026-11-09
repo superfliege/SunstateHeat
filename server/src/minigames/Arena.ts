@@ -1,6 +1,7 @@
 // Laufzeit-Arena: aus den Daten in shared/minigames/arenas.json erzeugt.
 // Kennt Boden, Startplätze, Todeszonen und liefert den Bots eine Gefahrenkarte (hazard).
-import { carInWater, type CarState } from '../../../shared/src/sim/car';
+import { blocksCar, carInWater, type CarState } from '../../../shared/src/sim/car';
+import { Tile } from '../../../shared/src/world/tiles';
 import type { ArenaDef } from '../../../shared/src/minigames';
 import { floorEdgeDistance, floorSolid, newFloor, FloorCell, type ArenaFloor } from '../../../shared/src/world/arenaFloor';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
@@ -20,7 +21,7 @@ export class Arena {
   open() {
     const f = this.def.floor;
     if (!f) return;
-    this.floor = newFloor(this.def.id, this.cx, this.cz, f.y, f.shape, { r: f.r, cell: f.cell, cols: f.cols, rows: f.rows });
+    this.floor = newFloor(this.def.id, this.cx, this.cz, f.y, f.shape, { r: f.r, cell: f.cell, cols: f.cols, rows: f.rows, wall: f.wall });
     this.map.floors = [...this.map.floors.filter((o) => o.id !== this.def.id), this.floor];
   }
 
@@ -85,8 +86,12 @@ export class Arena {
       const e = f.shape === 'disc' ? f.r - Math.hypot(x - f.cx, z - f.cz) : soft;
       return e < soft ? 0.5 * (1 - e / soft) : 0;
     }
+    // Ohne Boden (Stadt): Gebäude/Felsen und Wasser meiden, Arena-Grenze weich
+    const t = this.map.tileAt(x, z);
+    if (blocksCar(t)) return 0.8;
+    if (t === Tile.WATER) return 1;
     const e = this.def.bounds - Math.hypot(x - this.cx, z - this.cz);
-    return e <= 0 ? 1 : e < soft ? 0.5 * (1 - e / soft) : 0;
+    return e <= 0 ? 0.9 : e < 30 ? 0.4 * (1 - e / 30) : 0;
   }
 
   zone(id: string) {

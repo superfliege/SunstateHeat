@@ -4,12 +4,19 @@
 import arenaData from './arenas.json';
 import botData from './config/bots.json';
 import sumoConfig from './config/sumo.json';
+import derbyConfig from './config/derby.json';
+import hotPotatoConfig from './config/hotpotato.json';
+import falloutConfig from './config/fallout.json';
+import falloutFootConfig from './config/fallout_fuss.json';
+import driftConfig from './config/drift.json';
+import bombBusConfig from './config/bombbus.json';
+import type { DriftRules } from './drift';
 
 /** ID des Minispiel-Telefons am Spawn; Aufträge dort heißen `mg:<modus>`. */
 export const MG_PHONE_ID = 'minigames';
 export const MG_PREFIX = 'mg:';
 
-export type MinigameId = 'sumo';
+export type MinigameId = 'sumo' | 'derby' | 'hotpotato' | 'fallout' | 'fallout_fuss' | 'drift' | 'bombbus';
 
 // ------------------------------------------------------------------ Arenen
 export type DeathZone =
@@ -21,12 +28,15 @@ export interface ArenaDef {
   id: string;
   name: string;
   center: [number, number];
-  floor?: { shape: 'disc' | 'grid'; y: number; r?: number; cell?: number; cols?: number; rows?: number };
+  /** wall: Bande rundherum (Dicke in m, 0/fehlt = offen, Sturz möglich). */
+  floor?: { shape: 'disc' | 'grid'; y: number; r?: number; cell?: number; cols?: number; rows?: number; wall?: number };
   bounds: number;
   death: DeathZone[];
   spawns: { type: 'ring'; radius: number } | { type: 'list'; points: [number, number, number][] };
   spectate: [number, number];
   zones?: { id: string; x: number; z: number; r: number }[];
+  /** Feste Fahrlinien (z. B. Driftlinie der NPCs), Punkte relativ zur Mitte. */
+  lines?: Record<string, [number, number][]>;
 }
 
 export const ARENAS: ArenaDef[] = (arenaData as unknown as { arenas: ArenaDef[] }).arenas;
@@ -57,6 +67,8 @@ export interface BaseModeConfig {
   abortWithoutHumans: boolean;
   /** Sekunden auf dem Dach, bis man ausscheidet (0 = nie). */
   flipTimeout: number;
+  /** Zu Fuß statt im Fahrzeug (Fallout-Variante). */
+  onFoot?: boolean;
   rewards: [number, number][];
   participation: [number, number];
 }
@@ -66,6 +78,58 @@ export interface SumoConfig extends BaseModeConfig {
   pushBoost: number;
   damageScale: number;
   timeUp: 'center' | 'tie';
+}
+
+export interface DerbyConfig extends BaseModeConfig {
+  damage: { scale: number; front: number; rear: number; side: number; wall: number };
+  engineDead: number;
+  botAI: { fleeBelow: number; opportunisticRange: number };
+  tieGap: number;
+}
+
+export interface HotPotatoConfig extends BaseModeConfig {
+  fuse: { start: number; step: number; min: number };
+  passImmunity: number;
+  passMinSpeed: number;
+  roundPause: number;
+  damageScale: number;
+}
+
+export interface FalloutConfig extends BaseModeConfig {
+  variant: 'random' | 'trail' | 'mixed';
+  grace: number;
+  warnTime: number;
+  random: { interval: number; minInterval: number; accel: number; batch: number };
+  trail: { delay: number; chance: number };
+  keepMin: number;
+  damageScale: number;
+}
+
+export interface DriftConfig extends BaseModeConfig, DriftRules {
+  zone: string;
+  line: string;
+  contactDv: number;
+  damageScale: number;
+  botRate: Record<DifficultyId, number>;
+  botSpread: number;
+}
+
+export interface BombBusConfig extends BaseModeConfig {
+  busVehicle: string;
+  hunterVehicles: string[];
+  armAfter: number;
+  minSpeed: number;
+  fuse: number;
+  warnMargin: number;
+  goal: { enabled: boolean; distance: number; radius: number };
+  hunterRespawn: number;
+  lostDistance: number;
+  respawnAhead: number;
+  busDamageScale: number;
+  hunterHeadStart: number;
+  busAI: { turnCost: number; trafficCost: number; lanesBonus: number; goalBonus: number; sharpTurnCost: number; roadTypeCost: number[] };
+  blockerShare: number;
+  clearTraffic: { enabled: boolean; from: number; to: number; width: number };
 }
 
 export interface MinigameMeta { id: MinigameId; name: string; icon: string; intro: string[]; config: BaseModeConfig }
@@ -78,6 +142,54 @@ export const MINIGAMES: Record<MinigameId, MinigameMeta> = {
       'Wer die Plattform verlässt, ist raus. Nach einer Weile schrumpft sie – der Letzte auf der Plattform gewinnt.',
     ],
     config: sumoConfig as unknown as SumoConfig,
+  },
+  derby: {
+    id: 'derby', name: 'Destruction Derby', icon: '💥',
+    intro: [
+      'Geschlossene Crash-Bowl, alle gegen alle: Fahr die anderen zu Schrott!',
+      'Heck und Seite sind empfindlich, die Front hält am meisten aus. Wer kein fahrbares Auto mehr hat, ist raus.',
+    ],
+    config: derbyConfig as unknown as DerbyConfig,
+  },
+  hotpotato: {
+    id: 'hotpotato', name: 'Hot Potato', icon: '💣',
+    intro: [
+      'Einer hat die Bombe – ramm jemanden, um sie loszuwerden!',
+      'Läuft der Zünder ab, fliegt der Träger in die Luft. Nach dem Weitergeben bist du kurz geschützt. Letzter Überlebender gewinnt.',
+    ],
+    config: hotPotatoConfig as unknown as HotPotatoConfig,
+  },
+  fallout: {
+    id: 'fallout', name: 'Fallout', icon: '🟦',
+    intro: [
+      'Kachelboden über dem Meer – die Platten verschwinden nach und nach!',
+      'Rot blinkende Platten fallen gleich weg. Wer auf einer fehlenden Platte steht, fällt ins Wasser. Letzter oben gewinnt.',
+    ],
+    config: falloutConfig as unknown as FalloutConfig,
+  },
+  fallout_fuss: {
+    id: 'fallout_fuss', name: 'Fallout (zu Fuß)', icon: '🏃',
+    intro: [
+      'Kachelboden über dem Meer, diesmal zu Fuß – jede Platte, über die du läufst, fällt kurz danach weg!',
+      'Rot blinkende Platten fallen gleich weg. Bleib in Bewegung, aber pass auf, wohin du läufst. Letzter oben gewinnt.',
+    ],
+    config: falloutFootConfig as unknown as FalloutConfig,
+  },
+  drift: {
+    id: 'drift', name: 'Drift-Wettbewerb', icon: '🌀',
+    intro: [
+      'Drift-Ring über dem Meer: Punkte gibt es für Winkel, Tempo und Dauer – verkette Drifts für den Combo-Multiplikator!',
+      'Wand- oder Fahrzeugkontakt löscht den laufenden Drift und die Combo. Höchste Punktzahl nach Ablauf der Zeit gewinnt.',
+    ],
+    config: driftConfig as unknown as DriftConfig,
+  },
+  bombbus: {
+    id: 'bombbus', name: 'Bomb Bus', icon: '🚌',
+    intro: [
+      'Einer fährt den Bomben-Bus durch die Stadt – fällt er unter das Mindesttempo, fliegt er in die Luft!',
+      'Bus: überleben oder das Ziel erreichen. Jäger: blockieren, ausbremsen, Straßen sperren.',
+    ],
+    config: bombBusConfig as unknown as BombBusConfig,
   },
 };
 export const isMinigame = (s: string): s is MinigameId => s in MINIGAMES;
@@ -98,6 +210,8 @@ export interface MgHud {
   warn?: boolean;
   /** Modusspezifischer Balken 0..1 (Tempo, Bomben-Timer …). */
   bar?: { label: string; value: number; warn: boolean };
+  /** Große Warnung in der Bildmitte (z. B. „ZU LANGSAM! 0,8 s“, „DU HAST DIE BOMBE“). */
+  alert?: string;
   /** Eliminierungs-Feed, neueste zuerst. */
   feed: string[];
   /** Ergebnis-Bildschirm (nur in der Endphase). */

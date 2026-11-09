@@ -31,6 +31,7 @@ import { QuestEngine } from '../quests/QuestEngine';
 import { Races } from '../quests/Races';
 import { TaxiHunt } from '../quests/TaxiHunt';
 import { MinigameManager } from '../minigames/MinigameManager';
+import { MG_MARK } from '../minigames/Minigame';
 import { TAXI_HUNT_ID } from '../../../shared/src/taxiHunt';
 import { Gangs, GANG_OUTFIT } from '../sim/Gangs';
 import { payphones, questLocations, type PhoneDef } from '../../../shared/src/questLocations';
@@ -106,6 +107,8 @@ export class WorldRoom {
   private readonly shops: ShopDef[];
   private timer: NodeJS.Timeout;
   private props = new Map<number, PropBody>();
+  /** Gegner beim gerade berechneten Fahrzeug-Zusammenstoß (für den Minispiel-Schadensfaktor). */
+  private crashOther: ServerVehicle | null = null;
   private propDefs: ReturnType<typeof generateProps>;
   private events: PosEvent[] = [];
   private out = newStepOut();
@@ -348,6 +351,14 @@ export class WorldRoom {
       },
       stepAi: (v, ax, ay, buttons) => { v.buttons = buttons & Btn.HORN; this.physicsStep(v, ax, ay, buttons, null); },
       emit: (x, z, ev, vid) => this.emit(x, z, ev, vid),
+      explode: (v) => this.explode(v),
+      spawnPed: (x, z, color) => this.peds.spawnExt(x, z, { tag: 'minigame', hp: 1e9, color }).id,
+      movePed: (id, dx, dz, run, dt) => {
+        const ped = this.peds.peds.get(id);
+        if (ped && ped.rt <= 0) stepPawn(this.map, ped, dx, -dz, run ? Btn.SPRINT : 0, dt);
+      },
+      pedPos: (id) => { const ped = this.peds.peds.get(id); return ped ? { x: ped.x, z: ped.z } : null; },
+      removePed: (id) => { this.peds.peds.delete(id); },
       addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
       grantXp: (p, xp) => this.grantXp(p, xp),
       persist: (p) => this.persist(p),
@@ -511,6 +522,7 @@ export class WorldRoom {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       p.buttons = buttons;
       if (p.downT > 0) { p.lastSeq = seq; continue; } // ausgeknockt: Eingaben werden ignoriert
+      if (!v && this.mg.frozen(p.id)) { p.lastSeq = seq; continue; } // Minispiel zu Fuß: Countdown
       if (v && (this.races.frozen(p.id) || this.hunt.frozen(p.id) || this.mg.frozen(p.id))) { this.physicsStep(v, 0, 0, Btn.BRAKE, p); p.lastSeq = seq; continue; } // Startaufstellung
       if (v && this.hunt.nitro(p.id)) v.sim.car.nitro = 1; // Catch the Taxi: unendlich Nitro
       if (v) {
@@ -553,6 +565,7 @@ export class WorldRoom {
       return;
     }
     if (p.pawn.rt > 0) return; // liegt gerade am Boden
+    if (this.mg.locked(p.id)) return; // Minispiel zu Fuß: kein Einsteigen
 
     // Einsteigen: nächstes Fahrzeug, das nicht von einem anderen Spieler gefahren wird
     let best: ServerVehicle | null = null;
@@ -833,13 +846,17 @@ export class WorldRoom {
     if (col.vn > 2.5) this.emit(col.x, col.z, ['crash', a.id, r2(col.x), r2(col.y), r2(col.z), r2(col.nx), r2(col.nz), r2(col.vn), b.id], a.id);
     // Beulen: A wird entlang -n eingedrückt, B entlang +n
     // Catch the Taxi: Rammstöße der Jäger-LKWs setzen dem Taxi stärker zu
+    this.crashOther = b;
     this.hurt(a, col.x, col.y, col.z, -col.nx, 0, -col.nz, col.dvA * this.hunt.ramScale(a, b));
+    this.crashOther = a;
     this.hurt(b, col.x, col.y, col.z, col.nx, 0, col.nz, col.dvB * this.hunt.ramScale(b, a));
+    this.crashOther = null;
     // Minispiele: Rammer merken, Sumo-Schub usw.
     this.mg.onCrash(a, b, col);
   }
 
   private worldImpact(v: ServerVehicle, imp: Impact) {
+    if (v.race !== undefined) this.mg.onImpact(v, imp.dv);
     if (v.driver === DRIVER_NPC && imp.dv > 4) this.traffic.onHit(v.id, imp.dv);
     if (imp.dv > 3) this.emit(imp.x, imp.z, ['crash', v.id, r2(imp.x), r2(imp.y), r2(imp.z), r2(imp.nx), r2(imp.nz), r2(imp.dv), -1 - imp.kind], v.id);
     // Hindernis drückt entgegen der Normale in die Karosserie
@@ -848,7 +865,7 @@ export class WorldRoom {
 
   /** Schaden + Beule an einem Weltpunkt; dir = Richtung, in die das Blech gedrückt wird. */
   private hurt(v: ServerVehicle, x: number, y: number, z: number, dx: number, dy: number, dz: number, dv: number) {
-    if (v.race !== undefined) dv *= this.mg.damageScale(v, null); // Minispiel: Schaden laut Modus-Config
+    if (v.race !== undefined) dv *= this.mg.damageScale(v, this.crashOther, x, z); // Minispiel: Schaden laut Modus (Zone, Gegner)
     if (dv < ASSISTS.damageThreshold || isWaterVehicle(v.kind)) return;
     const car = v.sim.car, dmg = v.sim.dmg;
     const l = toLocal(car, x, y, z), d = dirToLocal(car, dx, dy, dz);
@@ -1429,6 +1446,10 @@ export class WorldRoom {
     for (const p of this.players.values()) {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       if (v && Math.hypot(v.sim.car.vx, v.sim.car.vz) > 10) fast.push([v.sim.car.x, v.sim.car.z, v.sim.car.vx, v.sim.car.vz]);
+    }
+    // Minispiel-NPCs (z. B. Bomb Bus) behandelt der Verkehr wie schnelle Spieler: ausweichen
+    for (const v of this.vehicles.values()) {
+      if (v.race === MG_MARK && v.driver === DRIVER_NPC && Math.hypot(v.sim.car.vx, v.sim.car.vz) > 10) fast.push([v.sim.car.x, v.sim.car.z, v.sim.car.vx, v.sim.car.vz]);
     }
     this.traffic.update(dt, fast);
     // Freie Fahrzeuge (ohne Fahrer) rollen aus, fallen, werden geschoben – bis sie einschlafen

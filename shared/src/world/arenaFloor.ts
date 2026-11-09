@@ -19,19 +19,21 @@ export interface ArenaFloor {
   cells: number[];
   /** Optischer Stil (Client): 0 Asphalt mit Rot-Weiß-Rand, 1 Kacheln. */
   style: number;
+  /** Bande rund um den Boden (Dicke in Metern, 0 = offen). Für Fahrzeuge und Fußgänger eine Wand. */
+  wall: number;
 }
 
 /** Netzformat (kompakt): Kacheln als Ziffernfolge. */
 export interface FloorNet {
   id: string; cx: number; cz: number; y: number; shape: 'disc' | 'grid'; r: number;
-  cell: number; cols: number; rows: number; cells: string; style: number;
+  cell: number; cols: number; rows: number; cells: string; style: number; wall: number;
 }
 
-export function newFloor(id: string, cx: number, cz: number, y: number, shape: 'disc' | 'grid', opts: { r?: number; cell?: number; cols?: number; rows?: number; style?: number }): ArenaFloor {
+export function newFloor(id: string, cx: number, cz: number, y: number, shape: 'disc' | 'grid', opts: { r?: number; cell?: number; cols?: number; rows?: number; style?: number; wall?: number }): ArenaFloor {
   const cols = opts.cols ?? 0, rows = opts.rows ?? 0;
   return {
     id, cx, cz, y, shape, r: opts.r ?? 0, cell: opts.cell ?? 4, cols, rows,
-    cells: new Array(cols * rows).fill(FloorCell.SOLID), style: opts.style ?? (shape === 'disc' ? 0 : 1),
+    cells: new Array(cols * rows).fill(FloorCell.SOLID), style: opts.style ?? (shape === 'disc' ? 0 : 1), wall: opts.wall ?? 0,
   };
 }
 
@@ -59,6 +61,18 @@ export function floorSolid(f: ArenaFloor, x: number, z: number): boolean {
   return i >= 0 && f.cells[i] !== FloorCell.GONE;
 }
 
+/** Liegt (x, z) in der Bande des Bodens? */
+export function floorWall(f: ArenaFloor, x: number, z: number): boolean {
+  if (f.wall <= 0) return false;
+  if (f.shape === 'disc') {
+    const d = Math.hypot(x - f.cx, z - f.cz);
+    return d > f.r && d <= f.r + f.wall;
+  }
+  const hx = (f.cols * f.cell) / 2, hz = (f.rows * f.cell) / 2;
+  const ax = Math.abs(x - f.cx), az = Math.abs(z - f.cz);
+  return ax <= hx + f.wall && az <= hz + f.wall && (ax > hx || az > hz);
+}
+
 /** Abstand zum Rand (positiv = auf dem Boden). Für grid grob über die Nachbarkacheln. */
 export function floorEdgeDistance(f: ArenaFloor, x: number, z: number): number {
   if (f.shape === 'disc') return f.r - Math.hypot(x - f.cx, z - f.cz);
@@ -83,13 +97,13 @@ export function floorHeight(floors: ArenaFloor[], x: number, z: number): number 
 export function packFloor(f: ArenaFloor): FloorNet {
   return {
     id: f.id, cx: f.cx, cz: f.cz, y: f.y, shape: f.shape, r: Math.round(f.r * 10) / 10,
-    cell: f.cell, cols: f.cols, rows: f.rows, cells: f.cells.join(''), style: f.style,
+    cell: f.cell, cols: f.cols, rows: f.rows, cells: f.cells.join(''), style: f.style, wall: f.wall,
   };
 }
 
 export function unpackFloor(n: FloorNet): ArenaFloor {
   return {
     id: n.id, cx: n.cx, cz: n.cz, y: n.y, shape: n.shape, r: n.r, cell: n.cell, cols: n.cols, rows: n.rows,
-    cells: [...n.cells].map(Number), style: n.style,
+    cells: [...n.cells].map(Number), style: n.style, wall: n.wall ?? 0,
   };
 }

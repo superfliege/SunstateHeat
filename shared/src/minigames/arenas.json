@@ -4,13 +4,272 @@
     {
       "id": "sumo_pier",
       "name": "Sumo-Plattform vor dem Spawn-Strand",
-      "center": [1730, 968],
-      "floor": { "shape": "disc", "y": 3.2, "r": 24 },
+      "center": [
+        1730,
+        968
+      ],
+      "floor": {
+        "shape": "disc",
+        "y": 3.2,
+        "r": 24
+      },
       "bounds": 60,
-      "death": [{ "type": "below", "margin": 1.2 }, { "type": "water" }, { "type": "outside" }],
-      "spawns": { "type": "ring", "radius": 0.62 },
-      "spectate": [1636, 968],
-      "zones": [{ "id": "center", "x": 0, "z": 0, "r": 8 }]
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.62
+      },
+      "spectate": [
+        1636,
+        968
+      ],
+      "zones": [
+        {
+          "id": "center",
+          "x": 0,
+          "z": 0,
+          "r": 8
+        }
+      ]
+    },
+    {
+      "id": "bowl",
+      "name": "Crash-Bowl (Plattform mit Bande)",
+      "center": [
+        1740,
+        1090
+      ],
+      "floor": {
+        "shape": "disc",
+        "y": 3.2,
+        "r": 30,
+        "wall": 3
+      },
+      "bounds": 60,
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.75
+      },
+      "spectate": [
+        1620,
+        1090
+      ],
+      "zones": [
+        {
+          "id": "center",
+          "x": 0,
+          "z": 0,
+          "r": 10
+        }
+      ]
+    },
+    {
+      "id": "tiles",
+      "name": "Kachel-Plattform (Fallout)",
+      "center": [
+        1740,
+        760
+      ],
+      "floor": {
+        "shape": "grid",
+        "y": 3.2,
+        "cell": 4,
+        "cols": 12,
+        "rows": 12
+      },
+      "bounds": 55,
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.6
+      },
+      "spectate": [
+        1618,
+        760
+      ]
+    },
+    {
+      "id": "drift_ring",
+      "name": "Drift-Ring (Plattform mit Bande)",
+      "center": [
+        1740,
+        860
+      ],
+      "floor": {
+        "shape": "disc",
+        "y": 3.2,
+        "r": 38,
+        "wall": 3
+      },
+      "bounds": 70,
+      "death": [
+        {
+          "type": "below",
+          "margin": 1.2
+        },
+        {
+          "type": "water"
+        },
+        {
+          "type": "outside"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.58
+      },
+      "spectate": [
+        1640,
+        860
+      ],
+      "zones": [
+        {
+          "id": "drift",
+          "x": 0,
+          "z": 0,
+          "r": 36
+        }
+      ],
+      "lines": {
+        "drift": [
+          [
+            0.0,
+            22.0
+          ],
+          [
+            6.8,
+            20.9
+          ],
+          [
+            12.9,
+            17.8
+          ],
+          [
+            17.8,
+            12.9
+          ],
+          [
+            20.9,
+            6.8
+          ],
+          [
+            22.0,
+            0.0
+          ],
+          [
+            20.9,
+            -6.8
+          ],
+          [
+            17.8,
+            -12.9
+          ],
+          [
+            12.9,
+            -17.8
+          ],
+          [
+            6.8,
+            -20.9
+          ],
+          [
+            0.0,
+            -22.0
+          ],
+          [
+            -6.8,
+            -20.9
+          ],
+          [
+            -12.9,
+            -17.8
+          ],
+          [
+            -17.8,
+            -12.9
+          ],
+          [
+            -20.9,
+            -6.8
+          ],
+          [
+            -22.0,
+            -0.0
+          ],
+          [
+            -20.9,
+            6.8
+          ],
+          [
+            -17.8,
+            12.9
+          ],
+          [
+            -12.9,
+            17.8
+          ],
+          [
+            -6.8,
+            20.9
+          ]
+        ]
+      }
+    },
+    {
+      "id": "city",
+      "name": "Innenstadt (Straßennetz rund um den Spawn)",
+      "center": [
+        1360,
+        971
+      ],
+      "bounds": 1100,
+      "death": [
+        {
+          "type": "water"
+        }
+      ],
+      "spawns": {
+        "type": "ring",
+        "radius": 0.1
+      },
+      "spectate": [
+        1360,
+        971
+      ]
     }
   ]
 }

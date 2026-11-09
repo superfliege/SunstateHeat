@@ -1,7 +1,7 @@
 // Basisklasse aller Fahrzeug-Minispiele. Eine Instanz = eine Runde.
 // Ablauf (wie Rennen/Catch the Taxi): lobby → grid (Countdown, alle stehen) → run → end.
 //   lobby: Anmeldung am Minispiel-Telefon, Spieler in der Nähe können beitreten.
-//   setup: Arena öffnen, Startplätze, Fahrzeuge; fehlende Plätze füllen NPCs auf.
+//   setup: Arena öffnen, Startplätze, Fahrzeuge (oder zu Fuß); fehlende Plätze füllen NPCs auf.
 //   run:   tick() des Modus, Todeszonen/Überschlag prüfen, Eliminierungen gesammelt je Tick
 //          (gleichzeitiges Ausscheiden = geteilter Platz), Siegbedingung, Zeitlimit.
 //   end:   Ergebnis-Bildschirm, Belohnungen, danach alle zurück zum Telefon, Aufräumen.
@@ -18,8 +18,8 @@ import {
   arenaById, BOT_DIFFICULTIES, BOT_NAMES, MINIGAMES, type BaseModeConfig, type DifficultyId, type MgHud, type MgResult, type MinigameId,
 } from '../../../shared/src/minigames';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
-import { DRIVER_NPC, type ServerPlayer, type ServerVehicle } from '../entities/types';
-import { Arena } from './Arena';
+import { DRIVER_NONE, DRIVER_NPC, type ServerPlayer, type ServerVehicle } from '../entities/types';
+import { Arena, type Spot } from './Arena';
 import { BotDriver } from './BotDriver';
 
 export interface MinigameHost {
@@ -39,6 +39,13 @@ export interface MinigameHost {
   clearArea(x: number, z: number, r: number, keep: Set<number>): void;
   removeVehicle(id: number): void;
   stepAi(v: ServerVehicle, ax: number, ay: number, buttons: number): void;
+  /** Fahrzeug sofort explodieren lassen (Comic-Explosion mit Flächenwirkung). */
+  explode(v: ServerVehicle): void;
+  /** NPC zu Fuß (von außen gesteuert): erzeugen, bewegen (Richtung in Weltkoordinaten), Position, entfernen. */
+  spawnPed(x: number, z: number, color: number): number;
+  movePed(id: number, dx: number, dz: number, run: boolean, dt: number): void;
+  pedPos(id: number): { x: number; z: number } | null;
+  removePed(id: number): void;
   /** Ereignis an Clients im Umkreis (z. B. ['boom', …]). */
   emit(x: number, z: number, ev: (string | number)[], vid: number): void;
   addMoney(p: ServerPlayer, amount: number, reason: string): void;
@@ -58,8 +65,13 @@ export interface Participant {
   /** Spieler-ID, -1 = NPC */
   pid: number;
   name: string;
+  /** Fahrzeug (-1 = keins, z. B. zu Fuß oder schon entfernt) */
   vid: number;
+  /** NPC zu Fuß (Ped-ID, -1 = keiner) */
+  ped: number;
   bot: BotDriver | null;
+  /** Rolle im Modus (z. B. 'bus'/'hunter'), '' = keine */
+  role: string;
   alive: boolean;
   /** Endplatz (0 = noch offen). */
   place: number;
@@ -67,12 +79,14 @@ export interface Participant {
   /** Sekunden seit dem Ausscheiden. */
   outT: number;
   flipT: number;
+  /** Sekunden mit der Fahrzeugmitte neben dem Arena-Boden (Absicherung, falls kein Physikschritt kommt). */
+  offT: number;
   /** Letzter Kontakt mit einem anderen Teilnehmer (für „von X ins Wasser geschoben“). */
   lastHit: { by: number; t: number } | null;
 }
 
 export type Phase = 'lobby' | 'grid' | 'run' | 'end';
-const steps = (dt: number) => Math.max(1, Math.round(dt / (1 / 60)));
+export const steps = (dt: number) => Math.max(1, Math.round(dt / (1 / 60)));
 
 export interface MinigameOptions {
   /** Debug-Runde: nur NPCs, Anzahl Teilnehmer. */
@@ -81,6 +95,8 @@ export interface MinigameOptions {
   /** Ohne Anmeldephase sofort starten. */
   instant?: boolean;
 }
+
+export type HudExtra = Pick<MgHud, 'info' | 'warn' | 'bar' | 'alert'>;
 
 export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
   phase: Phase = 'lobby';
@@ -103,34 +119,38 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
 
   constructor(protected h: MinigameHost, readonly mode: MinigameId, readonly opts: MinigameOptions = {}) {
     this.cfg = MINIGAMES[mode].config as C;
-    const def = this.arenaDef();
+    const def = arenaById(this.cfg.arena);
+    if (!def) throw new Error(`Arena ${this.cfg.arena} fehlt in arenas.json`);
     this.arena = new Arena(def, h.map);
   }
 
   get meta() { return MINIGAMES[this.mode]; }
   get title() { return `${this.meta.icon} ${this.meta.name}`; }
   get debug() { return !!this.opts.botsOnly; }
-
-  private arenaDef() {
-    const a = (MINIGAMES[this.mode].config as BaseModeConfig).arena;
-    const found = arenaById(a);
-    if (!found) throw new Error(`Arena ${a} fehlt in arenas.json`);
-    return found;
-  }
+  get onFoot() { return !!this.cfg.onFoot; }
 
   // ================================================================== Hooks für Modi
+  /** Startplätze (Standard: laut Arena-Daten). */
+  protected spawnSpots(n: number): Spot[] { return this.arena.spawns(n); }
+  /** Nach dem Erzeugen aller Teilnehmer (Rollen verteilen …). */
+  protected onSetup(): void {}
   /** Nach dem Countdown (Start der Runde). */
   protected onStart(): void {}
   /** Jeder Tick während der Runde (vor Todeszonen und Siegprüfung). */
   protected abstract tick(dt: number): void;
-  /** NPC-Steuerung: Verhaltensbausteine aufrufen (bot.begin(...) ist schon erfolgt). */
+  /** NPC-Steuerung im Fahrzeug: Verhaltensbausteine aufrufen. */
   protected abstract botThink(p: Participant, v: ServerVehicle, bot: BotDriver, dt: number): void;
-  /** Warum scheidet p aus? '' = alles gut. Standard: Todeszonen der Arena, Überschlag, Wrack. */
+  /** NPC zu Fuß (nur Modi mit onFoot): gewünschte Laufrichtung. */
+  protected botWalk(_p: Participant, _x: number, _z: number, _dt: number): { dx: number; dz: number; run: boolean } { return { dx: 0, dz: 0, run: false }; }
+  /** Warum scheidet p aus? '' = alles gut. Standard: Todeszonen der Arena, Überschlag. */
   protected outReason(p: Participant, v: ServerVehicle | undefined): string {
+    if (this.onFoot) return '';
     if (!v) return 'ist verschwunden';
     const r = this.arena.deathReason(v.sim.car);
     if (r) return r;
     if (this.cfg.flipTimeout > 0 && p.flipT > this.cfg.flipTimeout) return 'liegt auf dem Dach';
+    // Mitte neben dem Boden (z. B. Spieler ohne Eingaben: sein Auto wird nicht simuliert und fiele nie)
+    if (this.arena.floor && p.offT > 1.5) return 'ist von der Plattform gestürzt';
     return '';
   }
   /** Siegbedingung, Standard: höchstens einer übrig. */
@@ -144,29 +164,45 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     const alive = this.alive();
     this.finish([alive], alive.length > 1 ? 'Zeit abgelaufen – Unentschieden!' : `${alive[0]?.name ?? 'Niemand'} gewinnt!`);
   }
-  /** Schadensfaktor bei Kollisionen/Aufprall (victim gehört zu diesem Spiel). */
-  damageScale(_victim: ServerVehicle, _other: ServerVehicle | null): number { return 1; }
-  /** Zusammenstoß zweier Fahrzeuge (Impuls schon angewendet). */
+  /** Schadensfaktor bei Kollisionen/Aufprall; (x, z) = Kontaktpunkt, other null = Wand/Explosion. */
+  damageScale(_victim: ServerVehicle, _other: ServerVehicle | null, _x: number, _z: number): number { return 1; }
+  /** Zusammenstoß zweier Teilnehmer (Impuls schon angewendet). */
   protected onCollide(_a: Participant, _b: Participant, _col: CarCollision, _va: ServerVehicle, _vb: ServerVehicle): void {}
-  /** Zusatzzeile im HUD (Modus). */
-  protected hudInfo(_me: Participant | undefined): Pick<MgHud, 'info' | 'warn' | 'bar'> { return {}; }
+  /** Aufprall an Wand/Hindernis. */
+  protected onImpact(_p: Participant, _v: ServerVehicle, _dv: number): void {}
+  /** Zusatzzeilen im HUD (Modus); me fehlt bei Zuschauern. */
+  protected hudInfo(_me: Participant | undefined): HudExtra { return {}; }
+  /** Zielmarkierungen [x, z, Radius, Art] (siehe QuestState.targets). */
+  protected targets(_me: Participant | undefined): QuestState['targets'] { return []; }
+  /** Wohin die Zuschauerkamera schaut. */
+  protected spectatePoint(): [number, number] { return [this.arena.cx, this.arena.cz]; }
   /** Punkte-/Ergebnisspalte im Ergebnis-Bildschirm. */
   protected scoreText(_p: Participant): string { return ''; }
   /** Fahrzeugvariante für Startplatz i. */
-  protected vehicleFor(_i: number): number {
-    const list = this.cfg.vehicles.map((m) => CAR_VARIANTS.findIndex((v) => v.model === m)).filter((i) => i >= 0);
+  protected vehicleFor(_i: number): number { return this.randomVariant(this.cfg.vehicles); }
+
+  protected randomVariant(models: string[]): number {
+    const list = models.map((m) => CAR_VARIANTS.findIndex((v) => v.model === m)).filter((i) => i >= 0);
     return list.length ? list[Math.floor(Math.random() * list.length)] : 0;
   }
 
   // ================================================================== Abfragen
   has(pid: number) { return this.members.includes(pid) || this.waiting.includes(pid); }
   part(pid: number) { return this.parts.find((p) => p.pid === pid); }
-  partByVehicle(vid: number) { return this.parts.find((p) => p.vid === vid); }
+  partByVehicle(vid: number) { return vid >= 0 ? this.parts.find((p) => p.vid === vid) : undefined; }
   alive() { return this.parts.filter((p) => p.alive); }
-  vehicle(p: Participant) { return this.h.vehicles.get(p.vid); }
-  /** Countdown: Fahrzeug steht. */
+  vehicle(p: Participant) { return p.vid >= 0 ? this.h.vehicles.get(p.vid) : undefined; }
+  /** Position eines Teilnehmers (Fahrzeug, Spieler zu Fuß oder NPC zu Fuß). */
+  pos(p: Participant): { x: number; z: number; y: number } | null {
+    const v = this.vehicle(p);
+    if (v) return { x: v.sim.car.x, z: v.sim.car.z, y: v.sim.car.y };
+    if (p.ped >= 0) { const q = this.h.pedPos(p.ped); return q ? { ...q, y: 0 } : null; }
+    const pl = p.pid >= 0 ? this.h.players.get(p.pid) : undefined;
+    return pl ? { x: pl.pawn.x, z: pl.pawn.z, y: 0 } : null;
+  }
+  /** Countdown: Fahrzeug/Figur steht. */
   frozen(pid: number) { return this.phase === 'grid' && !!this.part(pid)?.alive; }
-  /** Während der Runde bleibt man im Fahrzeug. */
+  /** Während der Runde bleibt man im Fahrzeug (bzw. zu Fuß: kein Einsteigen). */
   locked(pid: number) { const p = this.part(pid); return !!p && p.alive && (this.phase === 'grid' || this.phase === 'run'); }
   get humansLeft() { return this.members.filter((id) => this.h.players.has(id)).length; }
 
@@ -176,6 +212,10 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     return out;
   }
   protected say(text: string, kind: 'info' | 'good' | 'bad' = 'info') { for (const p of this.humans()) this.h.notice(p, text, kind); }
+  protected tell(p: Participant, text: string, kind: 'info' | 'good' | 'bad' = 'info') {
+    const pl = p.pid >= 0 ? this.h.players.get(p.pid) : undefined;
+    if (pl) this.h.notice(pl, text, kind);
+  }
   protected log(text: string) { this.feed.unshift(text); if (this.feed.length > FEED_MAX) this.feed.length = FEED_MAX; }
 
   // ================================================================== Anmeldung
@@ -217,15 +257,19 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     this.members = this.members.filter((id) => id !== pid);
     const p = this.h.players.get(pid);
     const part = this.part(pid);
+    // Position merken, bevor der Spieler nach Hause geschickt wird (NPC zu Fuß übernimmt dort)
+    const at = part ? this.pos(part) : null;
     if (p && !disconnected && this.phase !== 'lobby') this.sendHome(p);
     if (p && !disconnected) this.h.notice(p, `${this.meta.name} verlassen.`, 'info');
     if (part && (this.phase === 'grid' || this.phase === 'run')) {
       const v = this.vehicle(part);
-      if (part.alive && this.cfg.onLeave === 'bot' && v) {
-        part.pid = -1; part.name = `${part.name} (KI)`;
+      const name = part.name;
+      if (part.alive && this.cfg.onLeave === 'bot' && (v || (this.onFoot && at))) {
+        part.pid = -1; part.name = `${name} (KI)`;
         part.bot = new BotDriver(BOT_DIFFICULTIES[this.cfg.bots.difficulty]);
-        v.raceOwner = -1; v.driver = DRIVER_NPC; v.buttons = 0;
-        this.log(`${part.name.replace(' (KI)', '')} ist weg – ein NPC übernimmt.`);
+        if (v) { v.raceOwner = -1; v.driver = DRIVER_NPC; v.buttons = 0; }
+        else if (at) part.ped = this.h.spawnPed(at.x, at.z, part.key % 10);
+        this.log(`${name} ist weg – ein NPC übernimmt.`);
       } else if (part.alive) {
         this.eliminate(part, 'hat das Spiel verlassen');
         part.pid = -1;
@@ -286,7 +330,7 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     if (!crew.length && !this.debug) { this.phase = 'end'; this.t = 0; return; }
     const total = this.debug ? Math.max(2, this.opts.botsOnly!) : Math.min(this.cfg.players.max, Math.max(this.cfg.players.min, crew.length));
     this.arena.open();
-    const spots = this.arena.spawns(total);
+    const spots = this.spawnSpots(total);
     const keep = new Set<number>();
     for (const p of crew) if (p.vehicleId >= 0) keep.add(p.vehicleId);
     for (const s of spots) this.h.clearArea(s.x, s.z, 6, keep);
@@ -294,21 +338,42 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     const names = [...BOT_NAMES].sort(() => Math.random() - 0.5);
     spots.forEach((s, i) => {
       const p = order[i] ?? null;
-      const v = this.h.spawnCar(this.vehicleFor(i), s.x, s.z, s.a, !p, i % 10);
-      v.race = MG_MARK; v.raceOwner = p ? p.id : -1;
-      if (p) this.h.seat(p, v);
-      this.parts.push({
-        key: this.nextKey++, pid: p ? p.id : -1, name: p ? p.name : names[i % names.length], vid: v.id,
-        bot: p ? null : new BotDriver(BOT_DIFFICULTIES[this.botDifficulty()]),
-        alive: true, place: 0, score: 0, outT: 0, flipT: 0, lastHit: null,
-      });
+      const part: Participant = {
+        key: this.nextKey++, pid: p ? p.id : -1, name: p ? p.name : names[i % names.length], vid: -1, ped: -1,
+        bot: p ? null : new BotDriver(BOT_DIFFICULTIES[this.botDifficulty()]), role: '',
+        alive: true, place: 0, score: 0, outT: 0, flipT: 0, offT: 0, lastHit: null,
+      };
+      if (this.onFoot) {
+        if (p) this.h.placeOnFoot(p, s.x, s.z, s.a);
+        else part.ped = this.h.spawnPed(s.x, s.z, i % 10);
+      } else {
+        const v = this.h.spawnCar(this.vehicleFor(i), s.x, s.z, s.a, !p, i % 10);
+        v.race = MG_MARK; v.raceOwner = p ? p.id : -1;
+        if (p) this.h.seat(p, v);
+        part.vid = v.id;
+      }
+      this.parts.push(part);
     });
     for (const p of order.slice(spots.length)) { this.leave(p.id, false); this.waiting.push(p.id); }
+    this.onSetup();
     this.phase = 'grid';
     this.t = this.cfg.gridTime;
     const bots = this.parts.filter((q) => q.bot).length;
     for (const p of this.humans()) this.h.chat(p, `${this.title}: ${this.parts.length} Teilnehmer · ${this.parts.length - bots} Spieler · ${bots} NPCs.`);
     this.say(`${this.title}: ${this.meta.intro[0]}`, 'info');
+  }
+
+  /** Neues Fahrzeug für einen Teilnehmer (altes wird entfernt), z. B. Respawn eines Jägers. */
+  protected respawnVehicle(p: Participant, s: Spot, variant: number) {
+    const human = p.pid >= 0 ? this.h.players.get(p.pid) : undefined;
+    const old = p.vid;
+    const v = this.h.spawnCar(variant, s.x, s.z, s.a, !human, p.key % 10);
+    v.race = MG_MARK; v.raceOwner = human ? human.id : -1;
+    if (human) this.h.seat(human, v);
+    p.vid = v.id; p.flipT = 0;
+    if (old >= 0 && old !== v.id) this.h.removeVehicle(old);
+    if (p.bot) p.bot = new BotDriver(p.bot.diff);
+    return v;
   }
 
   private botDifficulty(): DifficultyId {
@@ -322,8 +387,17 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
   private driveBots(dt: number, hold: boolean) {
     const n = steps(dt);
     for (const p of this.parts) {
+      if (!p.bot) continue;
+      if (p.ped >= 0) {
+        if (hold || !p.alive) continue;
+        const q = this.h.pedPos(p.ped);
+        if (!q) continue;
+        const w = this.botWalk(p, q.x, q.z, dt);
+        this.h.movePed(p.ped, w.dx, w.dz, w.run, dt);
+        continue;
+      }
       const v = this.vehicle(p);
-      if (!v || !p.bot || v.driver !== DRIVER_NPC) continue;
+      if (!v || v.driver !== DRIVER_NPC) continue;
       if (hold || !p.alive) { for (let k = 0; k < n; k++) this.h.stepAi(v, 0, 0, Btn.BRAKE); continue; }
       p.bot.begin(v.sim.car);
       this.botThink(p, v, p.bot, dt);
@@ -336,9 +410,12 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
       if (!p.alive) continue;
       const v = this.vehicle(p);
       p.flipT = v && upVector(v.sim.car)[1] < 0.35 ? p.flipT + dt : 0;
-      // Spieler ist ausgestiegen (sollte gesperrt sein) oder Fahrzeug gewechselt
+      p.offT = v && !this.h.map.onFloor(v.sim.car.x, v.sim.car.z) ? p.offT + dt : 0;
       const human = p.pid >= 0 ? this.h.players.get(p.pid) : undefined;
-      const why = human && human.vehicleId !== p.vid ? 'ist ausgestiegen' : this.outReason(p, v);
+      let why = '';
+      if (human && !this.onFoot && human.vehicleId !== p.vid) why = 'ist ausgestiegen';
+      else if (human && this.onFoot && human.vehicleId >= 0) why = 'ist eingestiegen';
+      else why = this.outReason(p, v);
       if (why) this.eliminate(p, why);
     }
   }
@@ -360,22 +437,21 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
       this.log(by ? `💥 ${part.name} ${reason} (durch ${by.name})` : `💥 ${part.name} ${reason}`);
       if (by) by.score += 1;
       const v = this.vehicle(part);
-      if (v && v.driver === DRIVER_NPC) { v.driver = -1; v.buttons = 0; }
-      const hp = part.pid >= 0 ? this.h.players.get(part.pid) : undefined;
-      if (hp) this.h.notice(hp, `Ausgeschieden – ${reason}! Platz ${part.place}/${this.parts.length}.`, 'bad');
+      if (v && v.driver === DRIVER_NPC) { v.driver = DRIVER_NONE; v.buttons = 0; }
+      this.tell(part, `Ausgeschieden – ${reason}! Platz ${part.place}/${this.parts.length}.`, 'bad');
     }
   }
 
-  /** Ausgeschiedene Fahrzeuge nach kurzer Zeit entfernen, Spieler auf den Zuschauerplatz. */
+  /** Ausgeschiedene nach kurzer Zeit entfernen, Spieler auf den Zuschauerplatz. */
   private lingerOut(dt: number) {
     for (const p of this.parts) {
-      if (p.alive || p.vid < 0) continue;
+      if (p.alive || (p.vid < 0 && p.ped < 0 && p.outT >= OUT_LINGER)) continue;
       p.outT += dt;
       if (p.outT < OUT_LINGER) continue;
       const hp = p.pid >= 0 ? this.h.players.get(p.pid) : undefined;
-      if (hp) this.toSpectate(hp);
-      this.h.removeVehicle(p.vid);
-      p.vid = -1;
+      if (hp && this.phase !== 'end') this.toSpectate(hp);
+      if (p.vid >= 0) { this.h.removeVehicle(p.vid); p.vid = -1; }
+      if (p.ped >= 0) { this.h.removePed(p.ped); p.ped = -1; }
     }
   }
 
@@ -426,12 +502,16 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
 
   cleanup() {
     for (const p of this.humans()) if (this.parts.some((q) => q.pid === p.id) || this.phase !== 'lobby') this.sendHome(p);
-    for (const v of [...this.h.vehicles.values()]) {
-      if (v.race === MG_MARK && this.parts.some((p) => p.vid === v.id)) this.h.removeVehicle(v.id);
+    for (const p of this.parts) {
+      if (p.vid >= 0) { this.h.removeVehicle(p.vid); p.vid = -1; }
+      if (p.ped >= 0) { this.h.removePed(p.ped); p.ped = -1; }
     }
+    this.cleanupExtra();
     this.arena.close();
     this.phase = 'end';
   }
+  /** Zusätzliche Fahrzeuge des Modus (z. B. Wracks) aufräumen. */
+  protected cleanupExtra(): void {}
 
   // ================================================================== Kollisionen
   collide(va: ServerVehicle, vb: ServerVehicle, col: CarCollision) {
@@ -440,6 +520,12 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     if (!a || !b || !a.alive || !b.alive) return;
     if (col.vn > 1.5) { a.lastHit = { by: b.key, t: this.elapsed }; b.lastHit = { by: a.key, t: this.elapsed }; }
     this.onCollide(a, b, col, va, vb);
+  }
+
+  impact(v: ServerVehicle, dv: number) {
+    if (this.phase !== 'run') return;
+    const p = this.partByVehicle(v.id);
+    if (p && p.alive) this.onImpact(p, v, dv);
   }
 
   // ================================================================== Anzeige
@@ -458,13 +544,14 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
       return { ...base, stage: 'Anmeldung läuft – andere Spieler können am Arena-Telefon beitreten.', prog: `Spieler: ${this.members.length}/${this.cfg.players.maxHumans} · Start in ${Math.max(0, Math.ceil(this.t))} s`, timer: Math.max(0, Math.ceil(this.t)), mg: { ...hud, total: 0 } };
     }
     const me = this.part(p.id);
-    if (!me || !me.alive) hud.spectate = [this.arena.cx, this.arena.cz];
+    if (!me || !me.alive) hud.spectate = this.spectatePoint();
+    const timer = Math.max(0, Math.ceil(this.cfg.timeLimit - this.elapsed));
     if (waiting || !me) {
       const watch = this.watchers.includes(p.id);
       const results = this.phase === 'end' ? this.results(undefined) : undefined;
       return {
         ...base, stage: watch ? (this.phase === 'end' ? this.headline : 'Debug-Runde: nur NPCs – du schaust zu.') : 'Runde läuft – du bist in der nächsten dabei.',
-        prog: `${alive}/${this.parts.length} im Spiel`, timer: Math.max(0, Math.ceil(this.cfg.timeLimit - this.elapsed)),
+        prog: `${alive}/${this.parts.length} im Spiel`, timer, targets: this.targets(undefined),
         mg: { ...hud, me: 'waiting', results, headline: results ? this.headline : undefined, ...this.hudInfo(undefined) },
       };
     }
@@ -473,16 +560,17 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     Object.assign(hud, this.hudInfo(me));
     if (this.phase === 'end') {
       const results = this.results(me);
-      return { ...base, stage: this.headline, prog: 'Gleich geht’s zurück zum Telefon …', timer: Math.max(0, Math.ceil(this.t)), mg: { ...hud, results, headline: this.headline } };
+      return { ...base, stage: this.headline, prog: 'Gleich geht’s zurück zum Telefon …', timer: Math.max(0, Math.ceil(this.t)), mg: { ...hud, alert: undefined, results, headline: this.headline } };
     }
-    const timer = Math.max(0, Math.ceil(this.cfg.timeLimit - this.elapsed));
+    const targets = this.targets(me);
     if (this.phase === 'grid') {
       const cnt = Math.ceil(this.t);
-      return { ...base, stage: this.meta.intro[0], prog: `${this.parts.length} Teilnehmer`, timer, freeze: true, count: cnt <= COUNT_FROM ? cnt : undefined, mg: hud };
+      return { ...base, stage: this.meta.intro[0], prog: `${this.parts.length} Teilnehmer`, timer, targets, freeze: true, count: cnt <= COUNT_FROM ? cnt : undefined, mg: { ...hud, alert: undefined } };
     }
     return {
       ...base, stage: me.alive ? this.meta.intro[1] ?? '' : `Ausgeschieden – Platz ${me.place}. Zuschauen …`,
-      prog: `${alive}/${this.parts.length} im Spiel`, timer, mg: hud,
+      prog: `${alive}/${this.parts.length} im Spiel`, timer, targets, mg: hud,
+      freeze: me.alive && this.frozen(p.id) ? true : undefined,
       count: this.elapsed < 1.2 && Date.now() - this.started < 1500 ? 0 : undefined,
     };
   }
