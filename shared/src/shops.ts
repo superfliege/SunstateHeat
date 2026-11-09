@@ -172,7 +172,7 @@ export function placeShops(map: WorldMap) {
     if (Math.abs(slx) < hw0 + SPAWN_CLEAR && Math.abs(slz) < hd0 + SPAWN_CLEAR) return false;
     // Werkstattplatz (Zapfsäulen, Reparatur-Zone) frei lassen: [x, z, Mindestabstand]
     if (avoid && Math.hypot(cx - avoid[0], cz - avoid[1]) < avoid[2]) return false;
-    if (map.shops.some((s) => s.building && Math.hypot(s.x - cx, s.z - cz) < 16)) return false;
+    if (map.shops.some((s) => s.building && Math.hypot(s.x - cx, s.z - cz) < SHOP_W + 1.5)) return false;
     if (!shopSiteFree(map, cx, cz, rot)) return false;
     const at = { x: cx, z: cz, rot };
     // Kacheln: ganz im Innenraum begehbar (PLAZA), sonst für Fahrzeuge massiv (Ladenkachel)
@@ -208,10 +208,10 @@ export function placeShops(map: WorldMap) {
    * Bauplätze an Straßen nahe (ax, az): auf der Straßenseite des Ankers (farSide: gegenüber),
    * Front zur Fahrbahn, hinter dem Gehweg, mit Abstand zu Kreuzungen; nach Entfernung sortiert.
    */
-  const roadSites = (ax: number, az: number, farSide = false, maxD = 45) => {
+  const roadSites = (ax: number, az: number, farSide = false, maxD = 45, onlyRoad = '') => {
     const out: { cx: number; cz: number; rot: number; d: number }[] = [];
     for (const e of map.edges) {
-      if (e.type === RoadType.Pier || e.type === RoadType.Highway) continue;
+      if (e.type === RoadType.Pier || e.type === RoadType.Highway || (onlyRoad && e.name !== onlyRoad)) continue;
       let bd = maxD, bs = -1;
       for (let i = 0; i < e.pts.length - 1; i++) {
         const a = e.pts[i], b = e.pts[i + 1];
@@ -219,8 +219,8 @@ export function placeShops(map: WorldMap) {
         if (r.d < bd) { bd = r.d; bs = e.cum[i] + (e.cum[i + 1] - e.cum[i]) * r.t; }
       }
       if (bs < 0) continue;
-      for (let k = 0; k < 17; k++) {
-        const off = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 3; // 0, ±3, ±6 … ±24
+      for (let k = 0; k < 55; k++) {
+        const off = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 1.5; // 0, ±1,5 … ±40,5
         const s = bs + off;
         if (s < e.trimA + hw0 + 2 || s > e.len - e.trimB - hw0 - 2) continue; // nicht in die Kreuzung
         const q = pointAt(e.pts, e.cum, s);
@@ -233,15 +233,23 @@ export function placeShops(map: WorldMap) {
     }
     return out.sort((p, q) => p.d - q.d);
   };
-  const addAtRoad = (type: Exclude<ShopType, 'paint'>, ax: number, az: number, avoid?: [number, number, number], farSide = false) => {
-    for (const site of roadSites(ax, az, farSide)) if (tryPlace(type, site.cx, site.cz, site.rot, -1, avoid)) return true;
+  const addAtRoad = (type: Exclude<ShopType, 'paint'>, ax: number, az: number, avoid?: [number, number, number], onlyRoad = '') => {
+    for (const site of roadSites(ax, az, false, 45, onlyRoad)) if (tryPlace(type, site.cx, site.cz, site.rot, -1, avoid)) return true;
     return false;
   };
 
-  // Beim Start (Spawn): Supermarkt und Waffenladen auf der anderen Seite der nächsten Straße,
-  // Türen zur Straße – man sieht vom Start aus direkt auf die Ladenfronten
-  addAtRoad('sunmart', sp.x + 10, sp.z, undefined, true) || addAtRoad('sunmart', sp.x + 10, sp.z);
-  addAtRoad('ammo', sp.x - 10, sp.z, undefined, true) || addAtRoad('ammo', sp.x - 10, sp.z);
+  // Beim Start (Spawn): Supermarkt und Waffenladen an der nächsten Straße, auf der Seite des
+  // Spawns, Türen zur Straße (aus der Kamerasicht schaut man auf die Fronten)
+  let spawnRoad = '', sd = Infinity;
+  for (const e of map.edges) {
+    if (e.type === RoadType.Pier || e.type === RoadType.Highway) continue;
+    for (let i = 0; i < e.pts.length - 1; i++) {
+      const r = distToSegment(sp.x, sp.z, e.pts[i][0], e.pts[i][1], e.pts[i + 1][0], e.pts[i + 1][1]);
+      if (r.d < sd) { sd = r.d; spawnRoad = e.name; }
+    }
+  }
+  // jeweils so nah am Spawn wie möglich, also nebeneinander
+  for (const type of ['sunmart', 'ammo'] as const) addAtRoad(type, sp.x, sp.z, undefined, spawnRoad) || addAtRoad(type, sp.x, sp.z);
   // Tankstellen: der bisherige (massive) Shop wird zum begehbaren „Gas & Go“ mit Tankwart
   const gasStores = new Set<number>(); // Index der Werkstatt mit eigenem Tankstellen-Shop
   for (const l of map.lots) {
