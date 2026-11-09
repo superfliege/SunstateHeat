@@ -1,0 +1,52 @@
+import type { DistrictDNA } from './types';
+
+export const BRICKELL_HILLS: DistrictDNA = {
+  id: 'brickell_hills',
+  name: 'Brickell Hills',
+  mapDistricts: ['Brickell Hills'],
+  motto: 'Altes Geld, neue Sorgen.',
+  philosophy: 'Man hat alles, und genau das ist das Problem: Hecken müssen exakt sein, Pudel frisiert und Nachbarn übertroffen. Ärger regelt der Anwalt, Gefühle der Gärtner.',
+  values: ['Diskretion', 'Besitz', 'Etikette', 'Ruhe (die man sich kaufen kann)', 'Den Nachbarn übertreffen'],
+  residents: [
+    { id: 'villa_owner', name: 'Villenbesitzer', base: 'businessman', weight: 20, attitude: 'Besitzt drei Boote und kennt keines davon von innen.' },
+    { id: 'butler', name: 'Butler', base: 'businessman', weight: 10, attitude: 'Unerschütterlich, außer wenn der Pudel entkommt.' },
+    { id: 'gardener', name: 'Gärtner', base: 'worker', weight: 18, attitude: 'Wird stündlich bezahlt und hat deshalb alle Zeit der Welt.' },
+    { id: 'heiress', name: 'Erbin', base: 'partygoer', weight: 10, attitude: 'Hat nie gearbeitet, ist aber ständig erschöpft.' },
+    { id: 'golfer', name: 'Golfer', base: 'retiree', weight: 14, attitude: 'Hält Straßen für erweiterte Fairways.' },
+    { id: 'dog_walker_pro', name: 'Profi-Hundeausführer', base: 'dogwalker', weight: 12, attitude: 'Führt sechs Rassehunde aus, keinen davon freiwillig.' },
+    { id: 'security_guard', name: 'Privatsicherheit', base: 'worker', weight: 8, attitude: 'Fragt jeden nach seinem Grund, hier zu atmen.' },
+  ],
+  activities: ['Golfen', 'Hecken vermessen', 'Gartenpartys', 'Yacht putzen lassen', 'Mit Anwälten telefonieren', 'Rassehunde ausführen'],
+  hangouts: ['Golfplatz „Eighteen Palms“', 'Bootsstege an der Bucht', 'Yachtclub-Terrasse', 'Feinkostladen „Trüffel & Söhne“', 'Pfotenpfleger „Le Toilettage“'],
+  worries: ['Die Hecke des Nachbarn', 'Grundsteuer', 'Neureiche', 'Lärm aus Northgate', 'Ob Monsieur Fluffington glücklich ist'],
+  topics: {
+    hedge: 'Zwei Zentimeter Heckenhöhe und ihre juristischen Folgen.',
+    yacht: 'Wessen Yacht länger ist (und warum es nicht wichtig ist).',
+    newmoney: 'Die „Neuen“ mit ihren goldenen Wasserhähnen.',
+    staff: 'Wie schwer es ist, gutes Personal zu finden.',
+    charity: 'Die Wohltätigkeitsgala für bedürftige Golfplätze.',
+  },
+  look: {
+    graffiti: 'Praktisch keins – wird binnen einer Stunde entfernt; Marlin-Club-Wimpel an Bootsstegen gelten als „Dekoration“.',
+    posters: ['„Benefizgala: Ein Herz für Yachten“', '„Achtung: Privatgrund. Auch der Gehweg.“', '„Heckenschnitt-Verordnung, Absatz 14b“'],
+    shops: ['Feinkostladen', 'Weinhandlung', 'Pfotenpfleger', 'Juwelier', 'Galerie für Kunst, die keiner versteht'],
+    windowMusic: 'Streichquartett vom Band, gelegentlich Harfe.',
+    vehicles: ['Luxuslimousinen', 'Oldtimer-Cabrios', 'Golfwagen', 'Gärtner-Pick-ups', 'Sicherheitsdienst-SUVs'],
+    pets: ['Pudel im Designermantel', 'Windhunde', 'Zierkarpfen im Teich'],
+    clothing: 'Leinenanzüge, Tennisweiß, Pullover über den Schultern, Perlen.',
+    palette: [0xf5f0e1, 0x2ad4c9, 0x1b3b5f, 0xd4af37],
+  },
+  sound: { ambience: ['Rasensprenger', 'Heckenscheren', 'Golfschläger-Plock', 'Gläserklirren'], music: 'Streichquartett' },
+  contestedBy: ['marlin'],
+  mood: { safety: 84, wealth: 95, gang: 18 },
+  calendar: [
+    { name: 'Gartengala', days: 'Sonntag', part: 'evening', desc: 'Champagnerbrunnen, Häppchen, Smalltalk über Hecken.' },
+  ],
+  sampleLines: [
+    'Wir sind nicht reich. Wir sind nur sehr, sehr komfortabel.',
+    'Mein Anwalt hat einen Anwalt, und der hat einen Butler.',
+    'Die Hecke ist 2 Zentimeter zu hoch. Das ist Krieg.',
+    'Geld macht nicht glücklich. Aber es macht Hecken sehr, sehr gerade.',
+    'Fahren Sie bitte leiser, Sie stören die Karpfen.',
+  ],
+};
