@@ -1,0 +1,9 @@
+{
+  "_doc": "NPC-Schwierigkeit für alle Minispiele. reaction: Sekunden zwischen zwei Entscheidungen (dazwischen bleibt die alte Eingabe). aimError: zufällige Zielabweichung in Grad. mistakeRate: Fehler pro Minute (kurzes Verlenken/Gaswegnehmen), mistakeTime: Dauer eines Fehlers in Sekunden. caution: Gewicht der Gefahrenvermeidung (1 = normal).",
+  "difficulties": {
+    "leicht": { "reaction": 0.45, "aimError": 18, "mistakeRate": 5, "mistakeTime": 0.9, "caution": 0.7 },
+    "normal": { "reaction": 0.25, "aimError": 9, "mistakeRate": 2.5, "mistakeTime": 0.6, "caution": 1.0 },
+    "schwer": { "reaction": 0.1, "aimError": 3, "mistakeRate": 0.8, "mistakeTime": 0.4, "caution": 1.25 }
+  },
+  "names": ["Rico „Turbo“ Vega", "Candy Flash", "Big Earl", "Mila Nitro", "Dex Sideways", "Luz Overdrive", "Junior Cruz", "Tammy Twin-Cam", "Brutus", "Diesel-Dora", "Rammbock Ron", "Gina Gearbox", "Sledge", "Rusty", "Momo Mack", "Kalle Kipper"]
+}

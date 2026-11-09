@@ -354,3 +354,29 @@ body.touch .pn-close { font-size: 17px; }
   .tc-btn.weapon, .tc-btn.brake { right: 88px; bottom: 134px; width: 48px; height: 48px; }
   .tc-btn.horn { right: 146px; bottom: 148px; width: 44px; height: 44px; }
 }
+
+/* Minispiele (Sumo & Co.): Status im Quest-Panel, Feed, Ergebnis-Bildschirm */
+#quest-panel .mg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 2px 0 4px; font-family: var(--mono); }
+#quest-panel .mg-alive { font-size: 26px; font-weight: bold; color: #fff; text-shadow: 0 0 8px rgba(42, 212, 201, 0.7); }
+#quest-panel .mg-me { font-size: 12px; font-weight: bold; padding: 2px 8px; border-radius: 10px; background: rgba(77, 255, 154, 0.2); color: #4dff9a; }
+#quest-panel .mg-me.out { background: rgba(255, 60, 60, 0.25); color: #ff6b6b; }
+#quest-panel .mg-me.waiting { background: rgba(255, 255, 255, 0.12); color: #ddd; }
+#quest-panel .mg-info { color: #ffe14d; font-family: var(--mono); }
+#quest-panel .mg-info.warn { color: #ff5a5a; animation: mg-blink 0.8s steps(2) infinite; }
+#quest-panel .mg-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+#quest-panel .mg-bar div { flex: 1; height: 8px; background: rgba(0, 0, 0, 0.5); border-radius: 5px; overflow: hidden; }
+#quest-panel .mg-bar i { display: block; height: 100%; background: var(--cyan); transition: width 0.2s linear; }
+#quest-panel .mg-bar.warn i { background: #ff5a5a; }
+#quest-panel .mg-feed { list-style: none; margin: 6px 0 0; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.15); font-size: 12px; max-height: 110px; overflow: hidden; }
+#quest-panel .mg-feed li { opacity: 0.85; } #quest-panel .mg-feed li:first-child { opacity: 1; color: #fff; }
+@keyframes mg-blink { 50% { opacity: 0.35; } }
+#mg-results {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40; min-width: 320px; max-width: 90vw;
+  padding: 16px 22px; background: var(--panel); border: 2px solid #ffd23a; border-radius: 10px; pointer-events: none;
+  box-shadow: 0 0 30px rgba(255, 210, 58, 0.4); animation: race-pop-in 0.4s ease-out;
+}
+#mg-results h2 { margin: 0 0 10px; color: #ffd23a; text-align: center; font-size: 20px; }
+#mg-results table { width: 100%; border-collapse: collapse; font-family: var(--mono); }
+#mg-results td { padding: 3px 8px; } #mg-results td:last-child { text-align: right; opacity: 0.8; font-size: 12px; }
+#mg-results tr.me { background: rgba(255, 79, 154, 0.25); color: #fff; font-weight: bold; }
+@keyframes race-pop-in { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%); } }

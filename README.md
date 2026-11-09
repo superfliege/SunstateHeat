@@ -57,6 +57,8 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 
 **Catch the Taxi** (`shared/src/taxiHunt.ts`, `server/src/quests/TaxiHunt.ts`): Spielmodus direkt am Spawn (🚕-Telefon, F drücken). Spieler im Umkreis von 70 m können 15 s lang beitreten (bis zu 13 Spieler). Einer wird per Los zum Taxi, alle anderen jagen es in LKWs; freie Plätze füllen KI-Trucker auf (12 Jäger, folgen dem Straßennetz). Das Taxi hat unendlich Nitro (Shift), 4 s Vorsprung und darf mit der Pistole aus dem Fenster schießen (Munition frei); Jäger dürfen nicht schießen, nur rammen (Rammstöße der LKWs setzen dem Taxi stärker zu). Überlebt das Taxi 2 Minuten, gewinnt der Taxifahrer; brennt es vorher, gewinnen die Jäger. Zerstörte LKWs kommen nach 3 s neu ins Spiel. Während der Runde gibt es keine Fahndung und keine Verletzungen, niemand kann aussteigen. Danach stehen alle wieder am Telefon.
 
+**Minispiele** (`shared/src/minigames/`, `server/src/minigames/`, Details in `docs/minigames.md`): Arena-Modi am 🏟-Telefon neben dem Spawn, mit Spielern, NPCs oder gemischt; alle Werte in JSON-Configs. Bisher: **Sumo** – runde Plattform über dem Meer, alle schieben sich gegenseitig ins Wasser, nach 40 s schrumpft die Plattform. Dev: `/mg sumo [anzahl] [leicht|normal|schwer]` (nur NPCs, zuschauen), `/mg sumo mit`, `/mg stop`.
+
 ## Was drin ist
 
 - **Welt:** Halbinsel auf 2 × 2 km mit 7 Zonen und den Biomen Großstadt, Wüste, Ödland, Sumpf, Wald und Gebirge:

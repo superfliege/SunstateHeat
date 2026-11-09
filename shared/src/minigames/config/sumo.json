@@ -1,0 +1,21 @@
+{
+  "_doc": "Sumo: Wer die Plattform verlässt (Wasser), scheidet aus. Zeiten in Sekunden. players: min = Teilnehmer insgesamt (Rest NPCs), max = Plätze insgesamt, maxHumans = höchstens so viele echte Spieler. shrink: Plattform schrumpft nach 'after' Sekunden über 'duration' Sekunden auf 'minRadius' Meter. pushBoost: zusätzlicher Schub bei Fahrzeug-Kollisionen (1 = normale Physik). damageScale: Fahrzeugschaden (0 = aus). vehicles: Fahrzeugmodelle (handling.ts CAR_VARIANTS.model), zufällig verteilt. onLeave: 'bot' = NPC übernimmt, 'eliminate' = scheidet aus. rewards: [Geld, XP] je Platz (1., 2., 3.), participation für alle anderen. timeUp: Sieger bei Zeitablauf – 'center' = am nächsten an der Mitte, 'tie' = alle Überlebenden teilen sich Platz 1.",
+  "arena": "sumo_pier",
+  "lobbyTime": 15,
+  "joinRange": 70,
+  "gridTime": 4,
+  "endTime": 8,
+  "timeLimit": 150,
+  "players": { "min": 6, "max": 8, "maxHumans": 8 },
+  "bots": { "difficulty": "normal", "mix": true },
+  "shrink": { "after": 40, "duration": 80, "minRadius": 9 },
+  "pushBoost": 1.45,
+  "damageScale": 0,
+  "vehicles": ["proc_muscle", "truck_red", "ck-suv", "car_sedan", "ck-van", "car_hatchback"],
+  "onLeave": "bot",
+  "abortWithoutHumans": true,
+  "flipTimeout": 6,
+  "timeUp": "center",
+  "rewards": [[1200, 220], [500, 120], [250, 80]],
+  "participation": [0, 40]
+}

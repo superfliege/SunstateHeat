@@ -2,6 +2,8 @@
 // Entitäten werden als kompakte Tupel übertragen, um Bandbreite zu sparen.
 // Fahrzeuge, Fußgänger und Props kommen als Delta: nur Einträge, die sich seit dem letzten
 // Snapshot an DIESEN Client geändert haben (plus Listen der verschwundenen IDs).
+import type { MgHud } from './minigames';
+import type { FloorNet } from './world/arenaFloor';
 
 /** Bitmaske für Tasten in einem Eingabe-Kommando. */
 export const Btn = {
@@ -134,6 +136,8 @@ export interface QuestState {
   race?: { place: number; field: number; lap: number; laps: number };
   /** Catch the Taxi: eigene Rolle – Taxi (unendlich Nitro, darf schießen) oder Jäger (darf nicht schießen). */
   hunt?: 'taxi' | 'hunter';
+  /** Fahrzeug-Minispiel (shared/minigames): verbleibende Spieler, Feed, Ergebnis … */
+  mg?: MgHud;
 }
 
 export interface PhoneQuest {
@@ -169,6 +173,8 @@ export interface SnapshotMsg {
   pr?: PropTuple[];
   prg?: number[];
   ev?: GameEvent[];
+  /** Arena-Böden der Minispiele – nur bei Änderung (leere Liste = keine Böden mehr). */
+  af?: FloorNet[];
   quest: QuestView | null;
 }
 
