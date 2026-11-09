@@ -260,3 +260,71 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 #audio-debug label { display: flex; align-items: center; gap: 6px; }
 #audio-debug input[type='range'] { flex: 1; accent-color: var(--cyan); }
 #audio-debug pre { margin: 0; overflow-y: auto; white-space: pre; flex: 1; }
+
+/* ---------- Vollbild-Knopf, Querformat-Hinweis ---------- */
+#fs-btn { pointer-events: auto; cursor: pointer; background: var(--panel); color: #fff; border: 2px solid rgba(255,255,255,0.15); border-radius: 6px; font-size: 18px; line-height: 1; padding: 4px 10px; }
+#fs-btn:hover { border-color: var(--cyan); }
+.fs-wide { margin-top: 10px; padding: 8px 18px; border-radius: 8px; border: 2px solid var(--cyan); background: transparent; color: var(--cyan); font: bold 15px var(--font); cursor: pointer; }
+.touch-hint { display: none; }
+body.touch .touch-hint { display: block; }
+body.touch .kbd-hint { display: none; }
+#rotate { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; text-align: center; background: #140a2e; font-size: 20px; font-weight: bold; }
+#rotate > div { font-size: 80px; } #rotate p { font-size: 20px; margin: 8px 0 0; }
+@media (orientation: portrait) { body.touch #rotate { display: grid !important; } }
+
+/* ---------- Touch-Steuerung ---------- */
+#touch { position: fixed; inset: 0; z-index: 20; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none; }
+#touch.blocked { display: none; }
+body.touch, body.touch #game { touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+body.touch input { user-select: text; -webkit-user-select: text; }
+.tc-stick, .tc-aim, .tc-btn { position: absolute; pointer-events: auto; touch-action: none; }
+.tc-stick { left: calc(22px + env(safe-area-inset-left)); bottom: calc(22px + env(safe-area-inset-bottom)); width: 140px; height: 140px; border-radius: 50%;
+  background: rgba(26,16,48,0.35); border: 3px solid rgba(255,255,255,0.35); }
+.tc-stick i, .tc-aim i { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%;
+  background: rgba(42,240,230,0.55); border: 3px solid rgba(255,255,255,0.8); pointer-events: none; }
+.tc-aim { right: calc(22px + env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom)); width: 120px; height: 120px; border-radius: 50%;
+  background: rgba(26,16,48,0.35); border: 3px solid rgba(255,79,154,0.6); }
+.tc-aim i { background: rgba(255,79,154,0.6); width: 54px; height: 54px; margin: -27px 0 0 -27px; }
+.tc-aim span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 26px; pointer-events: none; opacity: 0.8; }
+.tc-aim.pressed { background: rgba(255,79,154,0.3); }
+.tc-btn { width: 60px; height: 60px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.6); background: rgba(26,16,48,0.55); color: #fff; font: bold 22px var(--font); padding: 0; display: grid; place-items: center; }
+.tc-btn.pressed { background: rgba(42,240,230,0.55); transform: scale(0.92); }
+/* Aktionstasten rechts, um den Schussstick herum */
+.tc-btn.use { right: calc(160px + env(safe-area-inset-right)); bottom: calc(26px + env(safe-area-inset-bottom)); width: 68px; height: 68px; background: rgba(255,79,154,0.55); }
+.tc-btn.act { right: calc(168px + env(safe-area-inset-right)); bottom: calc(100px + env(safe-area-inset-bottom)); width: 54px; height: 54px; }
+.tc-btn.sprint { right: calc(30px + env(safe-area-inset-right)); bottom: calc(152px + env(safe-area-inset-bottom)); }
+.tc-btn.weapon, .tc-btn.brake { right: calc(100px + env(safe-area-inset-right)); bottom: calc(152px + env(safe-area-inset-bottom)); width: 54px; height: 54px; }
+.tc-btn.horn { right: calc(170px + env(safe-area-inset-right)); bottom: calc(166px + env(safe-area-inset-bottom)); width: 48px; height: 48px; }
+#touch:not(.in-veh) [data-mode='veh'], #touch.in-veh [data-mode='foot'] { display: none; }
+/* Menütasten oben rechts */
+.tc-btn.menu { width: 42px; height: 42px; font-size: 18px; top: calc(10px + env(safe-area-inset-top)); border-radius: 10px; }
+.tc-btn.m-chat { right: calc(10px + env(safe-area-inset-right)); }
+.tc-btn.m-log { right: calc(58px + env(safe-area-inset-right)); }
+.tc-btn.m-inv { right: calc(106px + env(safe-area-inset-right)); }
+.tc-btn.m-map { right: calc(154px + env(safe-area-inset-right)); }
+
+/* HUD im Touch-Modus: Platz für die Steuerung schaffen */
+body.touch #ds-screen { right: auto; left: calc(8px + env(safe-area-inset-left)); bottom: auto; top: 96px; padding: 4px 4px 0; border-width: 2px; border-radius: 10px; box-shadow: none; }
+body.touch #minimap { width: 92px; height: 92px; }
+body.touch #minimap-label { display: none; }
+body.touch #quest-panel { top: calc(60px + env(safe-area-inset-top)); right: 10px; max-width: 220px; font-size: 12px; padding: 6px 10px; }
+body.touch #hud-wanted { right: 10px; top: calc(112px + env(safe-area-inset-top)); }
+body.touch #hud-weapon { left: 50%; transform: translateX(-50%); bottom: 10px; padding: 4px 10px; }
+body.touch #chat { left: calc(12px + env(safe-area-inset-left)); bottom: 180px; width: min(340px, 36vw); }
+body.touch #hint { bottom: 40%; }
+body.touch #fps { display: none; }
+body.touch #hud-top { top: calc(8px + env(safe-area-inset-top)); left: calc(8px + env(safe-area-inset-left)); }
+body.touch #hud-stats { left: calc(8px + env(safe-area-inset-left)); }
+body.touch #drive-hud { transform-origin: bottom center; }
+body.touch #panel { max-height: 86vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+body.touch #login { overflow-y: auto; }
+@media (max-height: 460px) {
+  .tc-stick { width: 120px; height: 120px; }
+  .tc-aim { width: 104px; height: 104px; }
+  .tc-btn { width: 52px; height: 52px; }
+  .tc-btn.use { right: 138px; width: 60px; height: 60px; }
+  .tc-btn.act { right: 146px; bottom: 90px; width: 48px; height: 48px; }
+  .tc-btn.sprint { bottom: 134px; right: 24px; }
+  .tc-btn.weapon, .tc-btn.brake { right: 88px; bottom: 134px; width: 48px; height: 48px; }
+  .tc-btn.horn { right: 146px; bottom: 148px; width: 44px; height: 44px; }
+}

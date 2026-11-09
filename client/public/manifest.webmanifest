@@ -1,0 +1,9 @@
+{
+  "name": "Sunstate Heat",
+  "short_name": "Sunstate",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#140a2e",
+  "theme_color": "#140a2e"
+}

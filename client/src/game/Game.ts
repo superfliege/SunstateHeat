@@ -21,6 +21,7 @@ import { generateVegetation } from '../../../shared/src/world/vegetation';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import type { Sfx } from '../audio/Sfx';
 import { Input } from '../input/Input';
+import { TouchControls } from '../input/TouchControls';
 import { SnapshotBuffer, VEHICLE_EXTRAPOLATION, type Frame } from '../net/Interpolation';
 import type { Network } from '../net/Network';
 import { Predictor, type Obstacle } from '../net/Prediction';
@@ -94,6 +95,7 @@ export class Game {
   private smartObjects: SmartObjectsView;
   private fx: VehicleFx;
   private input = new Input();
+  private touch = new TouchControls(this.input);
   private predictor: Predictor;
   private buffer = new SnapshotBuffer();
   private hud = new Hud();
@@ -167,7 +169,7 @@ export class Game {
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
-    this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.ui(open ? 'open' : 'close', 0.5); };
+    this.panels.onOpenChange = (open) => { this.input.blocked = open; this.touch.setBlocked(open); if (open) { this.input.clear(); this.input.fire = false; } this.sfx.ui(open ? 'open' : 'close', 0.5); };
     this.particles = new Particles(this.map);
     this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
@@ -224,7 +226,7 @@ export class Game {
     this.input.onInventory = () => this.panels.toggleInventory();
     this.input.onWeaponSlot = (slot) => this.net.send({ t: 'weapon', slot });
     this.input.onWeaponCycle = (dir) => this.net.send({ t: 'weapon', dir });
-    this.chat.onOpenChange = (open) => { this.input.blocked = open; if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
+    this.chat.onOpenChange = (open) => { this.input.blocked = open; this.touch.setBlocked(open); if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
     this.chat.onSend = (text) => this.net.send({ t: 'chat', text });
 
     net.onMessage = (msg) => this.onMessage(msg);
@@ -309,6 +311,7 @@ export class Game {
   }
 
   start() {
+    this.touch.setShown(true);
     const loop = (now: number) => {
       this.frame(now);
       requestAnimationFrame(loop);
@@ -654,6 +657,7 @@ export class Game {
     }
     this.predictor.decay(rawDt);
     this.updateFire(rawDt);
+    this.touch.setVehicle(this.predictor.inVehicle);
 
     // 2) Entitäten darstellen
     const frame = this.buffer.frame();

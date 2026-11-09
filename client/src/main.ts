@@ -1,6 +1,7 @@
 // Einstiegspunkt: Login-Bildschirm -> Verbindung -> Spiel starten.
 import { Sfx } from './audio/Sfx';
 import { Game } from './game/Game';
+import { isFullscreen, toggleFullscreen } from './input/TouchControls';
 import { Network } from './net/Network';
 import { loadAssets } from './render/assets';
 import { loadTextureOverrides } from './render/materials/atlas';
@@ -24,6 +25,27 @@ function guestId(): string {
   } catch { return ''; }
 }
 const status = document.getElementById('login-status')!;
+
+// Vollbild: Button im Login und im HUD, Taste V. iPhone-Safari kann kein Vollbild für Webseiten →
+// dort hilft nur "Zum Home-Bildschirm" (Manifest/Meta-Tags sind gesetzt).
+const fsHelp = () => {
+  const msg = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    ? 'Vollbild: Teilen-Symbol → „Zum Home-Bildschirm“, dann von dort starten.'
+    : 'Vollbild wird von diesem Browser nicht unterstützt.';
+  const t = document.getElementById('toasts');
+  if (t) { const d = document.createElement('div'); d.className = 'toast'; d.textContent = msg; t.appendChild(d); setTimeout(() => d.remove(), 5000); }
+  else status.textContent = msg;
+};
+const doFs = async () => { if (!(await toggleFullscreen())) fsHelp(); };
+document.getElementById('fs-btn')!.addEventListener('click', doFs);
+document.getElementById('login-fs')!.addEventListener('click', doFs);
+window.addEventListener('keydown', (e) => {
+  const tag = (e.target as HTMLElement).tagName;
+  if (e.code === 'KeyV' && !e.repeat && tag !== 'INPUT') void doFs();
+});
+const onFsChange = () => document.body.classList.toggle('fullscreen', isFullscreen());
+document.addEventListener('fullscreenchange', onFsChange);
+document.addEventListener('webkitfullscreenchange', onFsChange);
 
 // Modelle schon laden, während der Spieler seinen Namen tippt: Kit-Modelle, Quaternius-Packs
 // (falls vorhanden) und verarbeitete Texturen (falls scripts/process-textures.ts gelaufen ist)

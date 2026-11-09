@@ -2,7 +2,12 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#140a2e" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>Sunstate Heat</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
@@ -15,6 +20,7 @@
       <div id="hud-clock"></div>
       <div id="hud-speed"></div>
       <div id="hud-money">$0</div>
+      <button id="fs-btn" type="button" title="Vollbild (Taste V)" aria-label="Vollbild">⛶</button>
     </div>
     <!-- Spielerwerte -->
     <div id="hud-stats">
@@ -55,6 +61,8 @@
       <input id="chat-input" class="hidden" maxlength="140" autocomplete="off" placeholder="Nachricht … (Enter senden, Esc abbrechen)" />
     </div>
 
+    <div id="rotate" class="hidden"><div>⟳<p>Bitte Gerät quer halten</p></div></div>
+
     <!-- Login -->
     <div id="login">
       <div class="login-box">
@@ -67,9 +75,11 @@
         </form>
         <p class="login-hint">Ohne Passwort spielst du als Gast. Mit Passwort wird ein Konto angelegt bzw. angemeldet (min. 8 Zeichen); dein Gast-Fortschritt wird übernommen.</p>
         <p id="login-status"></p>
-        <div class="controls">
+        <button type="button" id="login-fs" class="fs-wide">⛶ Vollbild</button>
+        <div class="controls touch-hint">Handy: Joystick links · rechts E (ein-/aussteigen), F (reden/benutzen), » Sprint/Nitro, Schussstick zum Zielen und Schießen · Vollbild für das beste Spielgefühl</div>
+        <div class="controls kbd-hint">
           <b>WASD/Pfeile</b> bewegen · <b>Shift</b> sprinten/Nitro · <b>E</b> ein-/aussteigen/aufrichten ·
-          <b>Leertaste</b> Handbremse · <b>H</b> Hupe · <b>Enter</b> Chat · <b>M</b> Karte · <b>F3</b> Debug · Gamepad unterstützt
+          <b>Leertaste</b> Handbremse · <b>V</b> Vollbild · <b>H</b> Hupe · <b>Enter</b> Chat · <b>M</b> Karte · <b>F3</b> Debug · Gamepad unterstützt
         </div>
       </div>
     </div>
