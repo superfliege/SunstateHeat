@@ -160,7 +160,8 @@ export function surfaceMaterial(o: SurfaceOptions = {}): THREE.MeshToonMaterial 
       .replace('#include <lights_fragment_end>', /* glsl */ `#include <lights_fragment_end>
         #if NUM_DIR_LIGHTS > 0
         if (hasFlag(sflags, 8)) {
-          vec3 hdir = normalize(directionalLights[0].direction + normalize(vViewPosition));
+          vec3 hsum = directionalLights[0].direction + normalize(vViewPosition);
+            vec3 hdir = hsum / max(length(hsum), 1e-4); // kein NaN bei Nullvektor (-> Bloom-Flackern)
           float k = step(0.93, dot(normal, hdir));
           reflectedLight.directSpecular += directionalLights[0].color * k * 0.6;
         }
