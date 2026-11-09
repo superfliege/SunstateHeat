@@ -32,18 +32,18 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 #quest-panel .timer { font-family: var(--mono); font-size: 22px; color: var(--orange); }
 
 #zone-banner {
-  position: fixed; top: 22%; left: 50%; transform: translateX(-50%);
-  font-size: 44px; font-weight: 900; letter-spacing: 4px; font-style: italic;
+  font-size: 30px; font-weight: 900; letter-spacing: 4px; font-style: italic;
   color: #fff; text-shadow: 3px 3px 0 var(--pink), -2px -2px 0 var(--cyan), 0 0 30px rgba(255, 79, 154, 0.6);
   pointer-events: none; animation: banner 3s ease forwards;
 }
 @keyframes banner {
-  0% { opacity: 0; transform: translate(-50%, 20px); }
-  15%, 75% { opacity: 1; transform: translate(-50%, 0); }
+  0% { opacity: 0; transform: translateY(-10px); }
+  15%, 75% { opacity: 1; transform: none; }
   100% { opacity: 0; }
 }
 
-#toasts { position: fixed; top: 34%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+#msg-stack { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 15; max-width: 46vw; }
+#toasts { display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
 .toast {
   background: var(--panel); padding: 8px 16px; border-radius: 6px; font-weight: bold; max-width: 70vw; text-align: center;
   border-left: 4px solid var(--cyan); animation: toast 5s ease forwards;
@@ -124,15 +124,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 @keyframes blink { 50% { opacity: 0.3; } }
 
 #drift {
-  position: fixed; left: 50%; bottom: 22%; transform: translateX(-50%); display: flex; align-items: baseline; gap: 10px; pointer-events: none;
-  font: italic 900 40px var(--font); color: #fff; text-shadow: 3px 3px 0 var(--pink), 0 0 18px rgba(255, 79, 154, 0.7);
+  display: flex; align-items: baseline; gap: 10px; pointer-events: none;
+  font: italic 900 28px var(--font); color: #fff; text-shadow: 3px 3px 0 var(--pink), 0 0 18px rgba(255, 79, 154, 0.7);
 }
 #drift small { font-size: 16px; color: var(--cyan); letter-spacing: 3px; text-shadow: 2px 2px 0 #000; }
-#drift-mul { color: var(--orange); font-size: 30px; }
+#drift-mul { color: var(--orange); font-size: 22px; }
 #drift-mul[data-mul='3'], #drift-mul[data-mul='4'] { color: #ff4f4f; }
 #drift-mul[data-mul='5'] { color: #ff2af0; animation: blink 0.3s steps(2) infinite; }
 
-#bonus { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+#bonus { display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
 .bonus {
   display: flex; gap: 10px; align-items: baseline; padding: 4px 14px; border-radius: 8px; background: var(--panel);
   animation: bonus 2.6s ease forwards; text-shadow: 0 2px 0 #000;
@@ -311,7 +311,7 @@ body.touch #quest-panel { top: calc(60px + env(safe-area-inset-top)); right: 10p
 body.touch #hud-wanted { right: 10px; top: calc(112px + env(safe-area-inset-top)); }
 body.touch #hud-weapon { left: 50%; transform: translateX(-50%); bottom: 10px; padding: 4px 10px; }
 body.touch #chat { left: calc(12px + env(safe-area-inset-left)); bottom: 180px; width: min(340px, 36vw); }
-body.touch #hint { bottom: auto; top: calc(6px + env(safe-area-inset-top)); font-size: 10px; padding: 3px 10px; opacity: 0.85; max-width: 40vw; text-align: center; }
+body.touch #hint { bottom: 46px; font-size: 10px; padding: 3px 10px; opacity: 0.85; max-width: 40vw; text-align: center; }
 body.touch #fps { display: none; }
 body.touch #hud-top { top: calc(8px + env(safe-area-inset-top)); left: calc(8px + env(safe-area-inset-left)); }
 body.touch #hud-stats { left: calc(8px + env(safe-area-inset-left)); }
@@ -327,8 +327,13 @@ body.touch .chat-line { font-size: 11px; padding: 2px 6px; }
 body.touch #hud-stats { font-size: 9px; width: 160px; }
 body.touch #hud-weapon b { font-size: 13px; }
 body.touch #wp-ammo { font-size: 14px; }
-body.touch #drift small { font-size: 12px; }
-body.touch #drift-mul { font-size: 22px; }
+body.touch #drift small { font-size: 10px; }
+body.touch #drift-mul { font-size: 16px; }
+body.touch #msg-stack { top: calc(6px + env(safe-area-inset-top)); max-width: 36vw; gap: 3px; }
+body.touch #zone-banner { font-size: 18px; letter-spacing: 2px; }
+body.touch #drift { font-size: 20px; }
+body.touch .bonus b { font-size: 15px; } body.touch .bonus i { font-size: 13px; }
+body.touch .toast { font-size: 11px; padding: 4px 10px; max-width: 36vw; }
 body.touch #ko h2 { font-size: 38px; }
 body.touch .login-box h1 { font-size: 36px; }
 body.touch #login-name, body.touch #login-form button { font-size: 15px; }
