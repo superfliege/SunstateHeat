@@ -2,7 +2,7 @@
 // führt Hörer, Hallzone, Verdeckung und Zonen-Lazy-Loading nach und bietet einfache Aufrufe
 // (UI-Sounds, 3D-Effekte, Waffen) plus das Fahrzeug-Audio (VehicleAudio).
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
-import { AudioEngine, type LoopHandle, type Vec3 } from './AudioEngine';
+import { AudioEngine, type Vec3 } from './AudioEngine';
 import { AudioEnvironment } from './Environment';
 import { BUSES, SPATIAL } from './manifest';
 import { VehicleAudio } from './VehicleAudio';
@@ -15,7 +15,6 @@ export class Sfx {
   car: VehicleAudio | null = null;
   private env: AudioEnvironment | null = null;
   private envT = 0; private zoneT = 0;
-  private ambience: LoopHandle | null = null;
   zone = '';
 
   /** Muss aus einer Nutzeraktion heraus (Klick/Enter) aufgerufen werden – Autoplay-Regeln. */
@@ -57,10 +56,6 @@ export class Sfx {
         this.zone = this.env.zoneAt(x, z);
         e.bank.setZones(this.env.zonesNear(x, z));
       }
-    }
-    if (!this.ambience || this.ambience.voice.dead) {
-      this.ambience = e.bank.loaded('amb.bed.city') ? e.loop('amb.bed.city', null, { priority: 0.4 }) : null;
-      this.ambience?.voice.setVolume(0.45, 1.5);
     }
     e.update();
   }

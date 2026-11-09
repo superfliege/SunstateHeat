@@ -66,12 +66,17 @@ export class Gangs {
         if (!gang) continue;
         let n = 0;
         for (const o of this.h.peds.peds.values()) if (o.gang === gang && !o.run && o.hp > 0 && dist2(o.x, o.z, pos.x, pos.z) < 140 * 140) n++;
-        if (n >= (night ? 6 : 4)) continue;
+        if (n >= (night ? 10 : 8)) continue; // Gruppen: immer 3–5 Mitglieder mit gleichem Shirt
         for (let t = 0; t < 8; t++) {
           const a = Math.random() * Math.PI * 2, r = 55 + Math.random() * 45;
           const spot = findFootSpot(this.h.map, pos.x + Math.cos(a) * r, pos.z + Math.sin(a) * r, 3);
           if (!spot || ZONE_GANG[this.h.map.zoneAt(spot.x, spot.z)] !== gang) continue;
-          this.spawnPatrol(gang, spot.x, spot.z);
+          const size = 3 + Math.floor(Math.random() * 3);
+          for (let k = 0; k < size; k++) {
+            const q = findFootSpot(this.h.map, spot.x + (Math.random() - 0.5) * 4, spot.z + (Math.random() - 0.5) * 4, 3) ?? spot;
+            const m = this.spawnPatrol(gang, q.x, q.z);
+            m.home = { x: spot.x, z: spot.z }; // gemeinsamer Treffpunkt: die Gruppe bleibt zusammen
+          }
           break;
         }
       }
@@ -98,6 +103,21 @@ export class Gangs {
       const tx = tp?.x ?? tv?.sim.car.x, tz = tp?.z ?? tv?.sim.car.z;
       if (tx !== undefined && tz !== undefined && (tp ? tp.hp > 0 : !tv!.sim.dmg.wreck)) {
         this.engage(g, tx, tz, dt, () => { if (tp) tp.hp -= 2.5; else if (tv) this.h.hurtVehicle(tv, 6); });
+        return;
+      }
+    }
+
+    // 1b) Polizei in der Nähe: Gangs kämpfen gegen sie
+    {
+      let cop: Ped | null = null, cd = 30 * 30;
+      for (const c of this.h.peds.peds.values()) {
+        if (!c.cop || c.hp <= 0 || c.rt > 0) continue;
+        const d = dist2(c.x, c.z, g.x, g.z);
+        if (d < cd) { cd = d; cop = c; }
+      }
+      if (cop) {
+        const c = cop;
+        this.engage(g, c.x, c.z, dt, () => { const d = Math.hypot(c.x - g.x, c.z - g.z) || 1; this.h.peds.hit(c, 8, (c.x - g.x) / d, (c.z - g.z) / d); });
         return;
       }
     }
@@ -134,7 +154,7 @@ export class Gangs {
     g.think -= dt;
     if (g.think <= 0) {
       g.think = 3 + Math.random() * 4;
-      const a = Math.random() * Math.PI * 2, r = Math.random() * 14;
+      const a = Math.random() * Math.PI * 2, r = 1 + Math.random() * 4;
       g.wx = g.home.x + Math.cos(a) * r; g.wz = g.home.z + Math.sin(a) * r;
     }
     const dx = g.wx - g.x, dz = g.wz - g.z, d = Math.hypot(dx, dz);

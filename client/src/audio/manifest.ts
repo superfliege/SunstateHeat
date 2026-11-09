@@ -156,7 +156,6 @@ export const SOUNDS: SoundDef[] = [
   { id: 'hit.punch', bus: 'weapons', kind: 'oneshot', files: [...kenney('impactPunch_heavy', 5), ...kenney('impactPunch_medium', 3)], pitch: [0.88, 1.12], volJitter: 2, spatial: SPATIAL.impact, maxInst: 4 },
 
   // ---------------- Ambience (Platzhalter bis Phase 2)
-  { id: 'amb.bed.city', bus: 'ambience', kind: 'loop', files: [ka('kenney/starter-kit-city-builder/sounds/ambience.ogg')], stereo: true },
 
   // ---------------- UI (Kenney Interface Sounds)
   { id: 'ui.open', bus: 'ui', kind: 'oneshot', files: [ka(`${K_UI}open_001.ogg`)] },

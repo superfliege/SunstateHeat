@@ -705,24 +705,8 @@ export class EntityViews {
     }
   }
 
-  /** Gang-Kennzeichnung: farbiges Namensschild über dem Kopf (Gangfarbe), nur in Sichtweite. */
-  private updateGangTag(c: CharView, s: PedState) {
-    const gi = s.gang ? s.gangId ?? -1 : -1;
-    if (gi < 0) return;
-    if (!c.label) {
-      const g = GANGS[GANG_IDS[gi]];
-      c.label = makeLabel('◆ ' + g.name, g.color);
-      this.group.add(c.label);
-    }
-    const d = Math.hypot(c.anchor.x - this.focus.x, c.anchor.z - this.focus.z);
-    c.label.visible = d < 48;
-    c.label.position.set(c.anchor.x, c.anchor.y + 3.1, c.anchor.z);
-    c.label.scale.set(5.2, 1.3, 1);
-  }
-
   setPed(s: PedState, dt: number) {
     const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0, s.gang && (s.gangId ?? -1) >= 0 ? GANGS[GANG_IDS[s.gangId!]].color : -1);
-    this.updateGangTag(c, s);
     this.updateDog(c, s);
     this.updateLook(c, s);
     // Schimpfender Fahrer: Comic-Sprechblase (nicht gleichzeitig mit einem Bark)

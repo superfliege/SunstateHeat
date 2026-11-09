@@ -1317,7 +1317,7 @@ export class WorldRoom {
       puller.flee = 3; puller.fdx = -dx / d; puller.fdz = -dz / d;
       this.perception.bark(puller, 'scold');
       this.noticeTo(p, 'Ein wütender Passant hat dich aus dem Auto gezerrt!', 'bad');
-    } else this.noticeTo(p, 'Die Polizei hat dich aus dem Auto gezerrt!', 'bad');
+    }
   }
 
   /** Versunkene Autos: Hinweis an den Fahrer (Motor ist aus, aussteigen und schwimmen). */
