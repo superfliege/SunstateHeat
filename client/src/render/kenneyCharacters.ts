@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { addOutline, computeOutlineNormals, LINE, toonMaterial, U } from './materials/toon';
-import { setFigureBounds, type Style } from './characters';
+import { disposeSkeletons, setFigureBounds, type Style } from './characters';
 import { Act } from '../../../shared/src/npc/scenarios';
 import { NpcActs, SEATED_ACTS } from './npcActs';
 import { RagdollPose, type RagdollFrame } from './ragdoll';
@@ -276,7 +276,7 @@ export class KenneyCharacter {
     if (this.hull) this.hull.visible = dist < 140 && U.uOutlineScale.value > 0;
   }
 
-  dispose() { this.acts.dispose(); this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); }
+  dispose() { this.acts.dispose(); this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); disposeSkeletons(this.root); }
 }
 
 /**

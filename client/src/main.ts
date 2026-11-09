@@ -64,6 +64,8 @@ form.addEventListener('submit', async (e) => {
     nameInput.blur();
     const game = new Game(net, welcome.id, sfx, welcome.dev);
     game.start();
+    // Dev: Spielzustand in der Konsole/für Mess-Skripte erreichbar
+    if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) (globalThis as { __game?: Game }).__game = game;
   } catch (err) {
     delete status.dataset.busy;
     const m = (err as Error).message;

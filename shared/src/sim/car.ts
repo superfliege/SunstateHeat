@@ -13,6 +13,7 @@
 import { Btn } from '../protocol';
 import { isWet, obstaclesNear, rampAt, type Obstacle } from '../world/features';
 import { Tile } from '../world/tiles';
+import { boxesNear, exactCell, type Box } from '../world/collision';
 import type { WorldMap } from '../world/WorldMap';
 import { enginePower, steerPull, type CarDamage } from './damage';
 import { ASSISTS, derive, Drive, GRAVITY, handlingVersion, surfaceGrip, torqueCurve, type Derived, type HandlingProfile } from './handling';
@@ -593,10 +594,11 @@ function collideWorld(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived
       if (depth > accY) accY = Math.min(depth, 0.5);
     }
     // Wände (Kacheln)
+    // (Gebäude mit exaktem Rechteck übernimmt collideBuildings – hier nur Fels, Wasser, Mauern …)
     const cx = Math.floor(px / 2), cz = Math.floor(pz / 2);
-    if (!blocksCar(map.tile(cx, cz))) continue;
+    if (!wallCell(map, cx, cz)) continue;
     // Normale aus dem Belegungs-Gradienten (glatter als die Rasterkante)
-    const occ = (x: number, z: number) => (blocksCar(map.tileAt(x, z)) ? 1 : 0);
+    const occ = (x: number, z: number) => (wallCell(map, Math.floor(x / 2), Math.floor(z / 2)) ? 1 : 0);
     let nx = occ(px - 1.2, pz) - occ(px + 1.2, pz), nz = occ(px, pz - 1.2) - occ(px, pz + 1.2);
     // Tiefe: kürzester Weg aus der Zelle in eine freie Nachbarzelle
     const x0 = cx * 2, z0 = cz * 2;
@@ -605,7 +607,7 @@ function collideWorld(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived
     ];
     let best = 9, bx = 0, bz = 0;
     for (const [dist, dx, dz] of opts) {
-      if (blocksCar(map.tile(cx + dx, cz + dz))) continue;
+      if (wallCell(map, cx + dx, cz + dz)) continue;
       if (dist < best) { best = dist; bx = dx; bz = dz; }
     }
     if (best === 9) { // tief drin: zurück zur Fahrzeugmitte
@@ -622,6 +624,15 @@ function collideWorld(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived
     const already = accX * nx + accZ * nz;
     if (depth > already) { accX += nx * (depth - already); accZ += nz * (depth - already); }
   }
+  // Gebäude: exakte gedrehte Rechtecke gegen die Fahrzeugbox (SAT)
+  for (const b of boxesNear(map, c.x, c.z, Math.hypot(p.length, p.width) / 2, boxTmp)) {
+    if (!carVsBox(c, p, b, satOut)) continue;
+    const [nx, nz, depth, px, pz] = satOut;
+    const py = c.y - p.cgHeight + Math.min(0.75, p.height * 0.45);
+    resolveStatic(c, d, px, py, pz, nx, 0, nz, e, mu, out, 0, -1);
+    const already = accX * nx + accZ * nz;
+    if (depth > already) { accX += nx * (depth - already); accZ += nz * (depth - already); }
+  }
   // Baumstämme (Kreise) gegen die Fahrzeugbox
   for (const o of obstaclesNear(map, c.x, c.z, obsTmp)) {
     const r = boxCircle(c, p, o.x, o.z, o.r);
@@ -634,6 +645,57 @@ function collideWorld(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived
     if (depth > already) { accX += nx * (depth - already); accZ += nz * (depth - already); }
   }
   c.x += accX; c.y += accY; c.z += accZ;
+}
+
+/** Wand-Kachel für Autos, die nicht schon exakt als Gebäude-Rechteck kollidiert. */
+function wallCell(map: WorldMap, cx: number, cz: number) {
+  return blocksCar(map.tile(cx, cz)) && !exactCell(map, cx, cz);
+}
+
+const boxTmp: Box[] = [];
+const satOut = [0, 0, 0, 0, 0];
+const carCorners = new Float64Array(8), boxCorners = new Float64Array(8);
+/**
+ * Fahrzeugbox (Grundriss) gegen ein Gebäude-Rechteck, Separating Axis Test über die 4 Kantenachsen.
+ * out = [nx, nz, Tiefe, Kontakt-x, Kontakt-z], Normale vom Gebäude zum Fahrzeug.
+ */
+export function carVsBox(c: CarState, p: HandlingProfile, b: Box, out: number[]): boolean {
+  const fa = Math.sin(c.a), ca = Math.cos(c.a);
+  const hl = p.length / 2, hw = p.width / 2;
+  const dx = c.x - b.x, dz = c.z - b.z;
+  // Achsen: Auto vorne (sin, cos) und links (cos, -sin); Gebäude z (s, c) und x (c, -s)
+  const ax = [fa, ca, ca, -fa, b.s, b.c, b.c, -b.s];
+  let best = Infinity, nx = 0, nz = 0;
+  for (let k = 0; k < 4; k++) {
+    const ux = ax[k * 2], uz = ax[k * 2 + 1];
+    const rc = Math.abs(fa * ux + ca * uz) * hl + Math.abs(ca * ux - fa * uz) * hw;
+    const rb = Math.abs(b.c * ux - b.s * uz) * b.hw + Math.abs(b.s * ux + b.c * uz) * b.hd;
+    const dist = dx * ux + dz * uz;
+    const overlap = rc + rb - Math.abs(dist);
+    if (overlap <= 0) return false;
+    if (overlap < best) { best = overlap; const sg = dist < 0 ? -1 : 1; nx = ux * sg; nz = uz * sg; }
+  }
+  // Kontaktpunkt: Mittel der Ecken, die im jeweils anderen Körper stecken
+  let k = 0;
+  for (const sl of [1, -1]) for (const sf of [1, -1]) {
+    carCorners[k] = c.x + fa * hl * sf + ca * hw * sl * sf; carCorners[k + 1] = c.z + ca * hl * sf - fa * hw * sl * sf;
+    boxCorners[k] = b.x + b.s * b.hd * sf + b.c * b.hw * sl * sf; boxCorners[k + 1] = b.z + b.c * b.hd * sf - b.s * b.hw * sl * sf;
+    k += 2;
+  }
+  let px = 0, pz = 0, n = 0;
+  for (let i = 0; i < 8; i += 2) {
+    const qx = carCorners[i] - b.x, qz = carCorners[i + 1] - b.z;
+    if (Math.abs(qx * b.c - qz * b.s) <= b.hw && Math.abs(qx * b.s + qz * b.c) <= b.hd) { px += carCorners[i]; pz += carCorners[i + 1]; n++; }
+    const rx = boxCorners[i] - c.x, rz = boxCorners[i + 1] - c.z;
+    if (Math.abs(rx * fa + rz * ca) <= hl && Math.abs(rx * ca - rz * fa) <= hw) { px += boxCorners[i]; pz += boxCorners[i + 1]; n++; }
+  }
+  if (n) { px /= n; pz /= n; } else {
+    // Kanten kreuzen sich ohne Ecke im anderen Körper: Punkt der Fahrzeugkontur zur Wand hin
+    const rc = Math.abs(fa * nx + ca * nz) * hl + Math.abs(ca * nx - fa * nz) * hw;
+    px = c.x - nx * rc; pz = c.z - nz * rc;
+  }
+  out[0] = nx; out[1] = nz; out[2] = best; out[3] = px; out[4] = pz;
+  return true;
 }
 
 /**

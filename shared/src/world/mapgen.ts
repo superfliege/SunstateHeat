@@ -4,6 +4,7 @@
 //   2. Straßengraph (roads.ts): Hauptachsen + Viertelraster als Splines, planarisiert
 //   3. Stadt (city.ts): Blöcke aus den Flächen zwischen Straßen, Grundstücke, Gebäude
 //   4. Rasterung aller Vektordaten ins Kollisionsraster, Chunk-Index, Spawns
+import { prepareCollision } from './collision';
 import { CELL, CHUNK, GRID_SIZE, HEIGHT_STEP, NPC_DENSITY, VEHICLE_COLORS, WORLD_SIZE } from '../constants';
 import { mulberry32 } from '../math';
 import { VehicleKind } from '../sim/vehicleDefs';
@@ -49,6 +50,7 @@ export function generateWorld(seed: number): WorldMap {
   map.workshops.push({ ...TRACK_WORKSHOP, r: 7 });
   // Läden als echte Gebäude (nach Werkstätten, da sie daran hängen); danach Chunk-Index neu
   placeShops(map);
+  prepareCollision(map); // exakte Gebäude-Kollision auf dem fertigen Raster aufbauen
   buildChunks(map);
   return map;
 }

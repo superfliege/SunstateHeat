@@ -17,7 +17,8 @@ import {
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
 import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, variantInfo } from '../../../shared/src/sim/handling';
-import { findFootSpot, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
+import { carBody, findFootSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
+import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, createPropBody, PROP_RESPAWN, PROP_RESPAWN_RANGE, stepPropBody, type PropBody, type PropHit } from '../../../shared/src/sim/props';
 import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent } from '../../../shared/src/sim/stunts';
 import { createSimVehicle, defaultVariant, stepSimVehicle } from '../../../shared/src/sim/vehicle';
@@ -367,7 +368,24 @@ export class WorldRoom {
     this.broadcast(msg as unknown as ServerMsg);
   }
 
+  /** Fahrzeuge in der Nähe einer Figur als feste Körper (Figuren laufen nicht mehr hindurch). */
+  private bodiesNear(x: number, z: number): Box[] {
+    const out = this.bodyTmp;
+    let n = 0;
+    for (const v of this.nearVehicles(x, z)) {
+      if (isWaterVehicle(v.kind)) continue;
+      const c = v.sim.car;
+      if ((c.x - x) ** 2 + (c.z - z) ** 2 > 12 * 12) continue;
+      out[n] = carBody(c.x, c.z, c.a, v.sim.prof.width, v.sim.prof.length, out[n]);
+      n++;
+    }
+    out.length = n;
+    return out;
+  }
+  private bodyTmp: Box[] = [];
+
   private applyInputs(p: ServerPlayer, cmds: InputCmd[]) {
+    const bodies = p.vehicleId < 0 ? this.bodiesNear(p.pawn.x, p.pawn.z) : undefined;
     for (const c of cmds.slice(0, 40)) {
       if (!Array.isArray(c) || c.length < 4) continue;
       const [seq, ax, ay, buttons] = c;
@@ -383,7 +401,7 @@ export class WorldRoom {
       if (v) {
         v.buttons = buttons;
         this.physicsStep(v, cx, cy, buttons, p);
-      } else stepPawn(this.map, p.pawn, cx, cy, buttons, SIM_DT);
+      } else stepPawn(this.map, p.pawn, cx, cy, buttons, SIM_DT, undefined, bodies);
       p.lastSeq = seq;
     }
   }
@@ -999,6 +1017,7 @@ export class WorldRoom {
       const ped = t.ref.ped;
       const defeated = this.peds.hit(ped, dmg, dx, dz);
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 0]);
+      this.blood(t.x, t.z, Math.min(1, dmg / 40) + (defeated ? 0.5 : 0), dx, dz, 0);
       if (ped.gang) this.gangs.provoke(ped, p);
       if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
       if (ped.cop) this.police.raise(p, defeated ? 3 : 2); // Polizisten angreifen: sofort bekannt
@@ -1015,6 +1034,7 @@ export class WorldRoom {
     } else if (t.ref.player) {
       this.hurtPlayer(t.ref.player, dmg);
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 1]);
+      this.blood(t.x, t.z, Math.min(1, dmg / 40), dx, dz, 0);
     }
   }
 
@@ -1128,6 +1148,7 @@ export class WorldRoom {
 
   // ------------------------------------------------------------------ Simulation
   private tick(dt: number) {
+    this.clock += dt;
     for (const p of this.players.values()) p.cmdBudget = Math.min(CMD_BUDGET_MAX, p.cmdBudget + CMD_REFILL_PER_TICK);
     for (const [k, t] of this.treeCd) { if (t - dt <= 0) this.treeCd.delete(k); else this.treeCd.set(k, t - dt); }
     this.rebuildGrid();
@@ -1207,9 +1228,74 @@ export class WorldRoom {
           const d = derive(v.sim.prof);
           applyImpulse(c, d, hit[3], c.y, hit[4], hit[0] * 80 * speed, 0, hit[1] * 80 * speed);
           this.emit(pawn.x, pawn.z, ['crash', v.id, r2(pawn.x), r2(c.y), r2(pawn.z), r2(hit[0]), r2(hit[1]), r2(Math.min(speed, 6)), -6], v.id);
+          this.blood(pawn.x, pawn.z, Math.min(1.5, speed / 14), c.vx / (speed || 1), c.vz / (speed || 1), 1);
+        } else if (pawn.rt > 0 && pawn.h < 0.5 && speed > 2.5) {
+          // Liegende Figur wird überfahren: Blut (gedrosselt je Figur), Auto holpert leicht
+          const last = this.runOver.get(pawn) ?? -1;
+          if (this.clock - last > 0.35) {
+            this.runOver.set(pawn, this.clock);
+            this.blood(pawn.x, pawn.z, Math.min(1.2, 0.4 + speed / 20), c.vx / speed, c.vz / speed, 2);
+            if (c.ground) c.vy += Math.min(1.2, speed * 0.05);
+          }
         } else if (pawn.rt <= 0) {
-          const spot = findFootSpot(this.map, pawn.x - hit[0] * (hit[2] + 0.1), pawn.z - hit[1] * (hit[2] + 0.1), 3);
-          if (spot) { pawn.x = spot.x; pawn.z = spot.z; }
+          // Langsam: Figur sanft aus der Fahrzeugbox schieben (statt Sprung auf einen freien Platz)
+          const nx = pawn.x - hit[0] * (hit[2] + 0.02), nz = pawn.z - hit[1] * (hit[2] + 0.02);
+          if (footFree(this.map, nx, nz)) { pawn.x = nx; pawn.z = nz; }
+          else {
+            const spot = findFootSpot(this.map, nx, nz, 3);
+            if (spot) { pawn.x = spot.x; pawn.z = spot.z; }
+          }
+        }
+      }
+    }
+    this.separatePawns();
+  }
+
+  /** Blutspritzer: kind 0 = Treffer (Waffe/Schlag), 1 = angefahren, 2 = überfahren. */
+  private blood(x: number, z: number, amount: number, dx: number, dz: number, kind: number) {
+    this.emit(x, z, ['blood', r2(x), r2(z), r2(amount), r2(dx), r2(dz), kind]);
+  }
+  private runOver = new WeakMap<object, number>();
+  private clock = 0;
+
+  /**
+   * Figuren gehen nicht mehr durcheinander hindurch: überlappende Fußgänger/Spieler (zu Fuß, stehend)
+   * weich auseinanderschieben. Spieler haben Vorrang (ihre Position sagt der Client voraus),
+   * Fußgänger weichen aus. Räumliches Raster (2 m), damit es bei vielen NPCs billig bleibt.
+   */
+  private separatePawns() {
+    type P = { x: number; z: number; rt: number; h: number };
+    const items: { p: P; player: boolean }[] = [];
+    for (const pl of this.players.values()) if (pl.vehicleId < 0 && pl.pawn.rt <= 0) items.push({ p: pl.pawn, player: true });
+    // Fußgänger in einer Szene (Bank, Gespräch, Café …) stehen bewusst eng: nicht verschieben
+    for (const ped of this.peds.peds.values()) if (ped.rt <= 0 && ped.hp > 0 && !ped.act && !ped.scn) items.push({ p: ped, player: false });
+    if (items.length < 2) return;
+    const cell = new Map<number, number[]>();
+    const key = (x: number, z: number) => Math.floor(z / 2) * 8192 + Math.floor(x / 2);
+    items.forEach((it, i) => { const k = key(it.p.x, it.p.z); const l = cell.get(k); if (l) l.push(i); else cell.set(k, [i]); });
+    const min = PAWN_RADIUS * 1.9;
+    for (let i = 0; i < items.length; i++) {
+      const a = items[i];
+      const cx = Math.floor(a.p.x / 2), cz = Math.floor(a.p.z / 2);
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+        const l = cell.get((cz + dz) * 8192 + cx + dx);
+        if (!l) continue;
+        for (const j of l) {
+          if (j <= i) continue;
+          const b = items[j];
+          let ex = b.p.x - a.p.x, ez = b.p.z - a.p.z;
+          const d2 = ex * ex + ez * ez;
+          if (d2 >= min * min) continue;
+          let d = Math.sqrt(d2);
+          if (d < 1e-4) { ex = Math.cos(i * 2.39996); ez = Math.sin(i * 2.39996); d = 1; } else { ex /= d; ez /= d; }
+          const push = (min - Math.min(d, min)) * 0.5; // weich: halbe Überlappung je Tick
+          const wa = a.player && !b.player ? 0 : b.player && !a.player ? 1 : 0.5;
+          const move = (p: P, s: number) => {
+            const nx = p.x + ex * push * s * 2, nz = p.z + ez * push * s * 2;
+            if (footFree(this.map, nx, nz)) { p.x = nx; p.z = nz; }
+          };
+          if (wa > 0) move(a.p, -wa);
+          if (wa < 1) move(b.p, 1 - wa);
         }
       }
     }

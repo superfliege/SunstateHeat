@@ -142,11 +142,11 @@ export class Hud {
     setTimeout(() => el.remove(), 5000);
   }
 
-  tickFps(dt: number, drawCalls: number) {
+  tickFps(dt: number, drawCalls: number, resScale = 1) {
     this.frames++;
     this.fpsTime += dt;
     if (this.fpsTime >= 1) {
-      this.fpsEl.textContent = `${Math.round(this.frames / this.fpsTime)} FPS · ${drawCalls} Draw-Calls`;
+      this.fpsEl.textContent = `${Math.round(this.frames / this.fpsTime)} FPS · ${drawCalls} Draw-Calls${resScale < 1 ? ` · Auflösung ${Math.round(resScale * 100)} %` : ''}`;
       this.frames = 0;
       this.fpsTime = 0;
     }

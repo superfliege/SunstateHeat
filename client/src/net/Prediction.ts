@@ -13,7 +13,8 @@ import type { InputCmd, SnapshotMsg } from '../../../shared/src/protocol';
 import { clearStepOut, collideCars, newStepOut, unpackCar, type CarCollision, type CarState, type Impact, type StepOut } from '../../../shared/src/sim/car';
 import type { CarDamage } from '../../../shared/src/sim/damage';
 import type { HandlingProfile } from '../../../shared/src/sim/handling';
-import { newPawn, stepPawn, type PawnState } from '../../../shared/src/sim/movement';
+import { carBody, newPawn, stepPawn, type PawnState } from '../../../shared/src/sim/movement';
+import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, type PropHit } from '../../../shared/src/sim/props';
 import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent, type StuntTracker } from '../../../shared/src/sim/stunts';
 import { createSimVehicle, stepSimVehicle, type SimVehicle } from '../../../shared/src/sim/vehicle';
@@ -65,7 +66,20 @@ export class Predictor {
   private hits: PropHit[] = [];
   private bonus: BonusEvent[] = [];
   private obstacles: Obstacle[] = [];
+  private bodies: Box[] = [];
   private clock = 0;
+
+  /** Fahrzeuge in der Nähe als feste Körper für die Figur zu Fuß (wie auf dem Server). */
+  private footBodies(): Box[] {
+    let n = 0;
+    for (const o of this.obstacles) {
+      if (o.water) continue;
+      this.bodies[n] = carBody(o.car.x, o.car.z, o.car.a, o.prof.width, o.prof.length, this.bodies[n]);
+      n++;
+    }
+    this.bodies.length = n;
+    return this.bodies;
+  }
 
   constructor(private map: WorldMap, private hooks: PredictorHooks) {}
 
@@ -94,7 +108,7 @@ export class Predictor {
   private apply(cmd: InputCmd, dt: number, replay: boolean) {
     const [, ax, ay, buttons] = cmd;
     const sim = this.sim;
-    if (!this.inVehicle || !sim) { stepPawn(this.map, this.pawn, ax, ay, buttons, dt); return; }
+    if (!this.inVehicle || !sim) { stepPawn(this.map, this.pawn, ax, ay, buttons, dt, undefined, this.footBodies()); return; }
     const out = this.out;
     clearStepOut(out);
     stepSimVehicle(this.map, sim, ax, ay, buttons, dt, out);

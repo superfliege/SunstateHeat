@@ -59,7 +59,9 @@ export function groundColor(map: WorldMap, t: number, x: number, z: number): num
   return GROUND_COLORS[t] ?? 0xff00ff;
 }
 
-const RCHUNK = 256;
+// 128 m: feiner als früher (256 m), damit Frustum-Culling – auch im Schattenpass – wirklich greift
+// (gemessen: 2–5x weniger Dreiecke pro Bild bei weniger Draw-Calls; 64 m bringt wieder mehr Calls).
+const RCHUNK = 128;
 const RC = WORLD_SIZE / RCHUNK;
 const HGRID = WORLD_SIZE / HEIGHT_STEP + 1;
 /** Chunks weiter weg als das werden ausgeblendet (Dunst endet bei ~420 m). */

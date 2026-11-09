@@ -1,4 +1,4 @@
-// Kurze Leuchtspuren für Schüsse und Würfe (Comic-Stil, ohne Blut). Ein Pool aus Linien, die schnell verblassen.
+// Kurze Leuchtspuren für Schüsse und Würfe (Comic-Stil; Blut siehe VehicleFx.bloodSplash). Ein Pool aus Linien, die schnell verblassen.
 import * as THREE from 'three';
 
 const LIFE = 0.12;
