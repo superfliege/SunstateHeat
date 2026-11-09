@@ -31,6 +31,7 @@ const CLASS_SOUND: Record<HandlingClass, ClassSound> = {
   police: { set: 'muscle', turbo: 0, backfire: false, airBrake: false, horn: { f: [330, 415], wave: 'sawtooth', lp: 1900, vol: 0.08 }, vol: 1 },
   boat: { set: 'boat', turbo: 0, backfire: false, airBrake: false, horn: { f: [147, 185], wave: 'sawtooth', lp: 900, vol: 0.11 }, vol: 1 },
   airboat: { set: 'airboat', turbo: 0, backfire: false, airBrake: false, horn: { f: [220, 277], wave: 'sawtooth', lp: 1200, vol: 0.09 }, vol: 1 },
+  tank: { set: 'truck', turbo: 0.3, backfire: false, airBrake: false, horn: { f: [110, 147], wave: 'sawtooth', lp: 800, vol: 0.12 }, vol: 1.25 },
 };
 export const classSound = (cls: HandlingClass) => CLASS_SOUND[cls] ?? CLASS_SOUND.sedan;
 

@@ -59,11 +59,12 @@ export interface ServerPlayer {
   noAmmoCd: number;
   /** F wird gehalten (Quest-Interaktion). */
   hold: boolean;
-  /** Fahndung (0–3), Sekunden ohne Polizeikontakt, Festnahme-Fortschritt, verzögerte Zeugenmeldungen. */
+  /** Fahndung (0–4), Heat-Punkte (siehe Police.HEAT), Sekunden ohne Polizeikontakt, Festnahme-Fortschritt, verzögerte Zeugenmeldungen. */
   wanted: number;
+  heat: number;
   searchT: number;
   arrestT: number;
-  reports: { t: number; level: number; /** Zeuge (Ped-ID) */ by?: number }[];
+  reports: { t: number; heat: number; /** Mindeststufe */ min: number; /** Zeuge (Ped-ID) */ by?: number }[];
   /** Stufe zuletzt gemeldet (für Aufstiegs-Hinweis). */
   level: number;
 }
@@ -80,6 +81,8 @@ export interface ServerVehicle {
   driver: number; // DRIVER_NONE, DRIVER_NPC oder Spieler-ID
   home: VehicleSpawn | null; // Parkplatz zum Zurücksetzen (null = Verkehrsauto)
   idleTime: number;
+  /** Sekunden ohne Fahrer, seit das Fahrzeug bewegt/beschädigt wurde (verwaiste Autos verschwinden). */
+  orphanT?: number;
   /** Beulen [lx, ly, lz, dx, dy, dz, s] – Clients bilden die Verformung daraus nach. */
   dents: number[][];
   /** Zählt bei jeder Schadensänderung hoch (Delta-Übertragung). */

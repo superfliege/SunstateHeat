@@ -402,14 +402,16 @@ Angezeigt als Polizeimarken (nicht als Sterne).
 
 Stufe	Auslöser (Beispiele)	Polizeireaktion
 0	–	Keine
-1	Auto aufbrechen beobachtet, Passanten schlagen	1–2 Streifenpolizisten zu Fuß/Auto, versuchen Festnahme
-2	Polizei angreifen, Schusswaffen in der Öffentlichkeit	3–4 Streifenwagen, Straßensperren auf Hauptstraßen
-3	Polizisten ausschalten, Explosionen	Interceptors, SUVs, Spike-Strips, aggressive Rammversuche
-4 (M3)	Anhaltendes Chaos auf Stufe 3	Spezialeinheit „Tactical Response", Polizeiboote, Hubschrauber-Suchlicht (nur Effekt, kein Fluggerät-Gameplay)
+1	Heat ≥ 1: z. B. 2–3 getötete Passanten oder ~4 angefahrene (einzelnes Anrempeln reicht nicht)	1 Polizist zu Fuß, versucht Festnahme
+2	Heat ≥ 3, Polizei angreifen	2 Polizisten + Streifenwagen, Schüsse
+3	Heat ≥ 6, Polizisten ausschalten	4 Polizisten, 2 Streifenwagen, aggressive Rammversuche
+4	Heat ≥ 10 (anhaltendes Chaos)	Zusätzlich 2 Panzer, die mit Raketen schießen
+Heat-Punkte (nur mit Zeugen, siehe server/src/sim/Police.ts HEAT): Schlag 0,1 · Anfahren 0,25 · Passant ausgeschaltet 0,45 · Autodiebstahl 0,35 · Schuss 0,15 (max. alle 1,5 s) · Explosion 1,0. Ohne Fahndung baut sich Heat langsam ab.
 11.2 Ablauf
 Zeuge-Prinzip: Verbrechen erhöhen die Fahndung nur, wenn ein Polizist oder ein Passant mit Sichtlinie in 30 m Nähe es sieht (Passanten melden mit 3 Sekunden Verzögerung).
 Suchradius: Die Polizei kennt die letzte bekannte Position. Auf der Minimap erscheint ein Suchkreis.
 Abschütteln: Außerhalb des Suchkreises und außer Sichtweite der Polizei bleiben → nach 20 s (Stufe 1), 35 s (Stufe 2), 60 s (Stufe 3), 90 s (Stufe 4) sinkt die Stufe auf 0.
+Verwaiste Fahrzeuge: Bewegte/beschädigte Autos ohne Fahrer verschwinden nach 3 Minuten (geparkte kehren auf ihren Parkplatz zurück), sofern kein Spieler direkt daneben steht.
 Lackierwerkstatt: Senkt Stufe 1–2 sofort auf 0 (nicht bei Sichtkontakt). Kosten 250 $.
 Bestechungs-Telefon (M3): Senkt Fahndung um 1 Stufe für 2.000 $, Abklingzeit 10 Minuten.
 11.3 Koop-Regeln

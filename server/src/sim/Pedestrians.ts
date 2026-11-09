@@ -89,6 +89,11 @@ export class Pedestrians {
   readonly byNode = new Map<number, Walkway[]>();
   /** Gehirn der verwalteten NPCs (wird von WorldRoom gesetzt). */
   brain: PedBrain | null = null;
+  /**
+   * Ausweichen vor stehenden Hindernissen (geparkte/verlassene Autos auf dem Gehweg), von WorldRoom gesetzt.
+   * Bekommt die gewünschte Laufrichtung (Welt, normiert) und liefert eine Ersatzrichtung oder null.
+   */
+  avoid: ((p: Ped, dx: number, dz: number) => [number, number] | null) | null = null;
 
   constructor(private map: WorldMap, private allocId: () => number) {
     for (const e of map.edges) {
@@ -340,8 +345,11 @@ export class Pedestrians {
       }
     } else {
       const d = Math.hypot(dx, dz);
-      const stuck = stepPawn(this.map, p, dx / d, -dz / d, 0, dt, p.spd * speed);
-      if (stuck) { p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(w.pts.length - 1, p.idx + p.dir)); }
+      let mx = dx / d, mz = dz / d;
+      const av = this.avoid?.(p, mx, mz);
+      if (av) [mx, mz] = av;
+      const stuck = stepPawn(this.map, p, mx, -mz, 0, dt, p.spd * speed);
+      if (stuck && !av) { p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(w.pts.length - 1, p.idx + p.dir)); }
     }
   }
 

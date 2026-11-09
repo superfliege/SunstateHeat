@@ -155,6 +155,7 @@ function buildTemplate(variant: number, colorIdx: number): CarTemplate {
   const info = variantInfo(variant);
   const p = profileFor(info.cls);
   if (info.cls === 'bike') return buildBike(p, VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length]);
+  if (info.cls === 'tank') return buildTank(p);
   // Kenney Car Kit (Polizei nutzt das Kit-Polizeiauto, falls geladen)
   const key = modelKey(variant);
   const kitName = (key === 'police' ? 'ck-police' : key) as ModelName;
@@ -600,6 +601,58 @@ function buildBike(p: HandlingProfile, paint: number): CarTemplate {
     wheelBaseY: d.mountY - d.rest,
     engine: new THREE.Vector3(0, yb, 0), exhaust: [new THREE.Vector3(0.16, yb - 0.06, -0.9)], seatY: yb + 0.36 - g0,
     cell: [0, 0, 99], bike: true,
+  };
+}
+
+/** Panzer der Fahndungsstufe 4: Ketten, Wanne, Turm mit Rohr, Blaulicht auf dem Turm. */
+function buildTank(p: HandlingProfile): CarTemplate {
+  const b = new Builder();
+  const g0 = groundLocal(p), L = p.length, hw = p.width / 2;
+  const OLIVE = 0x4f5a36, OLIVE_D = 0x3c4529, TRACK = 0x26262a;
+  // Ketten
+  for (const sx of [1, -1]) {
+    const x0 = sx > 0 ? hw - 0.6 : -hw, x1 = sx > 0 ? hw : -hw + 0.6;
+    b.box(x0, x1, g0, g0 + 0.95, -L / 2, L / 2, [1, 2, 6], TRACK, SHINE.rubber);
+    b.box(x0 - 0.02, x1 + 0.02, g0 + 0.95, g0 + 1.05, -L / 2 + 0.1, L / 2 - 0.1, [1, 1, 4], OLIVE_D, SHINE.paint); // Kettenblech
+  }
+  // Wanne mit Bugschräge
+  b.box(-hw + 0.55, hw - 0.55, g0 + 0.35, g0 + 1.35, -L / 2 + 0.25, L / 2 - 0.9, [2, 2, 5], OLIVE, SHINE.paint);
+  b.quad([hw - 0.55, g0 + 1.35, L / 2 - 0.9], [-hw + 0.55, g0 + 1.35, L / 2 - 0.9], [-hw + 0.55, g0 + 0.45, L / 2 - 0.2], [hw - 0.55, g0 + 0.45, L / 2 - 0.2], OLIVE, SHINE.paint);
+  // Turm + Rohr
+  const ty = g0 + 1.35;
+  b.box(-1.15, 1.15, ty, ty + 0.75, -1.7, 0.7, [2, 1, 3], OLIVE_D, SHINE.paint);
+  b.box(-0.55, 0.55, ty + 0.75, ty + 0.95, -1.2, -0.2, [1, 1, 1], OLIVE, SHINE.paint); // Luke
+  b.box(-0.13, 0.13, ty + 0.25, ty + 0.5, 0.7, L / 2 + 1.1, [1, 1, 4], TRACK, SHINE.chrome);
+  b.box(-0.18, 0.18, ty + 0.2, ty + 0.55, L / 2 + 0.8, L / 2 + 1.15, [1, 1, 1], TRACK, SHINE.chrome); // Mündungsbremse
+  // Polizei-Kennung: Streifen + Blaulicht
+  b.box(-1.17, 1.17, ty + 0.3, ty + 0.45, -1.72, 0.72, [2, 1, 3], 0x2850c8, SHINE.paint);
+  b.box(-0.45, -0.05, ty + 0.95, ty + 1.1, -0.8, -0.6, [1, 1, 1], 0x3a6bff, SHINE.glass);
+  b.box(0.05, 0.45, ty + 0.95, ty + 1.1, -0.8, -0.6, [1, 1, 1], 0xff3a4a, SHINE.glass);
+  const body = b.geometry();
+  computeOutlineNormals(body);
+  // Lichter: 0 VL, 1 VR, 2 HL, 3 HR, 4/5 Rückfahrlicht (leer)
+  const lb = new Builder();
+  const ranges: Range[] = [];
+  const zf = L / 2 - 0.19, zr = -L / 2 + 0.24, yl = g0 + 1.0;
+  for (const sx of [1, -1]) {
+    const st = lb.count, x = sx * (hw - 0.8);
+    lb.quad([x - 0.18, yl, zf], [x + 0.18, yl, zf], [x + 0.18, yl + 0.16, zf], [x - 0.18, yl + 0.16, zf], HEAD, 0);
+    ranges.push({ start: st, count: 6 });
+  }
+  for (const sx of [1, -1]) {
+    const st = lb.count, x = sx * (hw - 0.8);
+    lb.quad([x + 0.15, yl, zr], [x - 0.15, yl, zr], [x - 0.15, yl + 0.12, zr], [x + 0.15, yl + 0.12, zr], TAIL, 0);
+    ranges.push({ start: st, count: 6 });
+  }
+  ranges.push({ start: lb.count, count: 0 }, { start: lb.count, count: 0 });
+  const d = derive(p);
+  return {
+    body, lights: lb.geometry(), parts: new Array(PART_COUNT).fill(null), glass: [[], [], [], []], lightRanges: ranges,
+    // Laufrollen stecken in den Ketten (unsichtbar, w = 0)
+    wheels: d.wheels.map(([x, z]) => ({ x, z, r: p.wheelRadius, w: 0 })),
+    wheelBaseY: d.mountY - d.rest,
+    engine: new THREE.Vector3(0, g0 + 1.2, -L / 2 + 1), exhaust: [new THREE.Vector3(hw - 0.7, g0 + 1.1, -L / 2 + 0.1)], seatY: 0,
+    cell: [-L / 2, L / 2, g0 + 0.3], bike: false,
   };
 }
 

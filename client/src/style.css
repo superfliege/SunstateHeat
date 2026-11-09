@@ -186,7 +186,6 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 #hud-wanted i { width: 22px; height: 26px; background: rgba(0,0,0,0.45); border: 2px solid #5a6aa0; clip-path: polygon(50% 0, 100% 25%, 85% 90%, 50% 100%, 15% 90%, 0 25%); }
 #hud-wanted i.on { background: #2a6bff; border-color: #fff; }
 #hud-wanted.blink i.on { animation: wblink 0.5s steps(2) infinite; }
-#hud-wanted i.m3 { opacity: 0.25; }
 @keyframes wblink { 50% { background: #ff2030; } }
 #arrest { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); text-align: center; color: #fff; font-family: var(--mono); text-shadow: 1px 1px 0 #000; pointer-events: none; }
 #arrest.hidden { display: none; }
