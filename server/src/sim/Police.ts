@@ -226,6 +226,7 @@ export class Police {
     const speed = this.speedOf(p, pos, dt);
     for (const c of foot) {
       if (c.rt > 0) continue;
+      if (this.fightGang(c, dt)) continue; // Gang in der Nähe: erst kämpfen
       const dx = pos.x - c.x, dz = pos.z - c.z, d = Math.hypot(dx, dz) || 1;
       if (d > 1.8) stepPawn(this.h.map, c, dx / d, -dz / d, 0, dt, COP_SPEED);
       else c.a = Math.atan2(dx, dz);
@@ -249,6 +250,28 @@ export class Police {
         this.h.notice(p, 'Du hast die Polizei abgeschüttelt.', 'good');
       }
     } else p.searchT = 0;
+  }
+
+  /** Polizist kämpft gegen ein Gang-Mitglied in 22 m (bleibt stehen, schießt). Gibt true zurück, wenn er kämpft. */
+  private fightGang(c: Ped, dt: number): boolean {
+    let tgt: Ped | null = null, best = 22 * 22;
+    for (const g of this.h.peds.peds.values()) {
+      if (!g.gang || g.hp <= 0 || g.rt > 0) continue;
+      const d = dist2(g.x, g.z, c.x, c.z);
+      if (d < best) { best = d; tgt = g; }
+    }
+    if (!tgt) return false;
+    const dx = tgt.x - c.x, dz = tgt.z - c.z, d = Math.hypot(dx, dz) || 1;
+    if (d > 9) stepPawn(this.h.map, c, dx / d, -dz / d, 0, dt, COP_SPEED);
+    else c.a = Math.atan2(dx, dz);
+    const cd = (this.cd.get(c.id) ?? Math.random()) - dt;
+    if (cd > 0) { this.cd.set(c.id, cd); return true; }
+    this.cd.set(c.id, 0.9 + Math.random() * 0.6);
+    if (wallDistance(this.h.map, c.x, c.z, Math.atan2(dx, dz), d) < d - 1) return true;
+    const miss = Math.random() < 0.45 ? 0 : (Math.random() - 0.5) * 3;
+    this.h.emit(c.x, c.z, ['shot', c.id, c.x, c.z, tgt.x + miss, tgt.z + miss, PISTOL_IDX]);
+    if (!miss) this.h.peds.hit(tgt, 9, dx / d, dz / d);
+    return true;
   }
 
   private clearOwned(p: ServerPlayer) {
