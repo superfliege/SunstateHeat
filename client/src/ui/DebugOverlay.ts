@@ -10,7 +10,7 @@ import { NPC_EVENTS, type NpcEvId } from '../../../shared/src/npc/reactions';
 import { ACT_NAMES } from '../../../shared/src/npc/scenarios';
 import type { NpcDebugPed, ServerMsg } from '../../../shared/src/protocol';
 
-type Tab = 'map' | 'vehicle' | 'npc';
+type Tab = 'map' | 'vehicle' | 'npc' | 'audio';
 type NpcMsg = Extract<ServerMsg, { t: 'npcDebug' }>;
 const EVENT_COLORS = ['#ffe14d', '#9be7ff', '#ff9ad0', '#5aa8ff', '#ffa23a', '#ff4f4f', '#ff7af0', '#ff4f9a', '#ff2a2a', '#ff7a00'];
 
@@ -62,7 +62,7 @@ export class DebugOverlay {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'F3') { e.preventDefault(); this.toggle(); return; }
       if (!this.open) return;
-      if (e.code === 'Tab') { e.preventDefault(); this.setTab(this.tab === 'map' ? 'vehicle' : this.tab === 'vehicle' ? 'npc' : 'map'); return; }
+      if (e.code === 'Tab') { e.preventDefault(); this.setTab(this.tab === 'map' ? 'vehicle' : this.tab === 'vehicle' ? 'npc' : this.tab === 'npc' ? 'audio' : 'map'); return; }
       if (!this.visible) return;
       if (e.code === 'KeyC') { this.cx = this.player.x; this.cz = this.player.z; this.draw(); }
       const keys = ['terrain', 'roads', 'blocks', 'lots', 'districts', 'chunks'] as const;
@@ -73,7 +73,7 @@ export class DebugOverlay {
     this.tabsEl = document.createElement('div');
     this.tabsEl.id = 'debug-tabs';
     this.tabsEl.className = 'hidden';
-    for (const [id, text] of [['map', 'Karte'], ['vehicle', 'Fahrzeug'], ['npc', 'NPC']] as const) {
+    for (const [id, text] of [['map', 'Karte'], ['vehicle', 'Fahrzeug'], ['npc', 'NPC'], ['audio', 'Audio']] as const) {
       const b = document.createElement('button');
       b.textContent = text;
       b.dataset.tab = id;
@@ -86,7 +86,7 @@ export class DebugOverlay {
     this.vehEl.className = 'hidden';
     document.body.appendChild(this.vehEl);
     this.npcEl = this.buildNpcPanel();
-    try { const t = localStorage.getItem('sunstate.debugTab'); if (t === 'vehicle' || t === 'npc') this.tab = t; } catch { /* egal */ }
+    try { const t = localStorage.getItem('sunstate.debugTab'); if (t === 'vehicle' || t === 'npc' || t === 'audio') this.tab = t; } catch { /* egal */ }
   }
 
   // ------------------------------------------------------------------ NPC-Tab
@@ -197,6 +197,10 @@ export class DebugOverlay {
   get isOpen() { return this.open; }
   /** Fahrzeug-Tab aktiv (Kräfte-Pfeile im Spiel anzeigen) */
   get vehicleTab() { return this.open && this.tab === 'vehicle'; }
+  /** Audio-Tab aktiv (Inhalt liefert ui/AudioDebug) */
+  get audioTab() { return this.open && this.tab === 'audio'; }
+  /** Panel des Audio-Tabs (wird vom Spiel gesetzt) */
+  audioEl: HTMLElement | null = null;
 
   toggle() {
     this.open = !this.open;
@@ -215,6 +219,7 @@ export class DebugOverlay {
     this.npcEl.classList.toggle('hidden', !npc);
     if (npc !== this.npcOn) { this.npcOn = npc; this.onNpcTab(npc); }
     if (npc) this.drawNpc();
+    this.audioEl?.classList.toggle('hidden', !(this.open && tab === 'audio'));
     if (this.visible) { this.cx = this.player.x; this.cz = this.player.z; this.draw(); }
   }
 

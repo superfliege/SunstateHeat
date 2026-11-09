@@ -252,3 +252,12 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 #npc-debug canvas { width: 450px; height: 260px; border-radius: 6px; background: #0d0a1c; flex: none; }
 #npc-debug .pop { white-space: normal; color: #ffe14d; }
 #npc-debug pre { margin: 0; overflow-y: auto; white-space: pre-wrap; flex: 1; }
+#audio-debug {
+  position: fixed; left: 12px; top: 56px; bottom: 12px; z-index: 51; width: 560px; padding: 8px 10px; overflow: hidden;
+  background: rgba(10, 5, 25, 0.86); border: 2px solid var(--cyan); border-radius: 8px; font: 11px/1.4 var(--mono); color: #e8e0ff;
+  display: flex; flex-direction: column; gap: 6px;
+}
+#audio-debug .sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+#audio-debug label { display: flex; align-items: center; gap: 6px; }
+#audio-debug input[type='range'] { flex: 1; accent-color: var(--cyan); }
+#audio-debug pre { margin: 0; overflow-y: auto; white-space: pre; flex: 1; }

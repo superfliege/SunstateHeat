@@ -191,23 +191,79 @@ Blaster Kit für Schusswaffen (auf Metall umgefärbt), Nature Kit + Quaternius S
 Kenney Impact/Interface Sounds. Die Straßen selbst bleiben prozedural, weil das Straßennetz nicht im Raster liegt.
 5. Audio
 
-Alle Sounds und Musik werden prozedural im Browser erzeugt (Web Audio API, z. B. mit Tone.js) oder sind selbst erstellt.
+Ziel: dichte, lebendige Klangwelt im Stil eines Open-World-Crime-Games mit Küsten- und Neon-Atmosphäre.
+Sounds kommen aus CC0-/lizenzfreien Paketen (Kenney, Sonniss GDC, Freesound nur CC0, Pixabay, FreePD,
+OpenGameArt CC0) und werden prozedural ergänzt (Web Audio API). Jeder Manifest-Eintrag hat einen prozeduralen
+Ersatz, solange keine Datei vorliegt – das Spiel klingt also auch ohne Rohdateien vollständig.
 
-5.1 Soundeffekte
-Motorengeräusche je Fahrzeugklasse (Tonhöhe abhängig von Drehzahl), Hupe, Reifenquietschen, Crash.
-Schritte je Untergrund, Türen, Schüsse (dumpf, comicartig), Explosionen.
-Umgebung: Wellen, Möwen, Zikaden, Stadtverkehr, Regen, Donner.
-Polizeisirene, Telefonklingeln an Missionstelefonen.
-5.2 Fahrzeugradio (M3)
-Mindestens 4 erfundene Radiosender mit prozedural generierter Musik und eigenen Jingles:
+5.1 Quellen & Asset-Pipeline
+Rohdateien unter assets-src/audio/<quelle>/ (Sonniss/Pixabay per .gitignore draußen). `npm run audio`
+(scripts/process-audio.ts, ffmpeg): sichten (--scan), zuschneiden, Stille entfernen, Lautheit normalisieren
+(Effekte -16, Ambience -24, Musik -18 LUFS, Spitzen -1 dBFS), Mono für 3D-Effekte, Stereo für Musik/Ambience,
+OGG/Opus + AAC-Fallback (Safari), kurze Effekte als Audio-Sprites, große Loops/Musik gestreamt.
+Sound-Manifest client/src/audio/manifest.ts: Bus, Varianten, Lautstärke, Pitch-Bereich, Pegelstreuung,
+3D-Einstellungen, Instanz-Limit, Priorität, Zonen, Lizenzquelle je Datei. CREDITS.md wird daraus erzeugt.
+Lazy Loading: Einträge mit zones laden nur in der aktuellen und angrenzenden Zone.
+
+5.2 Audio-Engine
+Busse Effekte, Fahrzeuge, Waffen, Stimmen/Barks, Ambience, Musik/Radio, UI → Master mit Kompressor und
+Limiter; Lautstärke je Bus einstellbar (gespeichert). 3D über PannerNode relativ zur Spielfigur (Blickrichtung
+der Kamera), Abstandskurven je Kategorie, HRTF optional. Variation: zufällige Variante ohne direkte Wiederholung,
+Pitch ±5–10 %, Pegel ±2 dB. Max. 32 Stimmen, Instanz-Limits je Sound, leise/unwichtige Stimmen fliegen zuerst.
+Ducking von Radio/Ambience bei Explosionen, Dialogen, Missionsansagen. Hall je Umgebung (Gasse/Tunnel/Parkhaus
+stark, Straße/Strand schwach, Sumpf weich), Tiefpass für verdeckte Quellen (Raycast durch Gebäudekacheln) und
+unter Wasser, dezenter Doppler für vorbeifahrende Fahrzeuge und Sirenen. Start erst nach der ersten
+Nutzeraktion mit sanftem Einblenden.
+
+5.3 Fahrzeuge
+Motor pro Klangklasse aus 4 Drehzahl-Layern (Leerlauf, niedrig, mittel, hoch) je Last- und Schiebebetrieb,
+Crossfade nach Drehzahl, Pitch innerhalb des Layers. Gangwechsel, Auspuffknallen beim Gaswegnehmen
+(Sportwagen, Muscle Cars, Motorrad), Turbo-Pfeifen + Blow-off, Druckluftbremse (Trucks), Nitro.
+Reifen: Quietschen nach Schlupf, Abrollen je Untergrund (Asphalt, Schotter, Sand, Gras, nass). Federung:
+Bordstein-Poltern, Landung nach Sprüngen. Kollisionen in 3 Stärken aus Aufprall + Blech + Glas + Trümmern,
+Schleif-Loop und Funken. Schaden: Motorstottern, Klappern loser Teile, Zischen bei Rauch, Feuer, Explosion.
+Airboat mit Propeller, Boote mit Wasserrauschen, Polizei-Sirenen (Wail, Yelp, Hi-Lo), Hupe je Klasse.
+Optional: dumpfer Innenraumklang bei naher Kamera.
+
+5.4 Waffen & Kampf
+Schüsse geschichtet: Nahschicht (Knall), Mechanik, Hall je Umgebung, Fernschicht (dumpf ab 50 m) – comicartig
+druckvoll, nicht blutig. Hülsen, Nachladen, leeres Magazin, Treffer auf Metall/Holz/Beton/Wasser, Nahkampf,
+Explosionen mit Nachhall und Trümmerregen.
+
+5.5 Ambience & Welt
+Zonen-Ambience aus mehrschichtigen Loops mit Überblendung an Zonengrenzen: Ocean Strip (Brandung, Möwen,
+Strandstimmen, Barmusik, Rollschuhe), Downtown (Verkehr, Stimmengewirr, Ampeln, Bauarbeiten; nachts Neonsummen,
+Club-Bässe), Hafen (Kräne, Container, Schiffshörner), Coral Keys (ruhiges Wasser, Wind, Takelage, Fischerboote),
+Gator Flats (Zikaden, Frösche, Vögel, Plätschern, Alligator; nachts Insekten), Dry Pine Country (Wind in Kiefern,
+Grillen, ferne Trucks, Hunde). Tageszeit- und Wettervarianten (Regen auf Oberflächen, Donner mit Verzögerung
+je Entfernung, Wind). Punktquellen (Klimaanlagen, Brunnen, Neonschilder, Ladenmusik, Straßenmusiker,
+Missions-Telefonzellen, Hunde) und zufällige One-Shots (Autoalarm, ferne Sirene, Flugzeug, Lachen, Hupe).
+
+5.6 Figuren & NPCs
+Schritte je Untergrund (Asphalt, Holzsteg, Sand, Gras, Wasser, Metall) und Gangart, Kleidungsrascheln, Türen,
+Fallen/Aufstehen. Barks als kurze Laute passend zur Sprechblase, Stimmvarianten per Pitch/Formantfilter.
+Menschenmengen-Layer nach NPC-Dichte, Panik-Layer bei Schüssen.
+
+5.7 Musik & Radio (M3)
+Mindestens 4 erfundene Radiosender mit je 6–10 Tracks (CC0/Pixabay) und eigenen Jingles:
 Coral 88.1 – Synthwave/Retro-Pop
 Swamp Radio 101 – Bluesrock/Country-Stil
 Palmara Talk 740 – Satire-Werbung und Ansagen (Text-Einblendungen, optional TTS)
 Bass Coast FM – elektronische Beats
-Senderwechsel im Fahrzeug mit R, Lautstärke separat einstellbar.
-5.3 Mischung
-Getrennte Lautstärkeregler: Master, Effekte, Musik/Radio, Umgebung, Sprache/UI.
-3D-Positionierung für Fahrzeuge, Schüsse, Sirenen.
+Sender laufen „live“ (Position aus der Server-Zeit, alle im Auto hören dasselbe). Senderwechsel mit R,
+Bandpass + Rauschen beim Umschalten, außerhalb des Autos gedämpft. Prozedurale Jingles, Sender-IDs und
+Werbespots zwischen den Tracks. Optional Spannungs-Loops nach Fahndungsstufe, Erfolgs-/Fehlschlag-Jingles.
+
+5.8 UI
+Kenney-UI-Sounds für Menüs, Inventar, Käufe, Geld ±, Fahndungsstufe, Quest-Updates, Handy, Chat –
+kurz (< 200 ms) und einheitlich.
+
+5.9 Netzwerk, Performance & Debug
+Sounds werden lokal aus synchronisierten Zuständen abgeleitet (Drehzahl, Schlupf, Ereignisse), keine
+Audiodaten übers Netz. Budget: initialer Audio-Download < 3 MB, Rest lazy/gestreamt; Audio-CPU < 5 % auf
+einem Referenz-Laptop. Debug-Overlay F3 → Audio: aktive Stimmen (Kategorie, Entfernung, Pegel, Verdeckung),
+Bus-Pegel, Hallzone, Zone, Lautstärkeregler. Sound-Browser im Dev-Modus (Manifest-Einträge anhören,
+Lautstärke/Pitch live anpassen und exportieren).
 6. Steuerung
 6.1 Tastatur & Maus (Standard)
 Aktion	Zu Fuß	Im Fahrzeug

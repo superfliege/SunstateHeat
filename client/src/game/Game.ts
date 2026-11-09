@@ -5,9 +5,9 @@
 import * as THREE from 'three';
 import { ENTER_RADIUS, MAP_SEED, SIM_DT } from '../../../shared/src/constants';
 import { lerp, lerpAngle } from '../../../shared/src/math';
-import { Btn, VehFlag, type GameEvent, type ServerMsg, type SnapshotMsg, type VehicleInfoTuple, type VehicleTuple } from '../../../shared/src/protocol';
+import { Btn, DRIVER_COP_ID, VehFlag, type GameEvent, type ServerMsg, type SnapshotMsg, type VehicleInfoTuple, type VehicleTuple } from '../../../shared/src/protocol';
 import { createCar, groundHeight, setOrientation, type CarCollision, type CarState, type Impact } from '../../../shared/src/sim/car';
-import { newDamage, smokeStage, unpackDamage, type CarDamage } from '../../../shared/src/sim/damage';
+import { enginePower, newDamage, partState, PART_COUNT, smokeStage, unpackDamage, Zone5, type CarDamage } from '../../../shared/src/sim/damage';
 import { ASSISTS, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
 import { PROP_INFO, PropType } from '../../../shared/src/world/features';
 import type { PropHit } from '../../../shared/src/sim/props';
@@ -44,6 +44,7 @@ import { Sky } from '../render/Sky';
 import { VehicleFx } from '../render/VehicleFx';
 import { WorldView } from '../render/WorldView';
 import { Chat } from '../ui/Chat';
+import { AudioDebug } from '../ui/AudioDebug';
 import { DebugOverlay } from '../ui/DebugOverlay';
 import { DriveHud } from '../ui/DriveHud';
 import { Hud } from '../ui/Hud';
@@ -56,7 +57,7 @@ const MINIMAP_INTERVAL = 1 / 15;
 const MAX_STEPS_PER_FRAME = 8;
 /** Hit-Stop bei sehr harten Crashs (nur Darstellung) */
 const HITSTOP_MIN = 0.04, HITSTOP_MAX = 0.08;
-const ENGINE_VOICES = 3;
+const ENGINE_VOICES = 4;
 
 /** Clientseitiges Wissen über ein Fahrzeug (aus Deltas zusammengesetzt). */
 interface VehRec {
@@ -127,16 +128,18 @@ export class Game {
   private phonesView: ShopsView;
   private questMarkers: QuestMarkers;
   private questState: QuestState | null = null;
+  private wanted = 0;
+  private audioDebug: AudioDebug;
   private panels: Panels;
   private weaponId: WeaponId = 'fists';
   private fireT = 0;
   private ray = new THREE.Raycaster();
   private aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private arrows: THREE.ArrowHelper[] = [];
-  private lastShifts = 0;
 
   constructor(private net: Network, private myId: number, private sfx: Sfx, dev = false) {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
+    this.sfx.setWorld(this.map);
     // Kein Antialiasing = DS-Look; Auflösung je nach Retro-Modus (siehe applyGfx)
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
@@ -160,7 +163,7 @@ export class Game {
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
-    this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.playGroup(open ? 'uiOpen' : 'uiClose', 0.5, 0, 0); };
+    this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.ui(open ? 'open' : 'close', 0.5); };
     this.particles = new Particles(this.map);
     this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
@@ -175,6 +178,8 @@ export class Game {
     this.debug = new DebugOverlay(this.map, this.minimap.base);
     this.debug.onNpcTab = (on) => this.net.send({ t: 'npcDebug', on });
     this.debug.onCommand = (text) => this.net.send({ t: 'chat', text });
+    this.audioDebug = new AudioDebug(this.sfx);
+    this.debug.audioEl = this.audioDebug.el;
     if (dev) this.tuning = new TuningPanel((cls, values, assists) => this.net.send({ t: 'tune', cls, values, assists }));
     for (let i = 0; i < 9; i++) {
       const a = new THREE.ArrowHelper(UP, new THREE.Vector3(), 1, i < 4 ? 0xff4f9a : i < 8 ? 0x2af0e6 : 0xffe14d, 0.4, 0.25);
@@ -215,7 +220,7 @@ export class Game {
     this.input.onInventory = () => this.panels.toggleInventory();
     this.input.onWeaponSlot = (slot) => this.net.send({ t: 'weapon', slot });
     this.input.onWeaponCycle = (dir) => this.net.send({ t: 'weapon', dir });
-    this.chat.onOpenChange = (open) => { this.input.blocked = open; if (open) this.input.clear(); this.sfx.play('toggle', 0.5); };
+    this.chat.onOpenChange = (open) => { this.input.blocked = open; if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
     this.chat.onSend = (text) => this.net.send({ t: 'chat', text });
 
     net.onMessage = (msg) => this.onMessage(msg);
@@ -281,12 +286,13 @@ export class Game {
         break;
       case 'notice':
         this.hud.toast(msg.text, msg.kind);
-        this.sfx.playGroup(msg.kind === 'good' ? 'uiGood' : msg.kind === 'bad' ? 'uiBad' : 'uiInfo', 0.55, 0, 0);
+        this.sfx.ui(msg.kind === 'good' ? 'good' : msg.kind === 'bad' ? 'bad' : 'info', 0.55);
+        if (msg.kind !== 'info') this.sfx.duck(-6, 1.4); // Missionsansage: Radio/Ambience kurz absenken
         break;
       case 'bonus':
         this.drive.bonus(msg.kind, msg.points, msg.money, msg.info);
         this.drive.money(msg.total);
-        if (msg.money > 0) this.sfx.playGroup('money', 0.45, 0, 0.05);
+        if (msg.money > 0) this.sfx.ui('money', 0.45);
         break;
       case 'tune':
         applyTune(msg.cls, msg.values, msg.assists);
@@ -362,7 +368,7 @@ export class Game {
     for (const id of snap.pg ?? []) this.copDots.delete(id);
     this.predictor.reconcile(snap, this.myId, SIM_DT);
     this.day = snap.day;
-    if (snap.me) { this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
+    if (snap.me) { this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.wanted = snap.me.stats.wanted; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
   }
 
   /** Lautstärke + Stereo-Position eines Weltpunkts relativ zur Kamera */
@@ -384,8 +390,8 @@ export class Game {
       case 'crash': {
         const [, vid, x, y, z, nx, nz, dv, other] = ev as number[] & [string];
         if (this.involvesMe(vid, other) && this.clock - this.lastLocalImpact < 0.4) break; // lokal schon gezeigt
-        const [vol, pan] = this.spatial(x, z);
-        car?.crash(dv, vol, pan);
+        const [vol] = this.spatial(x, z);
+        car?.crash(dv, this.involvesMe(vid, other) ? null : { x, y, z });
         if (dv > 4) this.fx.sparks(x, y, z, nx * 3, nz * 3, Math.min(30, dv * 1.5));
         if (this.involvesMe(vid, other)) this.feelImpact(dv);
         else this.rig.kick(Math.min(0.5, dv / 30) * vol);
@@ -404,8 +410,8 @@ export class Game {
       case 'boom': {
         const [, , x, y, z] = ev as number[];
         this.fx.explosion(x, y, z);
-        const [vol, pan] = this.spatial(x, z);
-        car?.explosion(vol, pan);
+        const [vol] = this.spatial(x, z);
+        car?.explosion({ x, y, z });
         this.rig.kick(Math.min(1, vol * 1.4));
         this.input.rumble(vol, vol, 500);
         if (vol > 0.5) this.hitStop = HITSTOP_MAX;
@@ -429,8 +435,7 @@ export class Game {
       }
       case 'tire': {
         const [, vid, , x, y, z] = ev as number[];
-        const [vol, pan] = this.spatial(x, z);
-        this.sfx.car?.crash(5, vol * 0.8, pan);
+        car?.tireBurst(this.involvesMe(vid, -9) ? null : { x, y, z });
         this.fx.sparks(x, y, z, 0, 0, 10);
         if (this.involvesMe(vid, -9)) { this.rig.kick(0.3); this.input.rumble(0.6, 0.8, 200); }
         break;
@@ -442,8 +447,7 @@ export class Game {
         const thrown = kind === 'molotov' || kind === 'rocket';
         this.tracers.add(x0, y0, z0, x1, y1, z1, thrown ? 0xff9a2e : 0xffe14d);
         this.fx.sparks(x0, y0, z0, 0, 0, 3);
-        const [vol, pan] = this.spatial(x0, z0);
-        this.sfx.weapon(kind === 'shotgun' || kind === 'rifle' || kind === 'rocket' ? 'heavy' : 'shot', vol, pan);
+        this.sfx.weapon(kind === 'shotgun' || kind === 'rifle' || kind === 'rocket' ? 'heavy' : 'shot', { x: x0, y: y0, z: z0 });
         this.views.playAttack(pid, 'shot');
         if (pid === this.myId) this.rig.kick(kind === 'shotgun' || kind === 'rocket' ? 0.25 : 0.08);
         break;
@@ -451,15 +455,13 @@ export class Game {
       case 'swing': {
         const [, pid, , , x, z] = ev as number[];
         this.views.playAttack(pid, 'swing');
-        const [vol, pan] = this.spatial(x, z);
-        this.sfx.weapon('swing', vol, pan);
+        this.sfx.weapon('swing', { x, y: this.map.surfaceY(x, z) + 1.2, z });
         break;
       }
       case 'hit': {
         const [, x, z] = ev as number[];
         this.fx.sparks(x, this.map.surfaceY(x, z) + 1, z, 0, 0, 8);
-        const [vol, pan] = this.spatial(x, z);
-        this.sfx.weapon('hit', vol, pan);
+        this.sfx.weapon('hit', { x, y: this.map.surfaceY(x, z) + 1, z });
         break;
       }
       case 'tree': this.world.wobbleTree(ev[1] as number, ev[2] as number, Math.random() - 0.5, Math.random() - 0.5); break;
@@ -467,8 +469,8 @@ export class Game {
         const [, id, x, , z, speed] = ev as number[];
         const p = this.props.props[id];
         if (!p) break;
-        const [vol, pan] = this.spatial(x, z);
-        if (this.clock - this.lastLocalImpact > 0.3 || vol < 0.9) car?.propHit(PROP_INFO[p.type].mass > 50, vol, pan);
+        const [vol] = this.spatial(x, z);
+        if (this.clock - this.lastLocalImpact > 0.3 || vol < 0.9) car?.propHit(PROP_INFO[p.type].mass > 50, { x, y: p.y, z });
         if (p.type === PropType.Lamp) this.fx.sparks(x, p.y + 0.5, z, 0, 0, 12);
         void speed;
         break;
@@ -486,8 +488,7 @@ export class Game {
   private localImpact(imp: Impact, scrape: Impact) {
     if (imp.dv > 2.5) {
       this.lastLocalImpact = this.clock;
-      const [vol, pan] = this.spatial(imp.x, imp.z);
-      this.sfx.car?.crash(imp.dv, vol, pan);
+      this.sfx.car?.crash(imp.dv, null);
       this.feelImpact(imp.dv);
       if (imp.dv > 4 && imp.kind !== 3) this.fx.sparks(imp.x, imp.y, imp.z, imp.nx * 3, imp.nz * 3, Math.min(30, imp.dv * 1.5));
     }
@@ -500,8 +501,7 @@ export class Game {
   private localCarHit(col: CarCollision, other: Obstacle) {
     if (col.vn < 2) return;
     this.lastLocalImpact = this.clock;
-    const [vol, pan] = this.spatial(col.x, col.z);
-    this.sfx.car?.crash(col.vn, vol, pan);
+    this.sfx.car?.crash(col.vn, null);
     this.feelImpact(col.dvA * 1.2 + 1);
     if (col.vn > 4) this.fx.sparks(col.x, col.y, col.z, col.nx * 3, col.nz * 3, Math.min(30, col.vn * 1.5));
     void other;
@@ -509,8 +509,7 @@ export class Game {
 
   private localProp(hit: PropHit) {
     this.props.knockLocal(hit.prop.id, hit.vx, hit.vz);
-    const [vol, pan] = this.spatial(hit.prop.x, hit.prop.z);
-    this.sfx.car?.propHit(PROP_INFO[hit.prop.type].mass > 50, vol, pan);
+    this.sfx.car?.propHit(PROP_INFO[hit.prop.type].mass > 50, null);
     this.lastLocalImpact = this.clock;
     if (hit.prop.type === PropType.Lamp) this.fx.sparks(hit.prop.x, hit.prop.y + 0.5, hit.prop.z, hit.vx * 0.3, hit.vz * 0.3, 14);
     this.rig.kick(Math.min(0.4, PROP_INFO[hit.prop.type].mass / 300));
@@ -640,6 +639,8 @@ export class Game {
     // Linienstärke: mit dem Zoom dünner, mit der Auflösung dicker (Referenz 720p)
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
     this.post.update(this.sky.mood, this.sky.night);
+    this.rig.camera.getWorldDirection(tmpV3);
+    this.sfx.frame(rawDt, this.rig.target.x, myY, this.rig.target.z, tmpV3.x, tmpV3.z);
     this.ownCarAudio(rawDt);
     this.footsteps(me.x, me.z, rawDt);
 
@@ -662,7 +663,7 @@ export class Game {
       entities: frame ? frame.b.vehicles.size + frame.b.players.size + frame.b.peds.size : 0,
     });
     this.debugTimer -= rawDt;
-    if (this.debugTimer <= 0) { this.debugTimer = 0.25; this.debug.redraw(); }
+    if (this.debugTimer <= 0) { this.debugTimer = 0.25; this.debug.redraw(); if (this.debug.audioTab) this.audioDebug.update(); }
     this.vehicleDebug();
   }
 
@@ -707,16 +708,27 @@ export class Game {
       this.syncDamage(id, rec, isNew, s);
       this.vehicleFx(s, rec, dt, id === myVehicle);
       // Hupe (Spieler gedrückt oder NPC-Hupen)
-      if (s.flags & VehFlag.HORN || rec.hornUntil > this.clock) { const [vol, pan] = this.spatial(s.x, s.z); this.sfx.car?.horn(id, vol, pan); }
+      const car = this.sfx.car;
+      if (car) {
+        const own = id === myVehicle;
+        const pos = { x: s.x, y: s.y, z: s.z };
+        if (s.flags & VehFlag.HORN || rec.hornUntil > this.clock) car.horn(id, variantInfo(variant).cls, own ? null : pos);
+        if (rec.dmg.burn > 0 && !own) car.fire(id, pos, 1, dt);
+        // Sirene: Streifenwagen bei Einsatzfahrt oder solange nach mir gefahndet wird
+        if (driver === DRIVER_COP_ID && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
+      }
       if (id !== myVehicle && driver !== -1 && !rec.dmg.wreck) engines.push({ id, d: Math.hypot(s.x - focus.x, s.z - focus.z), s, rpm });
     }
     // Motorgeräusche der nächsten fremden Fahrzeuge
     engines.sort((p, q) => p.d - q.d);
     for (const e of engines.slice(0, ENGINE_VOICES)) {
-      if (e.d > 60) break;
+      if (e.d > 110 || !this.sfx.car) break;
       const prof = profileOf(e.s.variant);
-      const [vol, pan] = this.spatial(e.s.x, e.s.z);
-      this.sfx.car?.engine(e.id, { rpm: Math.max(prof.idleRpm, e.rpm), load: e.s.flags & VehFlag.BOOST ? 1 : 0.35, throttle: 0.4, cylinders: prof.cylinders, idle: prof.idleRpm, redline: prof.redline, shifts: 0, sport: false, boost: (e.s.flags & VehFlag.BOOST) !== 0, volume: vol * 0.6, pan, water: isWaterVehicle(e.s.kind) });
+      const fwd = tmpV.set(0, 0, 1).applyQuaternion(e.s.q);
+      this.sfx.car.remote(e.id, {
+        cls: variantInfo(e.s.variant).cls, pos: { x: e.s.x, y: e.s.y, z: e.s.z }, vx: e.s.vx, vz: e.s.vz, fwdX: fwd.x, fwdZ: fwd.z,
+        rpm: Math.max(prof.idleRpm, e.rpm), idle: prof.idleRpm, redline: prof.redline, boost: (e.s.flags & VehFlag.BOOST) !== 0, water: isWaterVehicle(e.s.kind),
+      }, dt);
     }
 
     for (const pb of b.players.values()) {
@@ -764,7 +776,7 @@ export class Game {
     const key = `${d.parts}:${d.glass}:${d.lights}:${d.wreck}`;
     if (key !== rec.dmgKey) {
       this.views.setDamage(id, d.parts, d.glass, d.lights, d.wreck, !isNew && rec.dmgKey !== '' && rec.liveParts, s.vx, s.vz);
-      if (rec.dmgKey !== '' && d.glass && this.involvesMe(id, -9)) this.sfx.car?.crash(3, 0.6, 0, true);
+      if (rec.dmgKey !== '' && d.glass && this.involvesMe(id, -9)) this.sfx.car?.crash(3, null, true, 0.6);
       rec.dmgKey = key;
       rec.liveParts = false;
     }
@@ -832,30 +844,29 @@ export class Game {
     return false;
   }
 
-  /** Motor, Reifen, Untergrund, Schaben, Nitro, Gamepad-Vibration des eigenen Fahrzeugs */
+  /** Motor, Reifen, Untergrund, Schaben, Nitro, Schaden, Gamepad-Vibration des eigenen Fahrzeugs */
   private ownCarAudio(dt: number) {
     const car = this.sfx.car;
     const sim = this.predictor.sim;
     this.backfired = false;
-    if (!sim) { car?.silenceTires(); this.scrapeLevel = 0; return; }
-    const c = sim.car, p = sim.prof;
+    if (!sim) { this.scrapeLevel = 0; car?.noOwnCar(); return; }
+    const c = sim.car, p = sim.prof, d = sim.dmg;
     const water = isWaterVehicle(sim.kind);
+    let slip = 0;
+    for (let i = 0; i < 4; i++) slip = Math.max(slip, c.slip[i]);
     if (car) {
-      car.engine(-1, {
-        rpm: c.rpm, load: c.engLoad, throttle: c.thr, cylinders: p.cylinders, idle: p.idleRpm, redline: p.redline,
-        shifts: c.shifts, sport: p.sportExhaust > 0, boost: c.boost, volume: sim.dmg.wreck ? 0 : 1, pan: 0, water,
-      });
-      this.backfired = car.backfire(-1, dt, 1, 0);
-      let slip = 0, surfCount = new Map<number, number>();
-      for (let i = 0; i < 4; i++) { slip = Math.max(slip, c.slip[i]); if (c.surf[i] !== 255) surfCount.set(c.surf[i], (surfCount.get(c.surf[i]) ?? 0) + 1); }
-      let surf: number = Tile.GRASS, best = 0;
-      for (const [k, n] of surfCount) if (n > best) { best = n; surf = k; }
-      if (water || !best) car.silenceTires();
-      else car.tires(slip, surf, Math.hypot(c.vx, c.vz), this.scrapeLevel, c.boost);
-      if (c.shifts !== this.lastShifts) this.lastShifts = c.shifts;
-      // Gamepad: Rumpeln nach Schlupf
-      if (slip > 3) this.input.rumble(Math.min(0.6, slip / 20), Math.min(0.8, slip / 12), 110);
+      let loose = 0;
+      for (let i = 0; i < PART_COUNT; i++) if (partState(d, i) === 1) loose++;
+      this.backfired = car.ownCar({
+        cls: variantInfo(sim.variant).cls, rpm: c.rpm, idle: p.idleRpm, redline: p.redline,
+        load: c.engLoad, thr: c.thr, brk: c.brk, shifts: c.shifts, boost: c.boost, speed: Math.hypot(c.vx, c.vz),
+        slip: c.slip, surf: c.surf, comp: c.comp, air: c.air, water, wet: this.isWet(c.x, c.z), scrape: this.scrapeLevel,
+        smoke: d.wreck ? 0 : smokeStage(d.hp), engineDmg: d.zones[Zone5.ENGINE], power: enginePower(d, c.t), loose,
+        burning: d.burn > 0 && !d.wreck, wreck: d.wreck !== 0,
+      }, dt);
     }
+    // Gamepad: Rumpeln nach Schlupf
+    if (slip > 3) this.input.rumble(Math.min(0.6, slip / 20), Math.min(0.8, slip / 12), 110);
     this.scrapeLevel = Math.max(0, this.scrapeLevel - dt * 30);
   }
 
@@ -885,9 +896,9 @@ export class Game {
     if (this.stepT < stride) return;
     this.stepT = 0;
     const t = this.map.tileAt(x, z);
-    const group = t === Tile.GRASS || t === Tile.SAND || t === Tile.SWAMP || t === Tile.FIELD || t === Tile.FARM || t === Tile.DIRT ? 'stepGrass'
-      : t === Tile.DOCK || t === Tile.BRIDGE ? 'stepWood' : 'stepConcrete';
-    this.sfx.playGroup(group, speed > 5 ? 0.32 : 0.22, 0, 0.1);
+    const id = t === Tile.GRASS || t === Tile.SAND || t === Tile.SWAMP || t === Tile.FIELD || t === Tile.FARM || t === Tile.DIRT ? 'foot.grass'
+      : t === Tile.DOCK || t === Tile.BRIDGE ? 'foot.wood' : 'foot.concrete';
+    this.sfx.at(id, null, speed > 5 ? 0.55 : 0.4);
   }
 
   private updateHud(latest: SnapshotMsg | null, vehicles: Map<number, VehicleViewState>, me: ReturnType<Predictor['view']>) {
