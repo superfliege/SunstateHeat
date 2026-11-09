@@ -460,6 +460,7 @@ export class Game {
         break;
       }
       case 'bark': this.views.bark(ev[1] as number, ev[2] as number, ev[3] as number); break;
+      case 'say': this.views.say(ev[1] as number, String(ev[2]).slice(0, 80)); break;
       case 'honk': {
         const r = this.recs.get(ev[1] as number);
         if (r) r.hornUntil = this.clock + 0.35 + Math.random() * 0.3;
@@ -863,7 +864,7 @@ export class Game {
       this.views.setPed({
         id: db[0], x: lerp(da[1], db[1], t), z: lerp(da[2], db[2], t), a: lerpAngle(da[3], db[3], t),
         color: db[4], running: db[5] === 1 || db[5] >= 3, angry: db[5] === 2, cop: db[5] === 3, gang: db[5] === 4, h: lerp(da[6], db[6], t), ragdoll: db[7] === 1,
-        arch: db[8] ?? -1, act: db[9] ?? 0, fear: db[10] ?? -1,
+        arch: db[8] ?? -1, act: db[9] ?? 0, fear: db[10] ?? -1, wpn: db[11],
       }, dt);
     }
 

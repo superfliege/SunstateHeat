@@ -41,7 +41,9 @@ export interface PedState { id: number; x: number; z: number; a: number; color: 
   /** Archetyp-Index (-1 = klassischer Passant) und Animations-ID (Act) vom Server */
   arch?: number; act?: number;
   /** Spieler, den der NPC nach einem Vorfall ängstlich beobachtet (-1 = keiner) */
-  fear?: number }
+  fear?: number;
+  /** Waffe in der Hand (Index in WEAPONS); fehlt = Polizei/Gang mit Pistole, sonst keine */
+  wpn?: number }
 
 /** Gemeinsame Schnittstelle: Quaternius-Figur (animiert) oder prozeduraler Ersatz. */
 interface Figure {
@@ -705,7 +707,7 @@ export class EntityViews {
   }
 
   setPed(s: PedState, dt: number) {
-    const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0);
+    const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.wpn ?? (s.cop || s.gang ? 3 : -1), s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0);
     this.updateDog(c, s);
     this.updateLook(c, s);
     // Schimpfender Fahrer: Comic-Sprechblase (nicht gleichzeitig mit einem Bark)
@@ -749,8 +751,13 @@ export class EntityViews {
   bark(pedId: number, sit: number, variant: number) {
     const c = this.peds.get(pedId);
     if (!c) return;
-    const text = barkText(sit, c.arch, variant);
-    if (!text) return;
+    this.say(pedId, barkText(sit, c.arch, variant));
+  }
+
+  /** Sprechblase mit festem Text (geskriptete Szenen). */
+  say(pedId: number, text: string) {
+    const c = this.peds.get(pedId);
+    if (!c || !text) return;
     this.removeBubble(pedId);
     if (c.bubble) { this.group.remove(c.bubble); c.bubble.material.map?.dispose(); c.bubble.material.dispose(); c.bubble = undefined; }
     const b = makeBarkBubble(text);

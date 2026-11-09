@@ -54,9 +54,10 @@ export type VehicleTuple = [number, number, number, number, number, number, numb
 export type VehicleInfoTuple = [number, number, number, number, number];
 /**
  * [id, x, z, angle, outfitColor, Zustand (0 geht, 1 rennt, 2 schimpft, 3 Polizist), höhe, ragdoll 0/1, Archetyp (-1 keiner),
- *  Act (Animations-ID, siehe npc/scenarios), gemiedener Spieler (Kurzzeitgedächtnis, fehlt = keiner)]
+ *  Act (Animations-ID, siehe npc/scenarios), gemiedener Spieler (Kurzzeitgedächtnis, fehlt/-1 = keiner),
+ *  Waffe in der Hand (Index in WEAPONS, fehlt = Standard)]
  */
-export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?, number?];
+export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?, number?, number?];
 /** Verschobenes Prop: [id, x, y, z, qx, qy, qz, qw, flags (1 ruht, 2 Wasserfontäne)] */
 export type PropTuple = [number, number, number, number, number, number, number, number, number];
 
@@ -72,6 +73,7 @@ export const DRIVER_COP_ID = -3;
  *  ['boom', vid, x, y, z]                            Comic-Explosion
  *  ['honk', vid] · ['shout', pedId] · ['eject', playerId] · ['repair', vid]
  *  ['bark', pedId, situation, variante]              Sprechblase (Text: shared/npc/barks.ts)
+ *  ['say', pedId, text]                              Sprechblase mit festem Text (Ankunftsszenen, server/sim/Scenes.ts)
  *  ['tree', treeIndex, strength] · ['prop', propId, x, y, z, speed]
  */
 export type GameEvent = (string | number)[];

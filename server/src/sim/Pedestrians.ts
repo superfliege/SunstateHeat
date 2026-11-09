@@ -71,6 +71,8 @@ export interface Ped {
   scn: PedScenario | null;
   /** Mini-Lebenszyklus, Wahrnehmung, Gedächtnis (nur von der Population verwaltete NPCs, siehe NpcBrain). */
   mind: Mind | null;
+  /** Waffe in der Hand (Index in WEAPONS, fehlt = Standard: Polizei/Gang Pistole, sonst keine). */
+  wpn?: number;
 }
 
 /** Steuerung für verwaltete NPCs (NpcBrain): übernimmt Bewegung und Entscheidungen. */

@@ -53,6 +53,7 @@ import { Perception } from '../sim/Perception';
 import { NpcEv } from '../../../shared/src/npc/reactions';
 import { DAY_PARTS, DAY_PART_NAMES, type DayPart, type Weather } from '../../../shared/src/npc/population';
 import { Traffic } from '../sim/Traffic';
+import { Scenes, SCENE_NAMES } from '../sim/Scenes';
 
 const CMD_BUDGET_MAX = 24;
 const CMD_REFILL_PER_TICK = (1 / SIM_DT / SERVER_TICK_HZ) * 1.15; // 15 % Toleranz für Jitter
@@ -94,6 +95,7 @@ export class WorldRoom {
   private readonly police: Police;
   private readonly races: Races;
   private readonly hunt: TaxiHunt;
+  private readonly scenes: Scenes;
   private readonly shops: ShopDef[];
   private timer: NodeJS.Timeout;
   private props = new Map<number, PropBody>();
@@ -294,6 +296,22 @@ export class WorldRoom {
       grantXp: (p, xp) => this.grantXp(p, xp),
       persist: (p) => this.persist(p),
     });
+    this.scenes = new Scenes({
+      map, players: this.players, vehicles: this.vehicles, peds: this.peds,
+      positionOf: (p) => this.positionOf(p),
+      spawnCar: (variant, x, z, a, driver, color) => {
+        const sim = createSimVehicle(map, VehicleKind.Car, variant, x, z, a);
+        const id = this.allocId();
+        const v: ServerVehicle = { id, kind: VehicleKind.Car, color, sim, driver, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false };
+        this.vehicles.set(id, v);
+        return v;
+      },
+      stepCar: (v, ax, ay, buttons) => { const n = Math.round(1 / SERVER_TICK_HZ / SIM_DT); for (let k = 0; k < n; k++) this.physicsStep(v, ax, ay, buttons, null); },
+      explode: (v) => this.explode(v),
+      driverOut: (v, angry) => this.npcDriverOut(v, angry),
+      emit: (x, z, ev) => this.emit(x, z, ev),
+      scare: (x, z, r) => this.peds.scare(x, z, r),
+    });
     this.timer = setInterval(() => this.tick(1 / SERVER_TICK_HZ), 1000 / SERVER_TICK_HZ);
   }
 
@@ -369,6 +387,7 @@ export class WorldRoom {
     conn.send({ t: 'welcome', id: player.id, room: this.id, maxPlayers: MAX_PLAYERS_PER_ROOM, dev: DEV });
     this.systemChat(`${name} ist in Palmara angekommen.`);
     this.sendQuestLog(player);
+    this.scenes.welcome(player); // Ankunftsszene: gleich passiert vor ihm etwas Verrücktes
     return player;
   }
 
@@ -573,6 +592,11 @@ export class WorldRoom {
       const ids = arg === 'alle' || arg === 'all' ? (Object.keys(WEAPONS) as WeaponId[]) : arg && arg in WEAPONS ? [arg as WeaponId] : [];
       if (!ids.length) say('/waffe <' + Object.keys(WEAPONS).join('|') + '|alle>');
       for (const id of ids) this.giveWeapon(p, id, WEAPONS[id].ammoPack * 3);
+    } else if (cmd === 'szene' || cmd === 'scene') {
+      // Ankunftsszene sofort abspielen: 1–5 oder ohne Zahl zufällig
+      const n = Number(arg);
+      if (arg && !(n >= 1 && n <= SCENE_NAMES.length)) { say('/szene <' + SCENE_NAMES.map((s, i) => `${i + 1}=${s}`).join(' · ') + '>'); return; }
+      say(this.scenes.startFor(p, arg ? n - 1 : undefined));
     } else if (cmd === 'fahndung' || cmd === 'wanted') {
       p.wanted = Math.max(0, Math.min(3, Number(arg) || 0)); p.searchT = 0;
     } else if (cmd === 'rennen' || cmd === 'race') {
@@ -654,7 +678,7 @@ export class WorldRoom {
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel>');
+      say('Dev-Befehle: /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /szene <1-5> · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel>');
     }
   }
 
@@ -1267,6 +1291,7 @@ export class WorldRoom {
     this.updateWorkshops(dt);
     this.updatePlayers(dt);
     this.hunt.update(dt);
+    this.scenes.update(dt);
     this.police.update(dt);
     this.quests.update(dt);
     this.races.update(dt);
@@ -1289,7 +1314,8 @@ export class WorldRoom {
         const hit = boxCircle(c, v.sim.prof, pawn.x, pawn.z, PAWN_RADIUS);
         if (!hit) continue;
         const speed = Math.hypot(c.vx, c.vz);
-        if (speed > 4 && pawn.rt <= 0) {
+        // Spawnschutz/Ankunftsszene: unverwundbare Spieler werden nur weggeschoben, nicht umgefahren
+        if (speed > 4 && pawn.rt <= 0 && !(player && player.invuln > 0)) {
           const up = 3 + speed * 0.18;
           const k = Math.min(1.1, 0.7 + speed * 0.01);
           if (ped) {
@@ -1427,7 +1453,7 @@ export class WorldRoom {
       this.hurt(o, oc.x - nx * o.sim.prof.width / 2, oc.y, oc.z - nz * o.sim.prof.width / 2, nx, 0, nz, 12 * k + 4);
     }
     for (const p of this.players.values()) {
-      if (p.vehicleId >= 0) continue;
+      if (p.vehicleId >= 0 || p.invuln > 0) continue; // Spawnschutz: kein Umwerfen
       const dx = p.pawn.x - c.x, dz = p.pawn.z - c.z, dist = Math.hypot(dx, dz);
       if (dist < R) {
         knockPawn(p.pawn, (dx / (dist || 1)) * 9 * (1 - dist / R), (dz / (dist || 1)) * 9 * (1 - dist / R), 7, 2);
@@ -1533,7 +1559,8 @@ export class WorldRoom {
     for (const ped of this.peds.peds.values()) {
       const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
       // Kurzzeitgedächtnis: Spieler, den der NPC ängstlich im Blick behält (Kopfdrehung rechnet der Client)
-      if (ped.mind?.fear) tup.push(ped.mind.fear.pid);
+      if (ped.mind?.fear || ped.wpn !== undefined) tup.push(ped.mind?.fear?.pid ?? -1);
+      if (ped.wpn !== undefined) tup.push(ped.wpn);
       pedStr.set(ped.id, JSON.stringify(tup));
     }
     const propStr = new Map<number, string>();
