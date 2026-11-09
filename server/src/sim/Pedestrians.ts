@@ -3,6 +3,9 @@
 // und laufen vor schnellen Fahrzeugen weg.
 import { NPC_DENSITY, OUTFIT_COLORS } from '../../../shared/src/constants';
 import { dist2 } from '../../../shared/src/math';
+import { archetypeOf, ARCH_INDEX } from '../../../shared/src/npc/archetypes';
+import { Act, type ScenarioId } from '../../../shared/src/npc/scenarios';
+import { hasPopTable } from '../../../shared/src/npc/population';
 import { knockPawn, stepPawn } from '../../../shared/src/sim/movement';
 import { offsetPolyline, type Vec2 } from '../../../shared/src/world/geometry';
 import { drivablePath } from '../../../shared/src/world/roads';
@@ -14,7 +17,10 @@ const PED_HP = 30;
 const PED_COUNT = Math.round(56 * NPC_DENSITY);
 
 /** Ein Gehweg = eine Straßenseite einer Kante. */
-interface Walkway { edge: RoadEdge; side: 1 | -1; pts: Vec2[] }
+export interface Walkway { edge: RoadEdge; side: 1 | -1; pts: Vec2[]; /** Viertelname ('' = keines) */ district: string }
+
+/** Laufendes Szenario eines Passanten (Smart Object oder frei). obj = -1: freies Szenario. */
+export interface PedScenario { id: ScenarioId; obj: number; slot: number; t: number; dur: number }
 
 export interface Ped {
   id: number;
@@ -52,13 +58,23 @@ export interface Ped {
   shotCd: number;
   think: number;
   wx: number; wz: number;
+  /** Archetyp (Index in ARCHETYPES, -1 = klassischer Passant ohne Archetyp) und Animations-ID (Act). */
+  arch: number;
+  act: number;
+  /** Gehtempo in m/s */
+  spd: number;
+  /** Von der Population-Steuerung verwaltet (spawnt/despawnt nach Spieler-Umkreis). */
+  pop: boolean;
+  /** Sekunden seit dem Spawn (Population tauscht alte NPCs außerhalb der Sicht aus). */
+  age: number;
+  scn: PedScenario | null;
 }
 
 export interface Threat { x: number; z: number; speed: number }
 
 export class Pedestrians {
   readonly peds = new Map<number, Ped>();
-  private walkways: Walkway[] = [];
+  walkways: Walkway[] = [];
   /** Gehwege je Knoten (Anfang oder Ende der Kante liegt am Knoten). */
   private byNode = new Map<number, Walkway[]>();
 
@@ -67,7 +83,9 @@ export class Pedestrians {
       if (e.sidewalk <= 0 || e.len - e.trimA - e.trimB < 8) continue;
       const center = drivablePath(e, true);
       for (const side of [1, -1] as const) {
-        const w: Walkway = { edge: e, side, pts: offsetPolyline(center, side * (e.width / 2 + e.sidewalk / 2)) };
+        const mid = e.pts[Math.floor(e.pts.length / 2)];
+        const district = map.districtAt(mid[0], mid[1])?.name ?? '';
+        const w: Walkway = { edge: e, side, pts: offsetPolyline(center, side * (e.width / 2 + e.sidewalk / 2)), district };
         this.walkways.push(w);
         for (const n of [e.a, e.b]) {
           let l = this.byNode.get(n);
@@ -81,6 +99,7 @@ export class Pedestrians {
     for (let i = 0; i < PED_COUNT; i++) {
       for (let tries = 0; tries < 20; tries++) {
         const w = this.walkways[Math.floor(Math.random() * this.walkways.length)];
+        if (hasPopTable(w.district)) continue; // Population Tables übernehmen dieses Viertel
         const p = w.pts[Math.floor(Math.random() * w.pts.length)];
         if (map.zoneAt(p[0], p[1]) !== Zone.PortCoralia && Math.random() < 0.6) continue;
         const ped = this.add(p[0], p[1], w);
@@ -97,9 +116,56 @@ export class Pedestrians {
       walk, dir: 1, idx: 0, wait: Math.random() * 3, flee: 0, fdx: 0, fdz: 0, ttl: Infinity,
       h: 0, vx: 0, vy: 0, vz: 0, rt: 0, angry: 0, hp: PED_HP, cop: 0,
       ext: false, gang: '', tag: '', run: 0, hostile: false, tgt: 'players', provoked: 0, provokedBy: 0, home: { x, z }, shotCd: 0, think: 0, wx: x, wz: z,
+      arch: -1, act: 0, spd: STROLL_SPEED, pop: false, age: 0, scn: null,
     };
     this.peds.set(ped.id, ped);
     return ped;
+  }
+
+  /** Passant mit Archetyp, von der Population gesteuert. walk = null: Szenario-Figur (steht, bis das Szenario endet). */
+  spawnManaged(x: number, z: number, walk: Walkway | null, arch: number, a = Math.random() * Math.PI * 2): Ped {
+    const ped = this.add(x, z, walk);
+    const def = archetypeOf(arch);
+    ped.arch = arch; ped.pop = true; ped.a = a;
+    ped.spd = def.speed * (0.9 + Math.random() * 0.2);
+    ped.color = def.shirts ? def.shirts[Math.floor(Math.random() * def.shirts.length)] : ped.color;
+    ped.wait = walk ? Math.random() * 2 : 0;
+    ped.act = this.walkAct(arch);
+    ped.dir = Math.random() < 0.5 ? 1 : -1;
+    if (walk) ped.idx = nearestIdx(walk, x, z);
+    return ped;
+  }
+
+  /** Animation beim normalen Gehen (Jogger, Hundebesitzer) */
+  walkAct(arch: number): number {
+    const id = archetypeOf(arch).id;
+    return id === 'jogger' ? Act.Jog : id === 'dogwalker' ? Act.Dog : Act.None;
+  }
+
+  /** Szenario beginnen: Figur steht auf (x, z) mit Blick a und führt `act` aus. */
+  startScenario(p: Ped, sc: PedScenario, act: number, x: number, z: number, a: number) {
+    p.scn = sc; p.act = act; p.walk = null; p.x = x; p.z = z; p.a = a;
+    p.wx = x; p.wz = z; p.wait = 0; p.flee = 0;
+  }
+
+  /** Szenario beenden: Figur läuft auf dem nächsten Gehweg weiter. */
+  endScenario(p: Ped) {
+    p.scn = null;
+    p.age = Math.max(p.age, 50); // wer fertig ist, geht bald
+    p.act = this.walkAct(p.arch);
+    const w = this.nearestWalkway(p.x, p.z);
+    if (w) { p.walk = w; p.idx = nearestIdx(w, p.x, p.z); p.dir = Math.random() < 0.5 ? 1 : -1; }
+    else p.ttl = 4;
+  }
+
+  nearestWalkway(x: number, z: number): Walkway | null {
+    let best: Walkway | null = null, bd = 400;
+    for (const w of this.walkways) {
+      const m = w.pts[Math.floor(w.pts.length / 2)];
+      if (Math.abs(m[0] - x) > w.edge.len || Math.abs(m[1] - z) > w.edge.len) continue;
+      for (const q of w.pts) { const d = dist2(q[0], q[1], x, z); if (d < bd) { bd = d; best = w; } }
+    }
+    return best;
   }
 
   /** Ein NPC-Fahrer wurde aus seinem Auto "überredet" und rennt davon. */
@@ -144,6 +210,7 @@ export class Pedestrians {
   /** Von einem Fahrzeug erfasst: Comic-Flug, danach flüchten. */
   knock(p: Ped, vx: number, vz: number, up: number) {
     knockPawn(p, vx, vz, up, 1.6);
+    if (p.scn) { p.scn = null; p.act = 0; }
     const l = Math.hypot(vx, vz) || 1;
     p.fdx = vx / l; p.fdz = vz / l;
     p.angry = 0;
@@ -153,6 +220,7 @@ export class Pedestrians {
   hit(p: Ped, dmg: number, dx: number, dz: number): boolean {
     p.hp -= dmg;
     const dead = p.hp <= 0;
+    if (p.scn) { p.scn = null; p.act = 0; }
     knockPawn(p, dx * (dead ? 5 : 2), dz * (dead ? 5 : 2), dead ? 5 : 2, dead ? 2.2 : 0.7);
     p.fdx = dx; p.fdz = dz; p.angry = 0;
     return dead;
@@ -209,6 +277,15 @@ export class Pedestrians {
         }
       }
 
+      if (p.scn) {
+        if (p.flee > 0) this.endScenario(p); // Gefahr: Szenario abbrechen, flüchten
+        else {
+          p.scn.t -= dt;
+          if (p.scn.t <= 0) this.endScenario(p);
+          continue;
+        }
+      }
+
       if (p.flee > 0) {
         p.flee -= dt;
         stepPawn(this.map, p, p.fdx, -p.fdz, 0, dt, FLEE_SPEED);
@@ -227,7 +304,7 @@ export class Pedestrians {
           }
         } else {
           const d = Math.hypot(dx, dz);
-          const stuck = stepPawn(this.map, p, dx / d, -dz / d, 0, dt, STROLL_SPEED);
+          const stuck = stepPawn(this.map, p, dx / d, -dz / d, 0, dt, p.spd);
           if (stuck) { p.dir = (p.dir * -1) as 1 | -1; p.idx = Math.max(0, Math.min(p.walk.pts.length - 1, p.idx + p.dir)); }
         }
       }
@@ -246,3 +323,10 @@ function endDist(w: Walkway, node: number, p: Ped) {
   const q = w.edge.a === node ? w.pts[0] : w.pts[w.pts.length - 1];
   return Math.hypot(q[0] - p.x, q[1] - p.z);
 }
+
+function nearestIdx(w: Walkway, x: number, z: number): number {
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < w.pts.length; i++) { const d = dist2(w.pts[i][0], w.pts[i][1], x, z); if (d < bd) { bd = d; best = i; } }
+  return best;
+}
+export { ARCH_INDEX };

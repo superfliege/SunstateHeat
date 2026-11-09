@@ -39,6 +39,7 @@ import { Panels } from '../ui/Panels';
 import { WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { PostFX, type GfxSettings } from '../render/PostFX';
 import { PropsView } from '../render/PropsView';
+import { SmartObjectsView } from '../render/SmartObjectsView';
 import { Sky } from '../render/Sky';
 import { VehicleFx } from '../render/VehicleFx';
 import { WorldView } from '../render/WorldView';
@@ -82,6 +83,7 @@ export class Game {
   private views: EntityViews;
   private props: PropsView;
   private features: FeaturesView;
+  private smartObjects: SmartObjectsView;
   private fx: VehicleFx;
   private input = new Input();
   private predictor: Predictor;
@@ -143,6 +145,7 @@ export class Game {
     this.views = new EntityViews(this.map);
     this.props = new PropsView(this.map);
     this.features = new FeaturesView(this.map);
+    this.smartObjects = new SmartObjectsView(this.map);
     this.fx = new VehicleFx(this.map, vehicleMat);
     this.shops = generateShops(this.map);
     this.stores = new StoresView(this.map, this.shops);
@@ -153,7 +156,7 @@ export class Game {
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
     this.panels.onOpenChange = (open) => { this.input.blocked = open; if (open) { this.input.clear(); this.input.fire = false; } this.sfx.playGroup(open ? 'uiOpen' : 'uiClose', 0.5, 0, 0); };
     this.particles = new Particles(this.map);
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.applyGfx();
@@ -719,6 +722,7 @@ export class Game {
       this.views.setPed({
         id: db[0], x: lerp(da[1], db[1], t), z: lerp(da[2], db[2], t), a: lerpAngle(da[3], db[3], t),
         color: db[4], running: db[5] === 1 || db[5] >= 3, angry: db[5] === 2, cop: db[5] === 3, gang: db[5] === 4, h: lerp(da[6], db[6], t), ragdoll: db[7] === 1,
+        arch: db[8] ?? -1, act: db[9] ?? 0,
       }, dt);
     }
 
