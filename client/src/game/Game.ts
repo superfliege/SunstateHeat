@@ -459,7 +459,11 @@ export class Game {
         if (vol > 0.5) this.hitStop = HITSTOP_MAX;
         break;
       }
-      case 'bark': this.views.bark(ev[1] as number, ev[2] as number, ev[3] as number); break;
+      case 'bark': {
+        const b = this.views.bark(ev[1] as number, ev[2] as number, ev[3] as number);
+        if (b) this.sfx.murmur(b, ev[1] as number, b.len); // Gemurmel zur Sprechblase
+        break;
+      }
       case 'honk': {
         const r = this.recs.get(ev[1] as number);
         if (r) r.hornUntil = this.clock + 0.35 + Math.random() * 0.3;
@@ -698,7 +702,8 @@ export class Game {
     this.phonesView.update(dt); this.questMarkers.update(dt);
     // Linienstärke: mit dem Zoom dünner, mit der Auflösung dicker (Referenz 720p)
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
-    this.post.update(this.sky.mood, this.sky.night);
+    const dusk = Math.max(0, 1 - Math.abs(this.day - 0.74) / 0.08, 1 - Math.abs(this.day - 0.27) / 0.06);
+    this.post.update(this.sky.mood, this.sky.night, dusk);
     this.rig.camera.getWorldDirection(tmpV3);
     this.sfx.frame(rawDt, this.rig.target.x, myY, this.rig.target.z, tmpV3.x, tmpV3.z);
     this.ownCarAudio(rawDt);
@@ -862,7 +867,7 @@ export class Game {
       const da = a.peds.get(db[0]) ?? db;
       this.views.setPed({
         id: db[0], x: lerp(da[1], db[1], t), z: lerp(da[2], db[2], t), a: lerpAngle(da[3], db[3], t),
-        color: db[4], running: db[5] === 1 || db[5] >= 3, angry: db[5] === 2, cop: db[5] === 3, gang: db[5] === 4, h: lerp(da[6], db[6], t), ragdoll: db[7] === 1,
+        color: db[4], running: db[5] === 1 || db[5] >= 3, angry: db[5] === 2, cop: db[5] === 3, gang: db[5] >= 4, gangId: db[5] >= 4 ? db[5] - 4 : -1, h: lerp(da[6], db[6], t), ragdoll: db[7] === 1,
         arch: db[8] ?? -1, act: db[9] ?? 0, fear: db[10] ?? -1,
       }, dt);
     }

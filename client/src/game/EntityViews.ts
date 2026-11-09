@@ -24,6 +24,7 @@ import { createKenneyCharacter, type KenneyCharacter } from '../render/kenneyCha
 import type { RagdollFrame } from '../render/ragdoll';
 import { archetypeOf } from '../../../shared/src/npc/archetypes';
 import { Act } from '../../../shared/src/npc/scenarios';
+import { GANGS, GANG_IDS } from '../../../shared/src/gangs';
 import { BARK_DURATION, barkText } from '../../../shared/src/npc/barks';
 import { wrapAngle } from '../../../shared/src/math';
 
@@ -37,7 +38,7 @@ export interface VehicleViewState {
   /** Bits geplatzter Reifen (Rad läuft auf der Felge) */
   tires?: number;
 }
-export interface PedState { id: number; x: number; z: number; a: number; color: number; running: boolean; h: number; ragdoll: boolean; angry: boolean; cop: boolean; gang: boolean;
+export interface PedState { id: number; x: number; z: number; a: number; color: number; running: boolean; h: number; ragdoll: boolean; angry: boolean; cop: boolean; gang: boolean; /** Gang-Index (GANG_IDS), -1 = keine */ gangId?: number;
   /** Archetyp-Index (-1 = klassischer Passant) und Animations-ID (Act) vom Server */
   arch?: number; act?: number;
   /** Spieler, den der NPC nach einem Vorfall ängstlich beobachtet (-1 = keiner) */
@@ -86,7 +87,7 @@ const lerpAngleRad = (from: number, to: number, t: number) => from + wrapAngle(t
 /** Comic-Sprechblase (Bark) über einem NPC. */
 interface Bubble { sprite: THREE.Sprite; t: number; w: number; h: number }
 /** Höchstens so viele Sprechblasen gleichzeitig sichtbar (die nächsten zur Kamera). */
-const MAX_BUBBLES = 4;
+const MAX_BUBBLES = 7;
 const SWING_TIME = 0.28, KICK_TIME = 0.12;
 /** Ragdoll: Höhe des Körperschwerpunkts über den Füßen (aufrecht) bzw. liegend, Dauer des Aufstehens */
 const RAG_CENTER = 1.12, RAG_LIE = 0.24, GETUP_TIME = 0.95;
@@ -458,12 +459,12 @@ export class EntityViews {
   }
 
   /** Figur im Stil der Gegend (Quaternius) oder prozeduraler Ersatz. */
-  private createFigure(id: number, outfit: number, x: number, z: number, player: boolean, role = 0, arch = -1): Figure {
+  private createFigure(id: number, outfit: number, x: number, z: number, player: boolean, role = 0, arch = -1, gangColor = -1): Figure {
     const cop = role === 1, gang = role === 2;
     const district = this.map.districtAt(x, z);
     const mood = moodFor(this.map.zoneAt(x, z), district?.style ?? null);
     const style = cop ? 'business' : player ? 'casual' : styleForMood(mood, ((id * 2654435761) >>> 0) / 4294967296);
-    const shirt = cop ? 0x2850c8 : player || gang ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined;
+    const shirt = cop ? 0x2850c8 : gang && gangColor >= 0 ? gangColor : player || gang ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined;
     // Kenney Animated Characters (bevorzugt), sonst Quaternius-Packs, sonst prozedural
     if (arch >= 0 && !cop && !gang && !player) {
       // Archetyp-Outfit: Skin-Set und Oberteilfarbe aus der Archetyp-Tabelle
@@ -478,10 +479,10 @@ export class EntityViews {
   }
 
   // ------------------------------------------------------------------ Figuren
-  private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0) {
+  private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0, gangColor = -1) {
     let c = map.get(id);
     if (!c) {
-      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch), lastX: x, lastZ: z, seen: true, rag: null, anchor: new THREE.Vector3(x, 0, z), held: null, heldIdx: -1, swing: 0, kick: 0, arch };
+      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch, gangColor), lastX: x, lastZ: z, seen: true, rag: null, anchor: new THREE.Vector3(x, 0, z), held: null, heldIdx: -1, swing: 0, kick: 0, arch };
       map.set(id, c);
       this.group.add(c.model.root);
     }
@@ -704,8 +705,24 @@ export class EntityViews {
     }
   }
 
+  /** Gang-Kennzeichnung: farbiges Namensschild über dem Kopf (Gangfarbe), nur in Sichtweite. */
+  private updateGangTag(c: CharView, s: PedState) {
+    const gi = s.gang ? s.gangId ?? -1 : -1;
+    if (gi < 0) return;
+    if (!c.label) {
+      const g = GANGS[GANG_IDS[gi]];
+      c.label = makeLabel('◆ ' + g.name, g.color);
+      this.group.add(c.label);
+    }
+    const d = Math.hypot(c.anchor.x - this.focus.x, c.anchor.z - this.focus.z);
+    c.label.visible = d < 48;
+    c.label.position.set(c.anchor.x, c.anchor.y + 3.1, c.anchor.z);
+    c.label.scale.set(5.2, 1.3, 1);
+  }
+
   setPed(s: PedState, dt: number) {
-    const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0);
+    const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0, s.gang && (s.gangId ?? -1) >= 0 ? GANGS[GANG_IDS[s.gangId!]].color : -1);
+    this.updateGangTag(c, s);
     this.updateDog(c, s);
     this.updateLook(c, s);
     // Schimpfender Fahrer: Comic-Sprechblase (nicht gleichzeitig mit einem Bark)
@@ -746,17 +763,18 @@ export class EntityViews {
   }
 
   /** Bark eines NPCs anzeigen (Text aus der Bark-Tabelle nach Archetyp). */
-  bark(pedId: number, sit: number, variant: number) {
+  bark(pedId: number, sit: number, variant: number): { x: number; y: number; z: number; len: number } | null {
     const c = this.peds.get(pedId);
-    if (!c) return;
+    if (!c) return null;
     const text = barkText(sit, c.arch, variant);
-    if (!text) return;
+    if (!text) return null;
     this.removeBubble(pedId);
     if (c.bubble) { this.group.remove(c.bubble); c.bubble.material.map?.dispose(); c.bubble.material.dispose(); c.bubble = undefined; }
     const b = makeBarkBubble(text);
     b.sprite.scale.set(0.01, 0.01, 1);
     this.group.add(b.sprite);
     this.bubbles.set(pedId, { sprite: b.sprite, t: 0, w: b.w, h: b.h });
+    return { x: c.anchor.x, y: c.anchor.y + 1.5, z: c.anchor.z, len: text.length };
   }
 
   private removeBubble(id: number) {

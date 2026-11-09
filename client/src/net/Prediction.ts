@@ -108,7 +108,7 @@ export class Predictor {
   private apply(cmd: InputCmd, dt: number, replay: boolean) {
     const [, ax, ay, buttons] = cmd;
     const sim = this.sim;
-    if (!this.inVehicle || !sim) { stepPawn(this.map, this.pawn, ax, ay, buttons, dt, undefined, this.footBodies()); return; }
+    if (!this.inVehicle || !sim) { stepPawn(this.map, this.pawn, ax, ay, buttons, dt, undefined, this.footBodies(), true); return; }
     const out = this.out;
     clearStepOut(out);
     stepSimVehicle(this.map, sim, ax, ay, buttons, dt, out);

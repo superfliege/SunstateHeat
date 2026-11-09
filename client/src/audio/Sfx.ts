@@ -104,6 +104,51 @@ export class Sfx {
     v.setVolume(1, 0.001);
   }
 
+  /**
+   * „Gemurmel“: unverständliche Silben (Formant-gefilterte Sägezahn-Stimme) zu einer Sprechblase –
+   * Länge nach Textlänge, Tonhöhe und Vokale je NPC (seed) stabil. Leise, nur in der Nähe hörbar.
+   */
+  murmur(pos: Vec3, seed: number, textLen: number) {
+    const e = this.engine;
+    if (!e) return;
+    const v = e.voice({ name: 'npc.murmur', bus: 'voice', pos, spatial: SPATIAL.voice, priority: 0.2 }, 1);
+    if (!v) return;
+    const ctx = e.ctx, t0 = ctx.currentTime + 0.02;
+    let s = (seed * 2654435761 + textLen * 97) >>> 0;
+    const rnd = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+    const base = 95 + ((seed * 37) % 100) * 1.5; // 95–245 Hz: tiefe bis hohe Stimme
+    const syl = Math.max(3, Math.min(10, Math.round(textLen / 3.2)));
+    const FORMANTS: [number, number][] = [[730, 1090], [530, 1840], [300, 2300], [570, 840], [320, 800]]; // a e i o u
+    const out = ctx.createGain();
+    out.gain.value = 0.55;
+    out.connect(v.input);
+    let t = t0;
+    for (let i = 0; i < syl; i++) {
+      const dur = 0.07 + rnd() * 0.07;
+      if (rnd() < 0.18) { t += 0.09 + rnd() * 0.08; continue; } // kurze Sprechpause
+      const f0 = base * (0.85 + rnd() * 0.4);
+      const [f1, f2] = FORMANTS[Math.floor(rnd() * FORMANTS.length)];
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f0, t);
+      osc.frequency.linearRampToValueAtTime(f0 * (0.9 + rnd() * 0.2), t + dur);
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.linearRampToValueAtTime(0.5, t + dur * 0.3);
+      env.gain.linearRampToValueAtTime(0.0001, t + dur);
+      for (const [f, q, g] of [[f1, 6, 1], [f2, 8, 0.5]] as const) {
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+        const gg = ctx.createGain(); gg.gain.value = g * 2.2;
+        osc.connect(bp).connect(gg).connect(env);
+      }
+      env.connect(out);
+      osc.start(t); osc.stop(t + dur + 0.02);
+      v.addSource(osc);
+      t += dur + 0.015 + rnd() * 0.03;
+    }
+    v.setVolume(0.22, 0.01);
+  }
+
   /** Text fürs Debug-Overlay (F3 → Audio). */
   debugText(): string {
     const e = this.engine;

@@ -12,12 +12,12 @@ import {
 import { clamp, dist2, mulberry32, r2, r3 } from '../../../shared/src/math';
 import { Btn, VehFlag, type ClientMsg, type GameEvent, type InputCmd, type PlayerStats, type PlayerTuple, type ServerMsg } from '../../../shared/src/protocol';
 import {
-  applyImpulse, boxCircle, clearStepOut, collideCars, dirToLocal, newStepOut, packCar, pitchRoll, placeCar, toLocal, toWorld,
+  applyImpulse, boxCircle, carInWater, clearStepOut, collideCars, dirToLocal, newStepOut, packCar, pitchRoll, placeCar, toLocal, toWorld,
   type CarCollision, type Impact,
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
 import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, TANK_VARIANT, variantInfo } from '../../../shared/src/sim/handling';
-import { carBody, findFootSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
+import { carBody, findFootSpot, findSwimSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
 import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, createPropBody, PROP_RESPAWN, PROP_RESPAWN_RANGE, stepPropBody, type PropBody, type PropHit } from '../../../shared/src/sim/props';
 import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent } from '../../../shared/src/sim/stunts';
@@ -34,7 +34,7 @@ import { TAXI_HUNT_ID } from '../../../shared/src/taxiHunt';
 import { Gangs, GANG_OUTFIT } from '../sim/Gangs';
 import { payphones, questLocations, type PhoneDef } from '../../../shared/src/questLocations';
 import { QUEST_BY_ID } from '../../../shared/src/questData';
-import type { GangId } from '../../../shared/src/gangs';
+import { GANG_IDS, type GangId } from '../../../shared/src/gangs';
 import { ITEMS, BACKPACK_SLOTS } from '../../../shared/src/items';
 import { generateShops, shopCatalog, storeToWorld, MECHANIC_RANGE, RESPRAY_PRICE, SHOP_SERVER_RANGE, type ShopDef } from '../../../shared/src/shops';
 import { HEAT, HEAT_LEVELS, MAX_WANTED, Police } from '../sim/Police';
@@ -465,7 +465,7 @@ export class WorldRoom {
       if (v) {
         v.buttons = buttons;
         this.physicsStep(v, cx, cy, buttons, p);
-      } else stepPawn(this.map, p.pawn, cx, cy, buttons, SIM_DT, undefined, bodies);
+      } else stepPawn(this.map, p.pawn, cx, cy, buttons, SIM_DT, undefined, bodies, true);
       p.lastSeq = seq;
     }
   }
@@ -488,6 +488,8 @@ export class WorldRoom {
         if (c) { spot = c; break; }
       }
       spot ??= findFootSpot(this.map, s.x, s.z, 9);
+      // Versunkenes Auto: im Wasser aussteigen und schwimmen
+      if (carInWater(this.map, s)) spot = findSwimSpot(this.map, s.x, s.z, 3) ?? spot;
       if (!spot) {
         p.conn.send({ t: 'notice', text: 'Hier kannst du nicht aussteigen – fahr näher ans Ufer.', kind: 'bad' });
         return;
@@ -1250,10 +1252,83 @@ export class WorldRoom {
     const c = v.sim.car;
     v.driver = DRIVER_NONE; v.buttons = 0;
     p.vehicleId = -1;
-    const spot = findFootSpot(this.map, c.x, c.z, 6) ?? { x: c.x, z: c.z };
+    const spot = (carInWater(this.map, c) ? findSwimSpot(this.map, c.x, c.z, 4) : findFootSpot(this.map, c.x, c.z, 6)) ?? { x: c.x, z: c.z };
     p.pawn = newPawn(spot.x, spot.z, c.a);
     knockPawn(p.pawn, c.vx * 0.8 * power, c.vz * 0.8 * power, 4 + Math.hypot(c.vx, c.vz) * 0.15, 1.9);
     this.emit(c.x, c.z, ['eject', p.id], v.id);
+  }
+
+  // ------------------------------------------------------------------ Aus dem Auto ziehen
+  private noticeTo(p: ServerPlayer, text: string, kind: 'info' | 'good' | 'bad') { p.conn.send({ t: 'notice', text, kind }); }
+  private pullT = new Map<number, number>();
+  private pullCd = new Map<number, number>();
+  private sinkNote = new Map<number, number>();
+
+  /**
+   * Polizisten und wütende Passanten laufen zum stehenden/langsamen Auto des Spielers und zerren
+   * den Fahrer heraus (nach ~1,1 s am Fahrzeug). Wer schnell fährt, kann nicht herausgezogen werden.
+   */
+  private updatePullOut(dt: number) {
+    for (const [k, t] of this.pullCd) { if (t - dt <= 0) this.pullCd.delete(k); else this.pullCd.set(k, t - dt); }
+    for (const p of this.players.values()) {
+      const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
+      if (!v || p.downT > 0 || isWaterVehicle(v.kind) || v.sim.variant === TANK_VARIANT || this.pullCd.has(p.id)) { this.pullT.delete(p.id); continue; }
+      if (this.races.frozen(p.id) || this.hunt.locked(p.id)) { this.pullT.delete(p.id); continue; }
+      const c = v.sim.car, speed = Math.hypot(c.vx, c.vz);
+      const reach = v.sim.prof.width / 2 + 1.7;
+      let puller: Ped | null = null, bestD = Infinity;
+      for (const ped of this.peds.peds.values()) {
+        if (ped.rt > 0 || ped.hp <= 0 || !(ped.cop === p.id || ped.angry > 0)) continue;
+        const d = Math.hypot(ped.x - c.x, ped.z - c.z);
+        if (d > 14 || d >= bestD) continue;
+        puller = ped; bestD = d;
+      }
+      if (!puller || speed > 4.5) { this.pullT.delete(p.id); continue; }
+      const angryOnly = puller.cop !== p.id;
+      if (angryOnly) { puller.angry = Math.max(puller.angry, 2); puller.wait = 1; puller.ttl = Math.max(puller.ttl, 8); }
+      const dx = c.x - puller.x, dz = c.z - puller.z;
+      if (bestD > reach) {
+        // hinlaufen (Polizisten laufen schon selbst, wütende Passanten übernehmen wir hier)
+        if (angryOnly) stepPawn(this.map, puller, dx / bestD, -dz / bestD, 0, dt, 5.5);
+        this.pullT.delete(p.id);
+        continue;
+      }
+      puller.a = Math.atan2(dx, dz);
+      const t = (this.pullT.get(p.id) ?? 0) + dt;
+      if (t < 1.1) { this.pullT.set(p.id, t); continue; }
+      this.pullT.delete(p.id);
+      this.pullCd.set(p.id, 4);
+      this.pullOut(p, v, puller, angryOnly);
+    }
+  }
+
+  private pullOut(p: ServerPlayer, v: ServerVehicle, puller: Ped, angry: boolean) {
+    const c = v.sim.car;
+    v.driver = DRIVER_NONE; v.buttons = 0; v.idleTime = 0;
+    p.vehicleId = -1;
+    const spot = (carInWater(this.map, c) ? findSwimSpot(this.map, c.x, c.z, 4) : findFootSpot(this.map, puller.x, puller.z, 4)) ?? { x: c.x, z: c.z };
+    p.pawn = newPawn(spot.x, spot.z, c.a);
+    const dx = spot.x - c.x, dz = spot.z - c.z, d = Math.hypot(dx, dz) || 1;
+    knockPawn(p.pawn, (dx / d) * 3.2, (dz / d) * 3.2, 3, 1.1);
+    this.emit(c.x, c.z, ['eject', p.id], v.id);
+    if (angry) {
+      this.hurtPlayer(p, 6);
+      puller.angry = 0; puller.wait = 0;
+      puller.flee = 3; puller.fdx = -dx / d; puller.fdz = -dz / d;
+      this.perception.bark(puller, 'scold');
+      this.noticeTo(p, 'Ein wütender Passant hat dich aus dem Auto gezerrt!', 'bad');
+    } else this.noticeTo(p, 'Die Polizei hat dich aus dem Auto gezerrt!', 'bad');
+  }
+
+  /** Versunkene Autos: Hinweis an den Fahrer (Motor ist aus, aussteigen und schwimmen). */
+  private updateSinking(dt: number) {
+    for (const [k, t] of this.sinkNote) { if (t - dt <= 0) this.sinkNote.delete(k); else this.sinkNote.set(k, t - dt); }
+    for (const p of this.players.values()) {
+      const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
+      if (!v || isWaterVehicle(v.kind) || !carInWater(this.map, v.sim.car) || this.sinkNote.has(p.id)) continue;
+      this.sinkNote.set(p.id, 12);
+      this.noticeTo(p, 'Dein Auto säuft ab! Steig aus (E) und schwimm ans Ufer.', 'info');
+    }
   }
 
   /** NPC-Fahrer steigt aus (wütend = bleibt kurz schimpfend stehen). */
@@ -1324,6 +1399,8 @@ export class WorldRoom {
     this.updatePlayers(dt);
     this.hunt.update(dt);
     this.police.update(dt);
+    this.updatePullOut(dt);
+    this.updateSinking(dt);
     this.quests.update(dt);
     this.races.update(dt);
     this.gangs.update(dt, this.isNight());
@@ -1630,7 +1707,7 @@ export class WorldRoom {
     const R2 = INTEREST * INTEREST;
     const pedStr = new Map<number, string>();
     for (const ped of this.peds.peds.values()) {
-      const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
+      const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 + Math.max(0, GANG_IDS.indexOf(ped.gang as GangId)) : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
       // Kurzzeitgedächtnis: Spieler, den der NPC ängstlich im Blick behält (Kopfdrehung rechnet der Client)
       if (ped.mind?.fear) tup.push(ped.mind.fear.pid);
       pedStr.set(ped.id, JSON.stringify(tup));

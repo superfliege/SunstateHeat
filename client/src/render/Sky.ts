@@ -79,7 +79,7 @@ export class Sky {
     s.camera.right = s.camera.top = SHADOW_EXTENT;
     s.camera.near = 1; s.camera.far = 400;
     s.bias = -0.0006;
-    s.normalBias = 0.04;
+    s.normalBias = 0.06;
     s.radius = 3; // weiche Kanten (PCFSoft)
     s.camera.updateProjectionMatrix();
   }

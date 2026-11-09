@@ -39,7 +39,7 @@ export class CameraRig {
   shakeEnabled = true;
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(BASE_FOV, aspect, 1, 900);
+    this.camera = new THREE.PerspectiveCamera(BASE_FOV, aspect, 3, 700);
   }
 
   get target() { return this.focus; }

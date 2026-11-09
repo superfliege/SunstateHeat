@@ -4,7 +4,7 @@
 import { WATER_LEVEL } from '../world/tiles';
 import { approach, approachAngle, clamp, wrapAngle } from '../math';
 import { Btn } from '../protocol';
-import { footSurface } from '../world/tiles';
+import { footSurface, Tile } from '../world/tiles';
 import type { WorldMap } from '../world/WorldMap';
 import { setYaw, type CarState } from './car';
 import { CELL } from '../constants';
@@ -24,12 +24,18 @@ export const newPawn = (x = 0, z = 0, a = 0): PawnState => ({ x, z, a, h: 0, vx:
 
 type SurfaceFn = (tile: number) => number;
 
+/** Schwimmen (nur echte Spieler): tiefes Wasser ist begehbar, aber langsam. */
+export const SWIM_FACTOR = 0.5;
+export function swimSurface(t: number): number {
+  return t === Tile.WATER ? SWIM_FACTOR : footSurface(t);
+}
+
 /**
  * Prüft 5 Punkte eines Kreises gegen unbegehbare Kacheln (und zu Fuß gegen Ladeneinrichtung).
  * Gebäude zählen exakt (gedrehtes Rechteck statt Kachel-Treppe, siehe world/collision.ts).
  */
 function blocked(map: WorldMap, x: number, z: number, r: number, surface: SurfaceFn): boolean {
-  const foot = surface === footSurface;
+  const foot = surface === footSurface || surface === swimSurface;
   // Ladenkacheln zählen zu Fuß nicht, dort gelten die exakten Wände (furniture)
   const solid = (px: number, pz: number) => {
     const cx = Math.floor(px / CELL), cz = Math.floor(pz / CELL);
@@ -99,8 +105,9 @@ export function knockPawn(p: PawnState, vx: number, vz: number, up: number, time
 /** Ein Simulationsschritt zu Fuß. ax/ay sind kamerabezogen (oben = Norden = -z). */
 export function stepPawn(
   map: WorldMap, p: PawnState, ax: number, ay: number, buttons: number, dt: number, speedOverride?: number,
-  bodies?: readonly Box[],
+  bodies?: readonly Box[], swim = false,
 ): boolean {
+  const surf = swim ? swimSurface : footSurface;
   if (p.rt > 0) {
     // Ragdoll: ballistisch, Abprallen am Boden, Reibung – Eingaben werden ignoriert
     p.rt -= dt;
@@ -112,7 +119,7 @@ export function stepPawn(
       const f = Math.max(0, 1 - 5 * dt);
       p.vx *= f; p.vz *= f;
     }
-    const res = moveWithCollision(map, p, p.x + p.vx * dt, p.z + p.vz * dt, PAWN_RADIUS, footSurface);
+    const res = moveWithCollision(map, p, p.x + p.vx * dt, p.z + p.vz * dt, PAWN_RADIUS, surf);
     if (res) { p.vx *= -0.3; p.vz *= -0.3; }
     // Gegen Fahrzeuge: abprallen statt hindurchfliegen (nur in Bodennähe)
     if (p.h < 1.2) {
@@ -127,9 +134,10 @@ export function stepPawn(
   const len = Math.hypot(mx, mz);
   if (len < 0.15) { pushOutOfBodies(map, p, PAWN_RADIUS, bodies); return false; }
   if (len > 1) { mx /= len; mz /= len; }
-  const f = footSurface(map.tileAt(p.x, p.z)) || 1;
-  const speed = (speedOverride ?? (buttons & Btn.SPRINT ? SPRINT_SPEED : WALK_SPEED)) * f;
-  const res = moveWithCollision(map, p, p.x + mx * speed * dt, p.z + mz * speed * dt, PAWN_RADIUS, footSurface);
+  const f = surf(map.tileAt(p.x, p.z)) || 1;
+  const sprint = buttons & Btn.SPRINT && f >= 0.85; // im Wasser/Sumpf kein Sprint
+  const speed = (speedOverride ?? (sprint ? SPRINT_SPEED : WALK_SPEED)) * f;
+  const res = moveWithCollision(map, p, p.x + mx * speed * dt, p.z + mz * speed * dt, PAWN_RADIUS, surf);
   // Fahrzeuge sind fest: an ihnen entlanglaufen statt hindurch
   pushOutOfBodies(map, p, PAWN_RADIUS, bodies);
   p.a = approachAngle(p.a, Math.atan2(mx, mz), 14 * dt);
@@ -175,6 +183,24 @@ export function stepWater(map: WorldMap, def: VehicleDef, v: CarState, ax: numbe
 /** Kann eine Figur hier stehen (keine Wand, kein Gebäude, keine Ladeneinrichtung)? */
 export function footFree(map: WorldMap, x: number, z: number): boolean {
   return !blocked(map, x, z, PAWN_RADIUS, footSurface);
+}
+
+/** Kann ein Schwimmer hier sein (Wasser oder Land, keine Wand)? */
+export function swimFree(map: WorldMap, x: number, z: number): boolean {
+  return !blocked(map, x, z, PAWN_RADIUS, swimSurface);
+}
+
+/** Sucht eine Position zum Aussteigen im Wasser (Schwimmer). */
+export function findSwimSpot(map: WorldMap, x: number, z: number, maxR = 6): { x: number; z: number } | null {
+  if (swimFree(map, x, z)) return { x, z };
+  for (let r = 1.5; r <= maxR; r += 1.5) {
+    for (let k = 0; k < 12; k++) {
+      const ang = (k / 12) * Math.PI * 2;
+      const px = x + Math.cos(ang) * r, pz = z + Math.sin(ang) * r;
+      if (swimFree(map, px, pz)) return { x: px, z: pz };
+    }
+  }
+  return null;
 }
 
 /** Sucht eine begehbare Position neben (x, z), z. B. zum Aussteigen. */
