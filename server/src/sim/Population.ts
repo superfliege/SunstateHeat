@@ -4,7 +4,7 @@
 // (Smart-Object-Aktion oder freies Szenario). Fern (> POP_RADIUS) existieren keine verwalteten NPCs.
 import { ARCH_INDEX, archetypeOf } from '../../../shared/src/npc/archetypes';
 import {
-  DAY_PART_NAMES, MAX_PEDS_PER_PLAYER, POP_DENSITY_FACTOR, POP_RADIUS, dayPartOf, hasPopTable, pickArchetype, popTable,
+  DAY_PART_NAMES, MAX_PEDS_PER_PLAYER, POP_RADIUS, dayPartOf, hasPopTable, pickArchetype, popTable,
   type DayPart, type PopTable, type Weather,
 } from '../../../shared/src/npc/population';
 import {
@@ -122,7 +122,7 @@ export class Population {
       if (!t) continue;
       for (let i = 1; i < w.pts.length; i++) {
         const a = w.pts[i - 1], b = w.pts[i];
-        if (dist2((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, pl.x, pl.z) < POP_RADIUS * POP_RADIUS) sum += Math.hypot(b[0] - a[0], b[1] - a[1]) * t.density * POP_DENSITY_FACTOR / 100;
+        if (dist2((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, pl.x, pl.z) < POP_RADIUS * POP_RADIUS) sum += Math.hypot(b[0] - a[0], b[1] - a[1]) * t.density / 100;
       }
     }
     return Math.round(sum);
