@@ -180,7 +180,7 @@ export class WorldRoom {
       stepPhysics: (v, ax, ay, buttons) => this.physicsStep(v, ax, ay, buttons, null),
       driverOut: (v, angry) => this.npcDriverOut(v, angry),
       event: (ev) => { const v = this.vehicles.get(ev[1] as number); if (v) this.emit(v.sim.car.x, v.sim.car.z, ev, v.id); },
-    }, Math.round(24 * NPC_DENSITY));
+    }, Math.round(44 * NPC_DENSITY), Math.round(9 * NPC_DENSITY)); // Stadt viel dichter als das Umland
     this.shops = generateShops(map);
     this.police = new Police({
       map, players: this.players, vehicles: this.vehicles, peds: this.peds,
