@@ -31,7 +31,7 @@ export const DAY_LENGTH_MS = 8 * 60 * 1000;
  * Bevölkerungsdichte der Welt. Multipliziert Fußgänger, fahrenden Verkehr und die
  * geparkten Autos der Kartengenerierung (1 = Basiswert des Prototyps).
  */
-export const NPC_DENSITY = 5;
+export const NPC_DENSITY = 10;
 
 /** Radius, in dem man mit E in ein Fahrzeug einsteigen kann. */
 export const ENTER_RADIUS = 4.5;

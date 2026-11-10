@@ -29,7 +29,9 @@ export interface PopTable {
 }
 
 /** Maximal aktive Passanten pro Spieler-Umkreis (spec 10.1). */
-export const MAX_PEDS_PER_PLAYER = 40;
+export const MAX_PEDS_PER_PLAYER = 80;
+/** Faktor auf die Passanten-Dichte der Tabellen (verdoppelte Bevölkerung). */
+export const POP_DENSITY_FACTOR = 2;
 /** Radius des Spieler-Umkreises in m (Detailstufe Nah + Mittel; Fern existiert nicht). */
 export const POP_RADIUS = 105;
 
