@@ -19,6 +19,8 @@ import type { GpuTimer } from '../perf/Profiler';
 
 /** Ebene für Bildschirm-Beschriftungen (Namen, Sprechblasen): werden nach der Nachbearbeitung scharf gezeichnet. */
 export const OVERLAY_LAYER = 1;
+/** Ebene für Objekte, die NUR in die Schattentextur gezeichnet werden (vereinfachte Schattenwerfer). */
+export const SHADOW_ONLY_LAYER = 2;
 
 export interface GfxSettings {
   retro: boolean; shadows: boolean; outlines: boolean; bloom: boolean;
@@ -146,6 +148,16 @@ export class PostFX {
       uExposure: { value: 1 }, uSaturation: { value: 1 }, uWarmth: { value: 0 }, uVignette: { value: 0.28 }, uDusk: { value: 0 }, uNight: { value: 0 },
     });
     this.black.needsUpdate = true;
+    // Schattenpass: Ebene SHADOW_ONLY_LAYER zuschalten (Hauptpass sieht sie nicht). three.js prüft die
+    // Ebenen der Hauptkamera auch beim Schattenwerfen; die Renderliste des Hauptpasses steht da schon.
+    const sm = renderer.shadowMap as THREE.WebGLShadowMap & { render: (...a: unknown[]) => void };
+    const shadowRender = sm.render.bind(sm);
+    sm.render = (...a: unknown[]) => {
+      const c = a[2] as THREE.Camera;
+      c.layers.enable(SHADOW_ONLY_LAYER);
+      shadowRender(...a);
+      c.layers.disable(SHADOW_ONLY_LAYER);
+    };
   }
 
   /** GPU-Zeit je Pass messen (Schatten, Szene, Bloom, Post, Overlay). */

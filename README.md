@@ -46,7 +46,7 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 | F3 | Debug-Overlay mit Tabs (Tab-Taste wechselt): **Karte** (Straßengraph, Blöcke, Grundstücke, Viertel – Ziehen/Mausrad, C = Spieler, 1–6 = Ebenen) **Fahrzeug** (Tempo, Drehzahl, Gang, Federweg/Last/Schlupf je Rad, Kraftpfeile am Auto) und **NPC** (Dev: Archetyp, Absichtskette, Bedürfnisse, Smart Object, Reaktion, wahrgenommene Ereignisse als Kreise; Knöpfe zum Erzwingen von Tageszeit/Wetter) |
 | F4 | Nur Dev-Modus: Live-Tuning-Panel (Handling-Werte, Arcade-Hilfen, Kamera; Export als JSON) |
 | F7 | Bildschirmwackeln an/aus |
-| F8 | Grafikqualität: hoch / mittel (ohne Echtzeitschatten) / niedrig (ohne Schatten, Umrisslinien, Bloom) |
+| F8 | Grafikqualität: Hoch / Mittel (Schatten 1024², Szene max. Pixel-Ratio 1,0 – Standard auf integrierter Grafik) / Niedrig (ohne Schatten, 75 % Render-Scale). Inhalte, Umrisslinien und Bloom bleiben in allen Stufen; dynamische Auflösung hält ~60 FPS. Auch per `?preset=mittel`. Details: `docs/performance-report.md` |
 | F9 | Retro-Modus: Render-Scale 0,6 mit harter Pixel-Hochskalierung (auch per `?retro=1`) |
 | Gamepad | Linker Stick, RT/LT = Gas/Rückwärts, A = Einsteigen, B = Sprint/Nitro, X = Handbremse, Y = Hupe; Vibration nach Schlupf und Aufprall; Luftfahrzeuge: RB/LB = Steigen/Sinken, rechter Stick = seitwärts |
 

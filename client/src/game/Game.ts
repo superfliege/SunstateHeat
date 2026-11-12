@@ -908,7 +908,20 @@ export class Game {
     const progs = this.renderer.info.programs;
     if (progs && progs.length !== this.programCount) {
       if (this.programCount > 0 && (import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
-        console.warn(`[gfx] ${progs.length - this.programCount} Shader-Programm(e) nach dem Aufwärmen kompiliert:`, progs.slice(this.programCount).map((p) => (p as unknown as { name: string; cacheKey: string }).name + ' ' + (p as unknown as { cacheKey: string }).cacheKey.slice(0, 160)));
+        // Verursacher suchen: Objekte, deren Material eines der neuen Programme benutzt
+        const fresh = new Set(progs.slice(this.programCount));
+        const props = (this.renderer as unknown as { properties: { get(m: THREE.Material): { currentProgram?: unknown } } }).properties;
+        const who: string[] = [];
+        this.scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+          for (const mat of m ? (Array.isArray(m) ? m : [m]) : []) {
+            if (fresh.has(props.get(mat).currentProgram as never)) {
+              let top: THREE.Object3D = o; while (top.parent && top.parent !== this.scene) top = top.parent;
+              who.push(`${mat.type}${mat.name ? ' ' + mat.name : ''} an ${o.type} „${o.name}“ in „${top.name}“`);
+            }
+          }
+        });
+        console.warn(`[gfx] ${fresh.size} Shader-Programm(e) nach dem Aufwärmen kompiliert:`, [...new Set(who)].slice(0, 6).join(' | ') || [...fresh].map((p) => (p as unknown as { name: string }).name));
       }
       this.programCount = progs.length;
     }

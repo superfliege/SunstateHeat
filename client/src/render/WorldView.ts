@@ -22,7 +22,7 @@ import { MATERIALS, matIndex } from './materials/library';
 import { neonMaterial, surfaceMaterial } from './materials/surface';
 import { STORE_CUT_H, storeWalls } from './StoresView';
 import { LAYER, terrainMaterial, type TerrainLayer } from './materials/terrain';
-import { addOutline, LINE } from './materials/toon';
+import { addOutline, computeOutlineNormals, LINE } from './materials/toon';
 import { buildWaterInfo, waterMaterial } from './materials/water';
 import { MINIMAP_GROUND, palmaraize } from './palette';
 import type { CoverKind } from './plants';
@@ -1295,11 +1295,17 @@ export class WorldView {
           grp.add(m);
         }
         if (!ch.solid.empty) {
-          const m = new THREE.Mesh(ch.solid.build(), this.solidMat);
-          m.name = 'solid';
-          m.castShadow = m.receiveShadow = true;
-          addOutline(m, LINE.building, { fade: true });
-          grp.add(m);
+          // Gebäude in 64-m-Viertel teilen: Frustum- und Schatten-Culling greifen feiner (ein halb
+          // sichtbarer Chunk zeichnet nicht mehr alle Gebäude samt Umriss und Schatten). Umriss-
+          // normalen auf dem Ganzen berechnen, damit an den Schnittkanten keine Linienlücken entstehen.
+          const whole = computeOutlineNormals(ch.solid.build());
+          for (const geo of splitQuadrants(whole, cx * RCHUNK, cz * RCHUNK, RCHUNK / 2)) {
+            const m = new THREE.Mesh(geo, this.solidMat);
+            m.name = 'solid';
+            m.castShadow = m.receiveShadow = true;
+            addOutline(m, LINE.building, { fade: true });
+            grp.add(m);
+          }
         }
         if (!ch.decals.empty) {
           const m = new THREE.Mesh(ch.decals.build(), this.decalMat);
@@ -1383,6 +1389,34 @@ export class WorldView {
   setLight(c: THREE.Color) {
     (this.waterMaterial.uniforms.uLight.value as THREE.Color).copy(c);
   }
+}
+
+/** Nicht indizierte Geometrie nach Dreiecks-Schwerpunkt in Quadranten (Kantenlänge size ab x0/z0) teilen. */
+function splitQuadrants(g: THREE.BufferGeometry, x0: number, z0: number, size: number): THREE.BufferGeometry[] {
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  const tris = pos.count / 3;
+  const quad = new Uint8Array(tris), counts = [0, 0, 0, 0];
+  for (let t = 0; t < tris; t++) {
+    const i = t * 3;
+    const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3, cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
+    const q = (cx - x0 >= size ? 1 : 0) + (cz - z0 >= size ? 2 : 0);
+    quad[t] = q; counts[q]++;
+  }
+  const out: THREE.BufferGeometry[] = [];
+  for (let q = 0; q < 4; q++) {
+    if (!counts[q]) continue;
+    const part = new THREE.BufferGeometry();
+    for (const [name, attr] of Object.entries(g.attributes)) {
+      const a = attr as THREE.BufferAttribute, n = a.itemSize * 3;
+      const src = a.array as Float32Array, dst = new Float32Array(counts[q] * n);
+      let w = 0;
+      for (let t = 0; t < tris; t++) if (quad[t] === q) { dst.set(src.subarray(t * n, t * n + n), w); w += n; }
+      part.setAttribute(name, new THREE.BufferAttribute(dst, a.itemSize));
+    }
+    part.computeBoundingSphere();
+    out.push(part);
+  }
+  return out;
 }
 
 function instanced(geo: THREE.BufferGeometry, mat: THREE.Material, mats: THREE.Matrix4[]) {

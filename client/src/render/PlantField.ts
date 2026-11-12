@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { WORLD_SIZE } from '../../../shared/src/constants';
 import { addOutline, LINE } from './materials/toon';
+import { SHADOW_ONLY_LAYER } from './PostFX';
 import type { PlantVariant } from './Vegetation';
 
 /** Rasterzelle für die Kandidatensuche (m). */
@@ -127,6 +128,58 @@ export class ViewCull {
   }
 }
 
+/** Ab so vielen Dreiecken bekommt ein Pflanzenmodell einen vereinfachten Schattenwerfer. */
+const SHADOW_LOD_TRIS = 1500;
+/** Zellgröße (m) des Vertex-Clusterings für Schattenwerfer. */
+const PROXY_CELL = 0.3;
+
+/**
+ * Vereinfachter Schattenwerfer per Vertex-Clustering (O(n), robust): Ecken in 0,3-m-Zellen
+ * zusammenlegen, entartete und doppelte Dreiecke verwerfen. Nur Positionen (Schatten brauchen nichts
+ * anderes). null, wenn es kaum etwas spart.
+ */
+export function shadowProxy(src: THREE.BufferGeometry): THREE.BufferGeometry | null {
+  const pos = src.getAttribute('position') as THREE.BufferAttribute;
+  const idx = src.index;
+  const triCount = (idx ? idx.count : pos.count) / 3;
+  const cellOfVert = new Map<string, number>();
+  const sum: number[] = [], cnt: number[] = [];
+  const vid = (i: number) => {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const key = `${Math.round(x / PROXY_CELL)},${Math.round(y / PROXY_CELL)},${Math.round(z / PROXY_CELL)}`;
+    let id = cellOfVert.get(key);
+    if (id === undefined) { id = cnt.length; cellOfVert.set(key, id); sum.push(0, 0, 0); cnt.push(0); }
+    sum[id * 3] += x; sum[id * 3 + 1] += y; sum[id * 3 + 2] += z; cnt[id]++;
+    return id;
+  };
+  const out: number[] = [];
+  const seen = new Set<string>();
+  for (let t = 0; t < triCount; t++) {
+    const a = vid(idx ? idx.getX(t * 3) : t * 3), b = vid(idx ? idx.getX(t * 3 + 1) : t * 3 + 1), c = vid(idx ? idx.getX(t * 3 + 2) : t * 3 + 2);
+    if (a === b || b === c || a === c) continue;
+    const k = [a, b, c].sort((p, q) => p - q).join(',');
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(a, b, c);
+  }
+  if (out.length / 3 > triCount * 0.75) return null;
+  const p = new Float32Array(cnt.length * 3);
+  for (let i = 0; i < cnt.length; i++) for (let k = 0; k < 3; k++) p[i * 3 + k] = sum[i * 3 + k] / cnt[i];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  g.setIndex(out);
+  g.computeBoundingSphere();
+  return g;
+}
+
+const proxyMats = new Map<THREE.Material, THREE.Material>();
+/** Material des Schattenwerfers: übernimmt nur, was die Schattentiefe beeinflusst (Seite, Alpha-Test). */
+function proxyMaterial(src: THREE.Material): THREE.Material {
+  let m = proxyMats.get(src);
+  if (!m) { m = new THREE.MeshBasicMaterial({ side: src.side === THREE.FrontSide ? THREE.FrontSide : THREE.DoubleSide }); proxyMats.set(src, m); }
+  return m;
+}
+
 /** Instanz-Index in die Rasterzelle eintragen. */
 export function cellOf(x: number, z: number) {
   const cx = Math.min(CELLS - 1, Math.max(0, Math.floor(x / CELL)));
@@ -178,6 +231,24 @@ export class PlantField {
       mesh.userData.plant = true;
       meshes.push(mesh);
       this.group.add(mesh);
+      // Schatten-LOD: schwere Modelle (Palmen bis 7.200 Dreiecke) werfen ihren Schatten über einen
+      // vereinfachten Stellvertreter (nur im Schattenpass sichtbar). Pflanzenschatten sind ohnehin
+      // statisch (kein Wind im Tiefenmaterial) – das sichtbare Modell bleibt unverändert.
+      const tris = (part.geometry.index ? part.geometry.index.count : part.geometry.getAttribute('position').count) / 3;
+      if (variant.shadow && tris > SHADOW_LOD_TRIS) {
+        const proxyGeo = shadowProxy(part.geometry);
+        if (proxyGeo) {
+          const proxy = new THREE.InstancedMesh(proxyGeo, proxyMaterial(part.material), n);
+          proxy.instanceMatrix = shared!;
+          proxy.count = 0; proxy.frustumCulled = false;
+          proxy.castShadow = true;
+          proxy.layers.set(SHADOW_ONLY_LAYER);
+          proxy.userData.plant = true;
+          mesh.castShadow = false;
+          meshes.push(proxy);
+          this.group.add(proxy);
+        }
+      }
       if (variant.outline) {
         const hull = addOutline(mesh, cover ? LINE.prop : LINE.tree, { wind: true }) as THREE.InstancedMesh;
         hull.frustumCulled = false;
