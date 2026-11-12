@@ -9,7 +9,9 @@ import { OUTFIT_COLORS } from '../../../shared/src/constants';
 import { groundHeight } from '../../../shared/src/sim/car';
 import { derive, type HandlingProfile } from '../../../shared/src/sim/handling';
 import { profileOf } from '../../../shared/src/sim/vehicle';
-import { VehicleKind, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
+import { VehicleKind, isAircraft, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
+import { aircraftDef, airGround } from '../../../shared/src/sim/aircraft';
+import { animateAircraft, buildAircraft, type AircraftParts } from '../render/AircraftModel';
 import { Tile, WATER_LEVEL } from '../../../shared/src/world/tiles';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { createQuaterniusCharacter, styleForMood } from '../render/characters';
@@ -40,6 +42,8 @@ export interface VehicleViewState {
   comp?: number[]; spin?: number[];
   /** Bits geplatzter Reifen (Rad läuft auf der Felge) */
   tires?: number;
+  /** Drehzahl (Luftfahrzeuge: Rotor/Propeller 0..6000) */
+  rpm?: number;
 }
 export interface PedState { id: number; x: number; z: number; a: number; color: number; running: boolean; h: number; ragdoll: boolean; angry: boolean; cop: boolean; gang: boolean; /** Gang-Index (GANG_IDS), -1 = keine */ gangId?: number;
   /** Archetyp-Index (-1 = klassischer Passant) und Animations-ID (Act) vom Server */
@@ -101,6 +105,8 @@ interface VehView {
   kind: number; variant: number; color: number; seen: boolean;
   comp: number[]; spin: number[]; lastVx: number; lastVz: number; lat: number; lean: number; yawRate: number; lastA: number;
   prof: HandlingProfile; mountY: number; rest: number;
+  /** Luftfahrzeug-Modell (statt CarModel) */
+  air?: AircraftParts;
 }
 
 const MAX_SHADOWS = 160, MAX_WHEELS = 480;
@@ -224,6 +230,8 @@ export class EntityViews {
   private frustumValid = false;
   /** Nachtwert für Scheinwerfer */
   night = 0;
+  /** Richtung zur Sonne (Schatten der Luftfahrzeuge) */
+  readonly sunDir = new THREE.Vector3(0.5, 0.8, 0.2).normalize();
   hooks: VehicleHooks = { debris: () => {} };
 
   constructor(private map: WorldMap) {
@@ -306,7 +314,12 @@ export class EntityViews {
       comp: [d.rest * 0.5, d.rest * 0.5, d.rest * 0.5, d.rest * 0.5], spin: [0, 0, 0, 0], lastVx: s.vx, lastVz: s.vz, lat: 0, lean: 0, yawRate: 0, lastA: 0,
       prof, mountY: d.mountY, rest: d.rest,
     };
-    if (isWaterVehicle(s.kind)) {
+    if (isAircraft(s.kind)) {
+      const air = buildAircraft(aircraftDef(s.variant), vehicleMat, toonVC);
+      addOutline(air.body, LINE.vehicle);
+      root.add(air.root);
+      v.air = air;
+    } else if (isWaterVehicle(s.kind)) {
       const geo = vehicleGeometry(s.kind, s.color, s.id);
       const body = new THREE.Mesh(geo.body, vehicleMat);
       body.position.y = -prof.cgHeight + 0.15;
@@ -338,6 +351,7 @@ export class EntityViews {
     v ??= this.createVehicle(s);
     v.seen = true;
     const root = v.root;
+    if (v.air) { this.setAircraft(s, v, dt); return; }
     const water = isWaterVehicle(s.kind);
     if (water) {
       const tile = this.map.tileAt(s.x, s.z);
@@ -413,6 +427,28 @@ export class EntityViews {
     }
     const len = v.prof.length;
     this.addShadow(s.x, groundHeight(this.map, s.x, s.z) - 0.25, s.z, v.prof.width * 0.62, a, len / v.prof.width * 0.9);
+  }
+
+  /**
+   * Luftfahrzeug: Lage aus dem Zustand, Rotoren drehen, Schatten am Boden (mit der Höhe versetzt,
+   * kleiner und ab großer Höhe weg). Rendering-Reihenfolge ergibt sich aus der echten Höhe.
+   */
+  private setAircraft(s: VehicleViewState, v: VehView, dt: number) {
+    const air = v.air!, def = aircraftDef(s.variant);
+    v.root.position.set(s.x, s.y, s.z);
+    v.root.quaternion.copy(s.q);
+    animateAircraft(air, (s.rpm ?? 0) / 6000, dt, this.clock + s.id * 0.37, this.night);
+    const g = airGround(this.map, s.x, s.z, s.y, def.type === 'heli').y;
+    const alt = Math.max(0, s.y - g);
+    if (alt < 160) {
+      const k = 1 - Math.min(alt, 160) / 220; // kleiner mit der Höhe
+      const fwd = tmpV.set(0, 0, 1).applyQuaternion(s.q);
+      const a = Math.atan2(fwd.x, fwd.z);
+      const span = def.type === 'plane' ? def.span : def.span * 0.55;
+      // Schatten entgegen der Sonnenrichtung versetzt (wie die echten Schatten der Schattenkarte)
+      const sy = Math.max(0.25, this.sunDir.y);
+      this.addShadow(s.x - (this.sunDir.x / sy) * alt, g - 0.22, s.z - (this.sunDir.z / sy) * alt, span * 0.42 * k, a, (def.length / span) * 1.1);
+    }
   }
 
   /** Polizeiwagen (Fahrer-ID -3): Lichtbalken mit rot/blauem Wechselblinken. */

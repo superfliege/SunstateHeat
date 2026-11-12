@@ -122,6 +122,15 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #140a2e; col
 .dh-bar.hp > div.low { background: var(--orange); }
 .dh-bar.hp > div.crit { background: #ff3a4a; animation: blink 0.4s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0.3; } }
+/* Flug-HUD: Höhenmesser, Steigrate, Höhenstufe, Tank, Strömungsabriss */
+#dh-air { margin-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 4px; }
+.dh-row.air #dh-alt { font: italic 900 26px var(--font); color: #9fe8ff; min-width: 60px; text-align: right; }
+#dh-vs { font: 700 15px var(--mono); color: #fff; min-width: 46px; }
+#dh-level { margin-left: auto; font: 900 13px var(--mono); padding: 1px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.4); color: #ffe14d; }
+#dh-level.l0 { color: #a99fcf; } #dh-level.l2 { color: #4fd16b; }
+.dh-bar.fuel > div { background: linear-gradient(90deg, #ff9a2e, #ffe14d); }
+.dh-bar.fuel > div.low { background: #ff3a4a; animation: blink 0.5s steps(2) infinite; }
+#dh-stall { margin-top: 5px; text-align: center; font: 900 13px var(--mono); color: #fff; background: #ff3a4a; border-radius: 4px; animation: blink 0.35s steps(2) infinite; }
 
 #drift {
   display: flex; align-items: baseline; gap: 10px; pointer-events: none;

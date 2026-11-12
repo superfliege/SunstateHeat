@@ -18,6 +18,8 @@ export const CAMERA = {
   follow: 5, zoomFollow: 1.8,
   /** Shake: Abklingrate und maximale Auslenkung (m) */
   shakeDecay: 7, shakeMax: 1.6,
+  /** Luftfahrzeuge: zusätzlicher Abstand je m Flughöhe (max) */
+  zoomPerAltitude: 0.5, maxAltitudeZoom: 75,
   /** Bremsen: Kamera rutscht nach vorne (m je m/s² Verzögerung) */
   brakePull: 0.12,
   /** Abstands-Faktor (?camzoom=2 in der URL für Übersichts-Screenshots) */
@@ -37,6 +39,8 @@ export class CameraRig {
   private fovKick = 0;
   /** Abschaltbar (Barrierefreiheit, spec 17.5) */
   shakeEnabled = true;
+  /** Flughöhe über Grund (Luftfahrzeuge): Kamera zoomt heraus */
+  altitude = 0;
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, aspect, 3, 700);
@@ -71,7 +75,8 @@ export class CameraRig {
     this.pull += (wantPull - this.pull) * (1 - Math.exp(-(wantPull > this.pull ? 6 : 2) * dt));
     const fx = Math.sin(a), fz = Math.cos(a);
     const tx = x + this.look.x + fx * this.pull, tz = z + this.look.z + fz * this.pull;
-    const wantDist = (inVehicle ? VEHICLE_DISTANCE + Math.min(speed, CAMERA.maxSpeedZoom) * CAMERA.zoomPerSpeed : FOOT_DISTANCE) * CAMERA.zoomMul;
+    const altZoom = Math.min(CAMERA.maxAltitudeZoom, this.altitude * CAMERA.zoomPerAltitude);
+    const wantDist = (inVehicle ? VEHICLE_DISTANCE + Math.min(speed, CAMERA.maxSpeedZoom) * CAMERA.zoomPerSpeed + altZoom : FOOT_DISTANCE) * CAMERA.zoomMul;
 
     if (!this.initialized) {
       this.focus.set(tx, y, tz);

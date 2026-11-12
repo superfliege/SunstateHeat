@@ -6,7 +6,10 @@ const $ = (id: string) => document.getElementById(id)!;
 export interface DriveInfo {
   speed: number; gear: number; rpm: number; redline: number;
   nitro: number; hasNitro: boolean; hp: number; burning: boolean;
+  /** Luftfahrzeug: Höhe über Grund (m), Steigrate (m/s), Höhenstufe 0–2, Tank 0..1 (null = aus), Strömungsabriss */
+  air?: { alt: number; vs: number; level: number; fuel: number | null; stall: boolean };
 }
+const LEVELS = ['BODEN', 'TIEF', 'HOCH'];
 
 export class DriveHud {
   private root = $('drive-hud');
@@ -16,6 +19,13 @@ export class DriveHud {
   private nitroEl = $('dh-nitro') as HTMLDivElement;
   private nitroWrap = $('dh-nitro-wrap');
   private hpEl = $('dh-hp') as HTMLDivElement;
+  private airEl = $('dh-air');
+  private altEl = $('dh-alt');
+  private vsEl = $('dh-vs');
+  private levelEl = $('dh-level');
+  private fuelWrap = $('dh-fuel-wrap');
+  private fuelEl = $('dh-fuel') as HTMLDivElement;
+  private stallEl = $('dh-stall');
   private driftEl = $('drift');
   private driftPts = $('drift-pts');
   private driftMul = $('drift-mul');
@@ -38,6 +48,18 @@ export class DriveHud {
     const hp = Math.max(0, info.hp / 1000);
     this.hpEl.style.width = `${(hp * 100).toFixed(1)}%`;
     this.hpEl.className = hp < 0.15 || info.burning ? 'crit' : hp < 0.35 ? 'low' : hp < 0.6 ? 'mid' : '';
+    const a = info.air;
+    this.airEl.classList.toggle('hidden', !a);
+    if (a) {
+      this.altEl.textContent = String(Math.round(a.alt));
+      this.vsEl.textContent = Math.abs(a.vs) < 0.3 ? '–' : `${a.vs > 0 ? '▲' : '▼'}${Math.abs(a.vs).toFixed(1)}`;
+      this.levelEl.textContent = LEVELS[a.level] ?? '';
+      this.levelEl.className = `l${a.level}`;
+      this.fuelWrap.classList.toggle('hidden', a.fuel === null);
+      if (a.fuel !== null) { this.fuelEl.style.width = `${(a.fuel * 100).toFixed(1)}%`; this.fuelEl.className = a.fuel < 0.15 ? 'low' : ''; }
+      this.stallEl.classList.toggle('hidden', !a.stall);
+      this.gearEl.textContent = a.level === 0 ? '⬤' : '✈';
+    }
   }
 
   /** Laufender Drift (lokal vorhergesagt): Punkte + Multiplikator; null = kein Drift. */

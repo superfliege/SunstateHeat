@@ -109,6 +109,16 @@ export class TouchControls {
 
   setVehicle(inVeh: boolean) { this.root.classList.toggle('in-veh', inVeh); }
 
+  private air = false;
+  /** Luftfahrzeug: Sprint-/Bremstaste werden zu Steigen (▲) / Sinken (▼). */
+  setAir(on: boolean) {
+    if (on === this.air) return;
+    this.air = on;
+    const sprint = this.root.querySelector<HTMLElement>('.tc-btn.sprint'), brake = this.root.querySelector<HTMLElement>('.tc-btn.brake');
+    if (sprint) sprint.textContent = on ? '▲' : '»';
+    if (brake) brake.textContent = on ? '▼' : '■';
+  }
+
   /** Menü offen/Chat offen: Steuerung ausblenden, damit nichts versehentlich ausgelöst wird. */
   setBlocked(b: boolean) { this.root.classList.toggle('blocked', b); if (b) this.releaseAll(); }
 
