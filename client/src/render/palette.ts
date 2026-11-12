@@ -190,8 +190,8 @@ export interface SkyKey {
 
 // 0 = Mitternacht, 0.25 = Sonnenaufgang, 0.5 = Mittag, 0.75 = Sonnenuntergang
 export const SKY_KEYS: SkyKey[] = [
-  { t: 0.0, horizon: 0x3a1f6a, mid: 0x1a1648, top: 0x0a0c2a, sun: 0x7a8ae0, sunI: 0.45, ambSky: 0x4a4a9a, ambGround: 0x2a1a4a, ambI: 0.75, elev: 40 },
-  { t: 0.2, horizon: 0x5a2a7a, mid: 0x2a1c5a, top: 0x101238, sun: 0x8a7ad0, sunI: 0.5, ambSky: 0x5a4a9a, ambGround: 0x2e1e4e, ambI: 0.8, elev: 30 },
+  { t: 0.0, horizon: 0x3a1f6a, mid: 0x1a1648, top: 0x0a0c2a, sun: 0x9aaaf0, sunI: 0.85, ambSky: 0x6e78c4, ambGround: 0x3e3264, ambI: 1.05, elev: 40 },
+  { t: 0.2, horizon: 0x5a2a7a, mid: 0x2a1c5a, top: 0x101238, sun: 0xa29af0, sunI: 0.85, ambSky: 0x7670c4, ambGround: 0x423266, ambI: 1.05, elev: 30 },
   { t: 0.26, horizon: 0xffa070, mid: 0xff86a8, top: 0x7a6ad0, sun: 0xffb080, sunI: 1.3, ambSky: 0xd8a0c0, ambGround: 0x7a5a7a, ambI: 0.95, elev: 14 },
   { t: 0.34, horizon: 0x9ff0e4, mid: 0x8adcf0, top: 0x6ac4f0, sun: 0xffe6c0, sunI: 1.85, ambSky: 0xc8ecf4, ambGround: 0x9a8a7a, ambI: 1.05, elev: 32 },
   // Tag: Türkis -> Hellblau
@@ -200,9 +200,9 @@ export const SKY_KEYS: SkyKey[] = [
   // Abend: Orange -> Pink -> Violett
   { t: 0.71, horizon: 0xffa04a, mid: 0xff7aa0, top: 0x8a5ad0, sun: 0xffa860, sunI: 1.75, ambSky: 0xffb0a0, ambGround: 0x8a5a6a, ambI: 1.0, elev: 18 },
   { t: 0.765, horizon: 0xff7a3a, mid: 0xff4f8a, top: 0x6a3ab0, sun: 0xff7a6a, sunI: 1.3, ambSky: 0xc070b0, ambGround: 0x5a3a6a, ambI: 0.9, elev: 8 },
-  // Nacht: Dunkelblau mit Neon-Schimmer am Horizont
-  { t: 0.83, horizon: 0x5a2a8a, mid: 0x2a1c6a, top: 0x10123a, sun: 0x8a7ad0, sunI: 0.5, ambSky: 0x5a4aa0, ambGround: 0x2e1e4e, ambI: 0.8, elev: 35 },
-  { t: 1.0, horizon: 0x3a1f6a, mid: 0x1a1648, top: 0x0a0c2a, sun: 0x7a8ae0, sunI: 0.45, ambSky: 0x4a4a9a, ambGround: 0x2a1a4a, ambI: 0.75, elev: 40 },
+  // Nacht: Dunkelblau mit Neon-Schimmer am Horizont; heller Mond + bläuliches Umgebungslicht für gute Sicht
+  { t: 0.83, horizon: 0x5a2a8a, mid: 0x2a1c6a, top: 0x10123a, sun: 0xa29af0, sunI: 0.85, ambSky: 0x7470c8, ambGround: 0x423266, ambI: 1.05, elev: 35 },
+  { t: 1.0, horizon: 0x3a1f6a, mid: 0x1a1648, top: 0x0a0c2a, sun: 0x9aaaf0, sunI: 0.85, ambSky: 0x6e78c4, ambGround: 0x3e3264, ambI: 1.05, elev: 40 },
 ];
 
 // ------------------------------------------------------------------ Bodenfarben (Minimap)

@@ -112,13 +112,14 @@ export const HANDLING: Record<HandlingClass, HandlingProfile> = {
     gripFront: 0.95, gripRear: 1.0, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.85, handbrakeGrip: 0.6, drift: 0.05,
     steerMax: 36, steerSpeedFalloff: 0.06, steerRate: 2.8, durability: 3, cylinders: 6,
   }),
-  // Motorrad (vier Raycasts, sehr schmale Spur, starke Stabilisierung, Optik legt sich in Kurven)
+  // Motorrad (vier Raycasts, sehr schmale Spur, starke Stabilisierung, Optik legt sich in Kurven);
+  // weich gefedert, gutmütig am Gas (kein Durchdrehen/Wheelie beim Anfahren)
   bike: base({
-    name: 'Motorrad', mass: 260, length: 2.1, width: 0.7, height: 1.2, wheelbase: 1.45, track: 0.36, cgHeight: 0.55, wheelRadius: 0.32,
-    suspFreq: 2.0, suspDamping: 0.5, suspTravel: 0.15, antiRoll: 1,
-    torque: 105, redline: 11000, idleRpm: 1300, gears: 6, topSpeed: 50, launch: 3.2, shiftTime: 0.08, drive: Drive.RWD, brake: 1.1,
-    gripFront: 1.25, gripRear: 1.2, slipPeakFront: 7, slipPeakRear: 7, slipFalloff: 0.7, handbrakeGrip: 0.7, drift: 0.25,
-    steerMax: 30, steerSpeedFalloff: 0.06, steerRate: 6, durability: 0.5, sportExhaust: 1, cylinders: 2, upright: 1,
+    name: 'Motorrad', mass: 300, length: 2.1, width: 0.7, height: 1.2, wheelbase: 1.45, track: 0.36, cgHeight: 0.5, wheelRadius: 0.32,
+    suspFreq: 1.7, suspDamping: 0.7, suspTravel: 0.2, antiRoll: 1,
+    torque: 45, redline: 11000, idleRpm: 1300, gears: 6, topSpeed: 50, launch: 2.2, shiftTime: 0.08, drive: Drive.RWD, brake: 1.1,
+    gripFront: 1.25, gripRear: 1.25, slipPeakFront: 7, slipPeakRear: 7, slipFalloff: 0.75, handbrakeGrip: 0.7, drift: 0.15,
+    steerMax: 28, steerSpeedFalloff: 0.06, steerRate: 4.5, durability: 0.5, sportExhaust: 1, cylinders: 2, upright: 1,
   }),
   // Wasserfahrzeuge: nur Masse/Maße für Kollisionen (Fahrmodell: movement.ts/stepWater)
   boat: base({ name: 'Boot', mass: 1400, length: 5.2, width: 2.3, height: 1.4, cgHeight: 0.4, durability: 1.2, cylinders: 6 }),
@@ -144,6 +145,10 @@ export const ASSISTS = {
   gravityScale: 1.4,
   /** Physik-Unterschritte je SIM_DT (Federung braucht kleine Schritte). */
   substeps: 2,
+  /** Höchste Einfedergeschwindigkeit eines Rades (m/s) – entschärft Bordsteine und Stufen. */
+  wheelCompRate: 1.6,
+  /** Motorrad: Dämpfung der Nickbewegung (1/s) – verhindert Hüpfen und ungewollte Wheelies. */
+  bikePitchDamp: 9,
   /** Lenk-Eingabe glätten: Zeitkonstante (s). */
   steerSmoothing: 0.07,
   /** Lenkwinkel-Begrenzung nach Grip: 1 = genau am Haftlimit, > 1 = etwas mehr (Übersteuern möglich). */

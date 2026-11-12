@@ -167,7 +167,7 @@ export function toonMaterial(o: ToonOptions = {}): THREE.MeshToonMaterial {
       .replace('#include <opaque_fragment>', /* glsl */ `
         {
           vec3 lit = outgoingLight - totalEmissiveRadiance; // Leuchtflächen nicht abdunkeln
-          outgoingLight = mix(lit, lit * vec3(0.62, 0.7, 1.08), uNight * uNightTint) + totalEmissiveRadiance;
+          outgoingLight = mix(lit, lit * vec3(0.8, 0.86, 1.1), uNight * uNightTint) + totalEmissiveRadiance;
         }
         #include <opaque_fragment>`);
   };

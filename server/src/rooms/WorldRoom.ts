@@ -372,9 +372,9 @@ export class WorldRoom {
       positionOf: (p) => this.positionOf(p),
       notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
       chat: (p, text) => p.conn.send({ t: 'chat', from: 'Arenaleiter', text, color: 8, system: true }),
+      // Ein laufender Auftrag blockiert nicht: er wird beim Anmelden abgebrochen (acceptQuest)
       blocked: (p) => {
         if (p.downT > 0) return 'Du bist ausgeknockt.';
-        if (this.quests.isActive(p.id)) return 'Erst den aktiven Auftrag beenden.';
         if (this.races.has(p.id)) return 'Du bist für ein Rennen angemeldet.';
         if (this.hunt.has(p.id)) return 'Du spielst gerade Catch the Taxi.';
         if (p.wanted > 0) return 'Nicht mit der Polizei im Nacken!';
@@ -690,22 +690,24 @@ export class WorldRoom {
     if (!best) return;
     if (isAircraft(best.kind)) {
       const d = aircraftDef(best.sim.variant);
-      const denied = best.driver < 0 ? this.air.pilotDenied(p, best) : 'busy';
-      if (denied) {
-        // Pilotensitz belegt oder Rang zu niedrig: als Mitfahrer, wenn ein Pilot drin sitzt und Platz ist
-        if (best.driver < 0) { this.noticeTo(p, denied, 'bad'); return; }
-        if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, denied === 'busy' ? `${d.name}: Alle ${d.seats} Plätze belegt.` : denied, 'bad'); return; }
+      if (best.driver >= 0) {
+        // Pilotensitz belegt: als Mitfahrer, wenn Platz ist
+        if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, `${d.name}: Alle ${d.seats} Plätze belegt.`, 'bad'); return; }
         best.riders = [...(best.riders ?? []), p.id];
         p.ride = best.id;
         this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). E = aussteigen nach der Landung.`, 'info');
         return;
       }
+      if (best.driver !== DRIVER_NONE) return;
+      // Unter dem nötigen Rang darf man trotzdem fliegen – das gilt aber als Diebstahl: sofort 3 Sterne
+      const stolen = this.air.unauthorizedPilot(p, best);
       best.driver = p.id; best.idleTime = 0; best.sim.car.sleep = 0;
       p.vehicleId = best.id;
       p.stunts = newStuntTracker();
       this.noticeTo(p, d.type === 'heli'
         ? `${d.name}: Shift = steigen, Leertaste = sinken, A/D = drehen, Q/R = seitwärts. Rotor läuft hoch …`
         : `${d.name}: W = Schub, Shift = steigen (ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h abheben), Leertaste = sinken/bremsen.${d.runwayOnly ? ' Startet nur von Landebahnen.' : ''}`, 'info');
+      if (stolen) { this.police.raise(p, 3); this.noticeTo(p, stolen, 'bad'); }
       return;
     }
     if (best.driver === DRIVER_NPC) {
@@ -1207,7 +1209,7 @@ export class WorldRoom {
   private openPhone(p: ServerPlayer, id: string) {
     const ph = this.phoneNear(p, id);
     if (!ph || p.downT > 0) return;
-    const quests = ph.mg ? this.mg.listing(p, ph.mg) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level).map((q) => ({ ...q, intro: this.story.lines(p, q.intro) }));
+    const quests = ph.mg ? this.mg.listing(p, ph.mg).map((q) => (q.ok && this.quests.isActive(p.id) ? { ...q, intro: [...q.intro, { who: 'Arenaleiter', text: 'Achtung: Dein laufender Auftrag wird abgebrochen, wenn du mitmachst.' }] } : q)) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level).map((q) => ({ ...q, intro: this.story.lines(p, q.intro) }));
     p.conn.send({ t: 'phone', id: ph.id, name: ph.name, quests });
   }
 
@@ -1215,6 +1217,8 @@ export class WorldRoom {
     if (this.mg.isRequest(id)) {
       const ph = this.phones.find((q) => q.mg && MG_PREFIX + q.mg === id && this.phoneNear(p, q.id));
       if (!ph) { p.conn.send({ t: 'notice', text: 'Du musst an einem Arena-Telefon für dieses Minispiel stehen.', kind: 'bad' }); return; }
+      // Minispiel geht vor: laufenden Auftrag abbrechen (folgenlos, kann neu angenommen werden)
+      if (this.quests.isActive(p.id) && !this.mg.has(p.id) && this.mg.listing(p, ph.mg)[0]?.ok) this.quests.abandon(p);
       this.mg.request(p, id, ph);
       return;
     }

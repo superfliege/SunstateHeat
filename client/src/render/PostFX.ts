@@ -55,7 +55,7 @@ const GradeShader = {
       col = mix(col, col * col * (3.0 - 2.0 * min(col, vec3(1.0))), 0.28);
       col = col * 0.96 + vec3(0.030, 0.012, 0.045) * (1.0 - uNight * 0.4);
       float sh = 1.0 - smoothstep(0.0, 0.55, lum), hi = smoothstep(0.45, 1.1, lum);
-      col += vec3(0.060, 0.010, 0.085) * sh * (0.5 + uNight);
+      col += vec3(0.060, 0.010, 0.085) * sh * (0.5 + uNight * 0.3);
       col += vec3(0.070, 0.035, -0.020) * hi * (1.0 - uNight * 0.6);
       col = mix(col, col * vec3(1.20, 0.80, 0.98) + vec3(0.05, 0.0, 0.03), uDusk * 0.35);
       col = mix(col, col * vec3(0.86, 0.92, 1.20), uNight * 0.18);
@@ -98,7 +98,7 @@ export class PostFX {
   /** Stimmung und Nacht: nachts kräftigerer Bloom (Neon dominiert). */
   update(mood: Mood, night: number, dusk = 0) {
     const u = this.grade.uniforms;
-    u.uExposure.value = mood.exposure;
+    u.uExposure.value = mood.exposure * (1 + night * 0.18); // nachts etwas aufhellen (Sicht)
     u.uSaturation.value = mood.saturation;
     u.uWarmth.value = mood.warmth * (1 - night * 0.7);
     u.uDusk.value = dusk; u.uNight.value = night;

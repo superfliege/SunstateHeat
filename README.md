@@ -58,7 +58,7 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 
 **Catch the Taxi** (`shared/src/taxiHunt.ts`, `server/src/quests/TaxiHunt.ts`): Spielmodus direkt am Spawn (🚕-Telefon, F drücken). Spieler im Umkreis von 70 m können 15 s lang beitreten (bis zu 13 Spieler). Einer wird per Los zum Taxi, alle anderen jagen es in LKWs; freie Plätze füllen KI-Trucker auf (12 Jäger, folgen dem Straßennetz). Das Taxi hat unendlich Nitro (Shift), 4 s Vorsprung und darf mit der Pistole aus dem Fenster schießen (Munition frei); Jäger dürfen nicht schießen, nur rammen (Rammstöße der LKWs setzen dem Taxi stärker zu). Überlebt das Taxi 2 Minuten, gewinnt der Taxifahrer; brennt es vorher, gewinnen die Jäger. Zerstörte LKWs kommen nach 3 s neu ins Spiel. Während der Runde gibt es keine Fahndung und keine Verletzungen, niemand kann aussteigen. Danach stehen alle wieder am Telefon.
 
-**Minispiele** (`shared/src/minigames/`, `server/src/minigames/`, Details in `docs/minigames.md`): Arena-Modi, jeder an 2–5 über die Karte verteilten Arena-Telefonen (große Karte M: Symbole mit Tooltip), mit Spielern, NPCs oder gemischt; alle Werte in JSON-Configs. Modi: **Sumo** (Plattform über dem Meer, schrumpft), **Destruction Derby** (Crash-Bowl, Zonenschaden), **Hot Potato** (Bombe per Rammen weitergeben), **Fallout** im Auto und zu Fuß (verschwindende Kacheln), **Drift-Wettbewerb** (Combo-Wertung), **Bomb Bus** (Mindesttempo in der Stadt, Jäger mit Straßensperren). Dev: `/mg <modus> [anzahl] [leicht|normal|schwer]` (nur NPCs, zuschauen), `/mg <modus> mit`, `/mg stop`.
+**Minispiele** (`shared/src/minigames/`, `server/src/minigames/`, Details in `docs/minigames.md`): Arena-Modi, jeder an 2–5 über die Karte verteilten Arena-Telefonen (große Karte M: Symbole mit Tooltip), mit Spielern, NPCs oder gemischt; auch während eines laufenden Auftrags startbar (der Auftrag wird dann abgebrochen); alle Werte in JSON-Configs. Modi: **Sumo** (Plattform über dem Meer, schrumpft), **Destruction Derby** (Crash-Bowl, Zonenschaden), **Hot Potato** (Bombe per Rammen weitergeben), **Fallout** im Auto und zu Fuß (verschwindende Kacheln), **Drift-Wettbewerb** (Combo-Wertung), **Bomb Bus** (Mindesttempo in der Stadt, Jäger mit Straßensperren). Dev: `/mg <modus> [anzahl] [leicht|normal|schwer]` (nur NPCs, zuschauen), `/mg <modus> mit`, `/mg stop`.
 
 ## Was drin ist
 
@@ -258,7 +258,7 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
   schnell = Schaden oder Absturz, Wasser = Absturz. Helikopter: Rotor läuft hoch, Schweben, Drehen auf der Stelle,
   seitwärts, Landung auf Dächern, Abwind (Staub/Gras/Gischt). Treibstoff (abschaltbar, Tankstelle am Vorfeld kostet Geld).
   Mitfahrer: E an einem Luftfahrzeug mit Pilot (Sitzplätze laut Config). Aussteigen nur am Boden bzw. knapp darüber.
-  Rangsperre (abschaltbar): Sunbird/Kolibri ab „Fahrer“, Marlin/Pelikan ab „Unternehmer“.
+  Freigabe nach Rang (abschaltbar, `rankGate`): Sunbird/Kolibri ab „Fahrer“, Marlin/Pelikan ab „Unternehmer“. Darunter darf man trotzdem fliegen – das gilt als Diebstahl und gibt sofort 3 Fahndungssterne.
   Respawn nach Zerstörung (90 s) oder weit weg abgestellt (240 s). Netz: Luftfahrzeuge sind bis 450 m sichtbar,
   jenseits der normalen Sichtweite seltener aktualisiert. Polizeihubschrauber ab Fahndungsstufe 4.
 - **Testen:** `npm run air-test` (Flugphysik + Server ohne Browser), `/tp flughafen`, `/flug kolibri`,

@@ -102,6 +102,31 @@ export function groundHeight(map: WorldMap, x: number, z: number): number {
   return map.surfaceY(x, z) + rampAt(map, x, z);
 }
 
+/**
+ * Bodenhöhe unter einem Rad mit Radius r, das in Richtung (dx, dz) rollt: Stufen (Bordstein)
+ * werden nicht schlagartig übernommen, sondern das Rad „rollt“ über die Kante hoch bzw. runter
+ * (Kreisbogen um die Kante). Die Aufstandsfläche ist etwas größer als der Radius (Reifen gibt nach).
+ */
+function wheelGround(map: WorldMap, x: number, z: number, dx: number, dz: number, r: number): number {
+  const h0 = groundHeight(map, x, z);
+  const R = Math.max(r * 1.6, 0.5);
+  let best = h0;
+  for (let sgn = -1; sgn <= 1; sgn += 2) {
+    const h1 = groundHeight(map, x + dx * R * sgn, z + dz * R * sgn);
+    const step = h1 - h0;
+    if (step < 0.02 || step > 0.45) continue; // keine Stufe bzw. Wand
+    // Kante suchen (Bisektion): Abstand, ab dem die höhere Ebene beginnt
+    let lo = 0, hi = R;
+    for (let it = 0; it < 5; it++) {
+      const mid = (lo + hi) / 2;
+      if (groundHeight(map, x + dx * mid * sgn, z + dz * mid * sgn) - h0 > step * 0.5) hi = mid; else lo = mid;
+    }
+    const lift = h1 - (R - Math.sqrt(Math.max(0, R * R - hi * hi))) * (step / R + 0.6);
+    if (lift > best) best = lift;
+  }
+  return best;
+}
+
 /** Landfahrzeuge im Wasser sinken bis etwa zur Hälfte ein (Höhe des „Wasserbodens“ für die Räder). */
 export const CAR_WATER_FLOOR = -1.05;
 
@@ -361,7 +386,10 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
   c.rpm += (Math.min(p.redline * 1.03, rpmTarget) - c.rpm) * Math.min(1, h * 14);
   if (c.shift > 0) c.shift -= h;
   else if (c.gear > 0 && grounded) {
-    if (c.rpm > p.redline * 0.92 && c.gear < p.gears && rpmWheels > p.redline * 0.85) { c.gear++; c.shift = p.shiftTime; c.shifts++; }
+    // Hochschalten nach echter Fahrgeschwindigkeit (nicht nach durchdrehendem Rad) – sonst pendelt die
+    // Automatik beim Anfahren zwischen 1. und 2. Gang
+    const rpmRoad = (Math.abs(vLongBody) / (2 * Math.PI * p.wheelRadius)) * 60 * ratio * d.finalDrive;
+    if (c.rpm > p.redline * 0.92 && c.gear < p.gears && rpmRoad > p.redline * 0.8) { c.gear++; c.shift = p.shiftTime; c.shifts++; }
     else if (c.rpm < p.redline * 0.42 && c.gear > 1) { c.gear--; c.shift = p.shiftTime * 0.5; c.shifts++; }
   }
   let engineTorque = p.torque * torqueCurve(c.rpm / p.redline) * throttle;
@@ -381,6 +409,7 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
   // ---- Räder: Federung + Reifen
   let groundMask = 0;
   const brakeTotal = p.brake * m * GRAVITY * brake;
+  const rollL = Math.hypot(AZ[0], AZ[2]) || 1, rollX = AZ[0] / rollL, rollZ = AZ[2] / rollL; // Rollrichtung der Räder
   for (let i = 0; i < 4; i++) {
     const [lx, lz] = d.wheels[i];
     rotate(c, lx, d.mountY, lz, WP);
@@ -395,12 +424,16 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
     // Strahl entlang -AY; Höhenfeld zweimal abtasten (annähernd senkrecht)
     let t = (my - groundHeight(map, mx, mz)) / upY;
     const hx = mx - AY[0] * t, hz = mz - AY[2] * t;
-    t = (my - groundHeight(map, hx, hz)) / upY;
+    t = (my - wheelGround(map, hx, hz, rollX, rollZ, p.wheelRadius)) / upY;
     if (t > rayLen || t < -0.5) { c.comp[i] = Math.max(0, c.comp[i] - h * 3); continue; }
     const px = mx - AY[0] * t, py = my - AY[1] * t, pz = mz - AY[2] * t; // Aufstandspunkt
     let comp = rayLen - t;
+    // Rad hat Masse: an einer Stufe federt es nicht schlagartig ein, sondern mit begrenzter Geschwindigkeit
+    // (der Rest steckt kurz im Reifen) – sonst katapultiert jeder Bordstein die Karosserie hoch
+    if (compPrev[i] > 0.005 && comp > compPrev[i] + ASSISTS.wheelCompRate * h) comp = compPrev[i] + ASSISTS.wheelCompRate * h;
     c.comp[i] = Math.min(comp, d.rest + 0.15);
-    const compVel = (c.comp[i] - compPrev[i]) / h;
+    // Dämpfer: Einfedergeschwindigkeit begrenzt (Reifen/Gummilager schlucken harte Schläge)
+    const compVel = Math.max(-2.5, Math.min(2.5, (c.comp[i] - compPrev[i]) / h));
     let f = d.springK * comp + d.damperC * compVel;
     if (comp > d.rest) f += d.springK * 12 * (comp - d.rest) + d.damperC * 2 * Math.max(0, compVel); // Anschlag
     // Stabilisator: Achsgegenseite
@@ -558,6 +591,10 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
     const rollRate = c.wx * AZ[0] + c.wy * AZ[1] + c.wz * AZ[2];
     const corr = (-roll * 30 - rollRate * 6) * h * p.upright;
     c.wx += AZ[0] * corr; c.wy += AZ[1] * corr; c.wz += AZ[2] * corr;
+    // Nicken dämpfen (Fahrer gleicht mit dem Körper aus): kein Hüpfen/Wheelie an Bordsteinen und Kanten
+    const pitchRate = c.wx * AX[0] + c.wy * AX[1] + c.wz * AX[2];
+    const pd = -pitchRate * Math.min(1, (groundMask ? ASSISTS.bikePitchDamp : ASSISTS.bikePitchDamp * 0.35) * h) * p.upright;
+    c.wx += AX[0] * pd; c.wy += AX[1] * pd; c.wz += AX[2] * pd;
   }
   // Auf Dach/Seite?
   if (upY < 0.35 && speed < 4) c.flip += h; else if (upY > 0.6) c.flip = 0;
