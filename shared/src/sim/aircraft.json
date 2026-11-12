@@ -1,0 +1,73 @@
+{
+  "_doc": "Luftfahrzeuge (Balancing). Einheiten: m, m/s, m/s², rad/s, s. Geschwindigkeit x 3,6 = km/h. Siehe shared/src/sim/aircraft.ts.",
+  "settings": {
+    "_doc": "fuelEnabled: Treibstoff an/aus. rankGate: Rangsperre an/aus. lowCeiling: bis zu dieser Höhe (m über Meer) = Stufe 'Tief' (Gebäudekollision), darüber 'Hoch'. ceiling: Dienstgipfelhöhe. heliExitAlt: Aussteigen aus dem Helikopter bis zu dieser Höhe über Grund. planeExitSpeed: Flugzeug: Aussteigen nur langsamer als das (am Boden). respawnDestroyed/respawnAbandoned: Sekunden bis zur Rückkehr (zerstört / weit weg abgestellt). abandonDistance: ab hier gilt ein abgestelltes Luftfahrzeug als 'weit weg'. refuelPerSecond: Tankanteil pro Sekunde an der Tankstelle. refuelCostFull: $ für eine volle Tankfüllung. airInterest: Sichtweite (m) für Luftfahrzeuge im Netz; farUpdateEvery: jenseits der normalen Sichtweite nur jedes n-te Update. runwayWarnRadius: Warnung für Spieler auf der Bahn, wenn ein Flugzeug so nah ist. policeHeliWanted: ab dieser Fahndungsstufe schickt die Polizei einen Helikopter (0 = nie).",
+    "fuelEnabled": true,
+    "rankGate": true,
+    "lowCeiling": 95,
+    "ceiling": 140,
+    "heliExitAlt": 2.0,
+    "planeExitSpeed": 3,
+    "respawnDestroyed": 90,
+    "respawnAbandoned": 240,
+    "abandonDistance": 250,
+    "refuelPerSecond": 0.12,
+    "refuelCostFull": 120,
+    "airInterest": 450,
+    "farUpdateEvery": 3,
+    "runwayWarnRadius": 320,
+    "policeHeliWanted": 4
+  },
+  "aircraft": {
+    "sunbird": {
+      "name": "Sunbird", "type": "plane", "desc": "Kleines einmotoriges Propellerflugzeug. Gutmütig, kurze Startstrecke, startet auch auf langen Straßen und Pisten.",
+      "seats": 2, "minRank": "fahrer", "spawn": "stand:P1", "color": "#f7f7f2", "accent": "#21c7c0",
+      "maxSpeed": 46, "cruise": 30, "accel": 5, "brake": 7,
+      "takeoffSpeed": 20, "takeoffDistance": 70, "stallSpeed": 15, "runwayOnly": false,
+      "turnRate": 0.85, "groundTurn": 1.4, "taxiSpeed": 10,
+      "climbRate": 6, "sinkRate": 9,
+      "landingMaxVs": 4.5, "landingMaxSpeed": 34,
+      "armor": 0.7, "fuelSeconds": 720,
+      "length": 8, "span": 10.5, "height": 2.6, "radius": 4.6, "mass": 900
+    },
+    "marlin": {
+      "name": "Marlin", "type": "plane", "desc": "Zweistrahliger Privatjet. Schnell, große Reichweite, braucht eine echte Landebahn. Träge in Kurven, harte Landungen werden schnell teuer.",
+      "seats": 6, "minRank": "unternehmer", "spawn": "hangar:1", "color": "#fbfaf4", "accent": "#d4a531",
+      "maxSpeed": 82, "cruise": 55, "accel": 7, "brake": 6,
+      "takeoffSpeed": 38, "takeoffDistance": 150, "stallSpeed": 30, "runwayOnly": true,
+      "turnRate": 0.45, "groundTurn": 0.9, "taxiSpeed": 9,
+      "climbRate": 8, "sinkRate": 11,
+      "landingMaxVs": 3, "landingMaxSpeed": 48,
+      "armor": 1.0, "fuelSeconds": 1500,
+      "length": 15, "span": 14, "height": 4.2, "radius": 7, "mass": 7000
+    },
+    "kolibri": {
+      "name": "Kolibri", "type": "heli", "desc": "Leichter Zwei-Sitzer-Helikopter. Wendig, steigt schnell, kaum Panzerung. Ideal für Dächer.",
+      "seats": 2, "minRank": "fahrer", "spawn": "helipad:terminal", "color": "#ff3fa4", "accent": "#ffb02e",
+      "maxSpeed": 38, "accel": 10, "brake": 12, "strafe": 0.7,
+      "yawRate": 2.0, "climbRate": 10, "sinkRate": 9, "spinUp": 2.5,
+      "landingMaxVs": 5,
+      "armor": 0.55, "fuelSeconds": 540,
+      "length": 9, "span": 8.4, "height": 2.8, "radius": 4.2, "mass": 1100
+    },
+    "pelikan": {
+      "name": "Pelikan", "type": "heli", "desc": "Großer Transport-Helikopter. Langsam, robust, viel Panzerung. Lasthaken vorbereitet (noch ohne Funktion).",
+      "seats": 6, "minRank": "unternehmer", "spawn": "helipad:hangar", "color": "#2f3b2c", "accent": "#11140f",
+      "maxSpeed": 27, "accel": 5, "brake": 7, "strafe": 0.5,
+      "yawRate": 0.95, "climbRate": 5, "sinkRate": 6, "spinUp": 4.5,
+      "landingMaxVs": 4,
+      "armor": 2.4, "fuelSeconds": 900,
+      "length": 16, "span": 15, "height": 4.6, "radius": 7.4, "mass": 9000,
+      "cargoHook": false
+    },
+    "streife": {
+      "name": "Polizeihubschrauber", "type": "heli", "desc": "Hubschrauber der Polizei (nur NPC).",
+      "seats": 2, "minRank": "", "spawn": "", "police": true, "color": "#1e3a6e", "accent": "#f2f2f2",
+      "maxSpeed": 36, "accel": 9, "brake": 11, "strafe": 0.7,
+      "yawRate": 1.8, "climbRate": 9, "sinkRate": 9, "spinUp": 1,
+      "landingMaxVs": 5,
+      "armor": 1.2, "fuelSeconds": 900,
+      "length": 10, "span": 9, "height": 3, "radius": 4.5, "mass": 1600
+    }
+  }
+}

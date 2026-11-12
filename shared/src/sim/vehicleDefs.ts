@@ -6,6 +6,8 @@ export const VehicleKind = {
   Bike: 1,
   Boat: 2,
   Airboat: 3,
+  Plane: 4, // Flugzeug (aircraft.ts)
+  Heli: 5, // Helikopter (aircraft.ts)
 } as const;
 export type VehicleKindId = (typeof VehicleKind)[keyof typeof VehicleKind];
 
@@ -70,7 +72,19 @@ export const VEHICLE_DEFS: Record<VehicleKindId, VehicleDef> = {
     kind: VehicleKind.Airboat, name: 'Airboat',
     maxSpeed: 24, accel: 11, brake: 12, drag: 3.5, turnRate: 2.1, radius: 1.8, surface: airboatSurface,
   },
+  // Luftfahrzeuge: Werte kommen aus aircraft.json, hier nur Platzhalter für gemeinsame Tabellen
+  [VehicleKind.Plane]: {
+    kind: VehicleKind.Plane, name: 'Flugzeug',
+    maxSpeed: 46, accel: 5, brake: 7, drag: 1, turnRate: 0.8, radius: 4.6, surface: landSurface,
+  },
+  [VehicleKind.Heli]: {
+    kind: VehicleKind.Heli, name: 'Helikopter',
+    maxSpeed: 38, accel: 10, brake: 12, drag: 3, turnRate: 2, radius: 4.2, surface: () => 1,
+  },
 };
+
+/** Ist das Fahrzeug ein Luftfahrzeug (Flugzeug oder Helikopter)? */
+export const isAircraft = (k: number) => k === VehicleKind.Plane || k === VehicleKind.Heli;
 
 /** Ist das Fahrzeug ein Wasserfahrzeug (Höhe = Wasseroberfläche)? */
 export const isWaterVehicle = (k: number) => k === VehicleKind.Boat || k === VehicleKind.Airboat;

@@ -54,7 +54,7 @@ export interface HandlingProfile {
 
 export type HandlingClass = 'compact' | 'sedan' | 'sport' | 'muscle' | 'suv' | 'truck' | 'bike' | 'police' | 'boat' | 'airboat' | 'tank';
 
-const base = (p: Partial<HandlingProfile> & { name: string }): HandlingProfile => ({
+export const base = (p: Partial<HandlingProfile> & { name: string }): HandlingProfile => ({
   mass: 1300, length: 4.4, width: 1.85, height: 1.45, wheelbase: 2.65, track: 1.55,
   cgHeight: 0.5, cgForward: 0.1, wheelRadius: 0.33,
   suspFreq: 1.6, suspDamping: 0.45, suspTravel: 0.22, antiRoll: 0.5,
