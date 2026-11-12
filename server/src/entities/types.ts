@@ -31,7 +31,13 @@ export interface ServerPlayer {
   color: number; // Index in OUTFIT_COLORS
   conn: Connection;
   pawn: PawnState;
-  vehicleId: number; // -1 = zu Fuß
+  vehicleId: number; // -1 = zu Fuß (Fahrer/Pilot)
+  /** Offene Tankrechnung (wird beim Vollwerden abgebucht). */
+  fuelBill?: number;
+  /** Mitfahrer in einem Luftfahrzeug (Fahrzeug-ID, -1 = keiner). */
+  ride: number;
+  /** Sekunden bis zur nächsten Bahnwarnung / Luftfahrt-Hinweis. */
+  airWarnT: number;
   lastSeq: number; // zuletzt verarbeitete Eingabe
   cmdBudget: number; // Schutz gegen zu viele Eingaben (Speedhack)
   lastChatAt: number;
@@ -101,4 +107,10 @@ export interface ServerVehicle {
   raceOwner?: number;
   /** Kinematisch geführtes Verkehrsauto (true) oder freie Physik. */
   kinematic: boolean;
+  /** Luftfahrzeug der Flotte (AirFleet): Typ-ID, Startplatz, Respawn-Zähler. */
+  air?: { id: string; home: { x: number; z: number; a: number }; deadT: number; awayT: number; warnT: number };
+  /** Mitfahrer (Spieler-IDs) – nur Luftfahrzeuge. */
+  riders?: number[];
+  /** Polizeihubschrauber: verfolgter Spieler. */
+  copHeli?: number;
 }

@@ -351,7 +351,7 @@ export class Traffic {
   }
   private buildGrids() {
     this.vGrid.clear(); this.pGrid.clear();
-    for (const v of this.host.vehicles.values()) this.gridAdd(v);
+    for (const v of this.host.vehicles.values()) if (!v.sim.car.fly || v.sim.car.fly.ground) this.gridAdd(v); // fliegende Luftfahrzeuge stören den Verkehr nicht
     for (const p of this.host.pawnPositions()) {
       const k = this.key(p.x, p.z);
       const list = this.pGrid.get(k);

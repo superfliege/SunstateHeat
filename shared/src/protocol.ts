@@ -171,7 +171,7 @@ export interface SnapshotMsg {
   day: number; // Tageszeit 0..1 (0 = Mitternacht, 0.5 = Mittag)
   ack: number; // letzte verarbeitete Eingabe-Sequenz DIESES Clients
   /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt], Fahrzeug (packCar) oder null, Geld. */
-  me?: { pawn: number[]; veh: number[] | null; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
+  me?: { pawn: number[]; veh: number[] | null; /** Mitfahrer in Luftfahrzeug (ID) */ ride?: number; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
   players: PlayerTuple[];
   /** Geänderte Fahrzeuge / Stammdaten / verschwundene IDs */
   v?: VehicleTuple[];
