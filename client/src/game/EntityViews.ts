@@ -27,8 +27,11 @@ import { Act } from '../../../shared/src/npc/scenarios';
 import { GANGS, GANG_IDS } from '../../../shared/src/gangs';
 import { BARK_DURATION, barkText } from '../../../shared/src/npc/barks';
 import { wrapAngle } from '../../../shared/src/math';
+import { rankOf } from '../../../shared/src/story';
+import type { KenneyRole } from '../render/kenneyCharacters';
 
-export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number }
+/** rank: Story-Rang (Kleidung/Look und Symbol am Namensschild, siehe shared/story/ranks.json). */
+export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number; rank?: number }
 export interface VehicleViewState {
   id: number; kind: number; variant: number; color: number; driver: number;
   x: number; y: number; z: number; q: THREE.Quaternion;
@@ -78,6 +81,8 @@ interface CharView {
   /** Hund an der Leine (Hundebesitzer): Mesh + Leine */
   dog?: THREE.Mesh; leash?: THREE.Line; dogX?: number; dogZ?: number; dogA?: number;
   arch: number;
+  /** Spieler: Story-Rang, mit dem die Figur gebaut wurde (Wechsel = neue Kleidung). */
+  rank?: number;
 }
 /** Abstand, der für Figuren außerhalb des Bildes an die Animation gemeldet wird (seltene Updates, keine Details). */
 const OFFSCREEN_DIST = 1000;
@@ -459,8 +464,15 @@ export class EntityViews {
   }
 
   /** Figur im Stil der Gegend (Quaternius) oder prozeduraler Ersatz. */
-  private createFigure(id: number, outfit: number, x: number, z: number, player: boolean, role = 0, arch = -1, gangColor = -1): Figure {
+  private createFigure(id: number, outfit: number, x: number, z: number, player: boolean, role = 0, arch = -1, gangColor = -1, rank = 0): Figure {
     const cop = role === 1, gang = role === 2;
+    if (player && rank > 0) {
+      // Story-Rang: eigener Look (z. B. Anzug ab „Vertrauter“, weißer Anzug als Boss)
+      const look = rankOf(rank).look;
+      const shirt = look.shirt ? parseInt(look.shirt.slice(1), 16) : OUTFIT_COLORS[outfit % OUTFIT_COLORS.length];
+      const k = createKenneyCharacter(look.style as KenneyRole, id, shirt);
+      if (k) return k;
+    }
     const district = this.map.districtAt(x, z);
     const mood = moodFor(this.map.zoneAt(x, z), district?.style ?? null);
     const style = cop ? 'business' : player ? 'casual' : styleForMood(mood, ((id * 2654435761) >>> 0) / 4294967296);
@@ -479,10 +491,10 @@ export class EntityViews {
   }
 
   // ------------------------------------------------------------------ Figuren
-  private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0, gangColor = -1) {
+  private updateChar(map: Map<number, CharView>, id: number, outfit: number, x: number, z: number, a: number, dt: number, seatedOn: VehicleViewState | null, h = 0, ragdoll = false, weapon = -1, role = 0, arch = -1, act = 0, gangColor = -1, rank = 0) {
     let c = map.get(id);
     if (!c) {
-      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch, gangColor), lastX: x, lastZ: z, seen: true, rag: null, anchor: new THREE.Vector3(x, 0, z), held: null, heldIdx: -1, swing: 0, kick: 0, arch };
+      c = { model: this.createFigure(id, outfit, x, z, map === this.players, role, arch, gangColor, rank), lastX: x, lastZ: z, seen: true, rag: null, anchor: new THREE.Vector3(x, 0, z), held: null, heldIdx: -1, swing: 0, kick: 0, arch, rank };
       map.set(id, c);
       this.group.add(c.model.root);
     }
@@ -694,9 +706,19 @@ export class EntityViews {
   }
 
   setPlayer(s: PlayerState, dt: number, seatedOn: VehicleViewState | null, isMe: boolean) {
-    const c = this.updateChar(this.players, s.id, s.color, s.x, s.z, s.a, dt, seatedOn, s.h, s.ragdoll, s.weapon);
+    const rank = s.rank ?? 0;
+    const old = this.players.get(s.id);
+    if (old && (old.rank ?? 0) !== rank) {
+      // Neuer Rang: Figur (Kleidung) und Namensschild neu aufbauen
+      this.group.remove(old.model.root);
+      old.model.dispose();
+      for (const sp of [old.label, old.bubble]) if (sp) { this.group.remove(sp); sp.material.map?.dispose(); sp.material.dispose(); }
+      if (old.held) this.group.remove(old.held);
+      this.players.delete(s.id);
+    }
+    const c = this.updateChar(this.players, s.id, s.color, s.x, s.z, s.a, dt, seatedOn, s.h, s.ragdoll, s.weapon, 0, -1, 0, -1, rank);
     if (!isMe && !c.label) {
-      c.label = makeLabel(s.name, OUTFIT_COLORS[s.color % OUTFIT_COLORS.length]);
+      c.label = makeLabel(rank > 0 ? `${rankOf(rank).icon} ${s.name}` : s.name, OUTFIT_COLORS[s.color % OUTFIT_COLORS.length]);
       this.group.add(c.label);
     }
     if (c.label) {

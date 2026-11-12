@@ -20,6 +20,7 @@
       <div id="hud-clock"></div>
       <div id="hud-speed"></div>
       <div id="hud-money">$0</div>
+      <div id="hud-rank" title="Story-Rang">🎒 Niemand</div>
       <button id="fs-btn" type="button" title="Vollbild (Taste V)" aria-label="Vollbild">⛶</button>
     </div>
     <!-- Spielerwerte -->
@@ -28,11 +29,12 @@
       <div class="st-row" id="st-armor-row"><span>RÜ</span><div class="st-bar"><div id="st-armor"></div></div><b id="st-armor-n">0</b></div>
       <div class="st-row"><span id="st-level">Lv 1</span><div class="st-bar xp"><div id="st-xp"></div></div><b id="st-xp-n"></b></div>
     </div>
+    <div id="hud-goal" class="hidden"></div>
     <div id="hud-weapon"><b id="wp-name">Fäuste</b><span id="wp-ammo"></span><small id="wp-pvp" class="hidden">PvP</small></div>
     <div id="hud-wanted" class="hidden"><i></i><i></i><i></i><i></i></div>
     <div id="arrest" class="hidden"><span>FESTNAHME …  weglaufen!</span><div><div id="arrest-bar"></div></div></div>
     <div id="panel" class="hidden"></div>
-    <div id="ko" class="hidden"><h2>AUSGEKNOCKT</h2><p>Respawn im Krankenhaus in <b id="ko-t">15</b> s</p></div>
+    <div id="ko" class="hidden"><h2>AUSGEKNOCKT</h2><p>Respawn (Zuhause bzw. Krankenhaus) in <b id="ko-t">15</b> s</p></div>
     <!-- Fahr-HUD -->
     <div id="drive-hud" class="hidden">
       <div class="dh-row"><span id="dh-speed">0</span><small>km/h</small><span id="dh-gear">1</span></div>

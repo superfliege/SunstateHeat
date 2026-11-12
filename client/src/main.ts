@@ -17,8 +17,9 @@ const passInput = document.getElementById('login-pass') as HTMLInputElement;
 function guestId(): string {
   try {
     let id = localStorage.getItem('sunstate.guest');
-    if (!id) {
-      id = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/[^w-]/g, '');
+    // Früher entfernte der Filter fast alle Zeichen (alle Gäste teilten sich die ID „----“) – solche IDs neu erzeugen
+    if (!id || id.replace(/-/g, '').length < 8) {
+      id = (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/[^\w-]/g, '');
       localStorage.setItem('sunstate.guest', id);
     }
     return id;

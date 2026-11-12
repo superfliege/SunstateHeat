@@ -57,6 +57,9 @@ import { Minimap, playerDotColor, type MapDot } from '../ui/Minimap';
 import { MINIGAMES } from '../../../shared/src/minigames';
 import { applyTune, TuningPanel } from '../ui/TuningPanel';
 import { EntityViews, type PlayerState, type VehicleViewState } from './EntityViews';
+import { StoryDirector } from './StoryDirector';
+import { StoryUi } from '../ui/StoryUi';
+import { charOf } from '../../../shared/src/story';
 
 const SEND_INTERVAL_MS = 33; // ~30 Eingabe-Pakete pro Sekunde
 const MINIMAP_INTERVAL = 1 / 15;
@@ -147,6 +150,12 @@ export class Game {
   private ray = new THREE.Raycaster();
   private aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private arrows: THREE.ArrowHelper[] = [];
+  // Hauptgeschichte (Intro, Story-Figuren, Dialoge, Rang)
+  private storyUi = new StoryUi();
+  private storyDir: StoryDirector;
+  private storyBlock = false;
+  /** Laufender Koop-Auftrag in der Nähe, dem man beitreten kann (Titel). */
+  private joinOffer: string | null = null;
 
   constructor(private net: Network, private myId: number, private sfx: Sfx, dev = false) {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -174,9 +183,16 @@ export class Game {
     this.questMarkers = new QuestMarkers(this.map);
     this.panels = new Panels((m) => this.net.send(m));
     this.panels.onTalkEnd = (shop, line) => this.hud.toast(`${shop.keeper.name}: „${line}“`, 'info');
-    this.panels.onOpenChange = (open) => { this.input.blocked = open; this.touch.setBlocked(open); if (open) { this.input.clear(); this.input.fire = false; } this.sfx.ui(open ? 'open' : 'close', 0.5); };
+    this.panels.onOpenChange = (open) => { this.input.blocked = open || this.storyBlock; this.touch.setBlocked(open || this.storyBlock); if (open) { this.input.clear(); this.input.fire = false; } this.sfx.ui(open ? 'open' : 'close', 0.5); };
+    this.storyDir = new StoryDirector(this.map, this.storyUi, (m) => this.net.send(m), () => { const v = this.predictor.view(); return { x: v.x, z: v.z, inVehicle: this.predictor.inVehicle }; });
+    this.storyUi.onBlockChange = (b) => {
+      this.storyBlock = b;
+      const blocked = b || this.panels.isOpen || this.chat.isOpen;
+      this.input.blocked = blocked; this.touch.setBlocked(blocked);
+      if (b) { this.input.clear(); this.input.fire = false; }
+    };
     this.particles = new Particles(this.map);
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.applyGfx();
@@ -220,6 +236,9 @@ export class Game {
     this.input.onChatKey = () => this.chat.open();
     this.input.onMapKey = () => this.minimap.toggleBig();
     this.input.onInteract = () => {
+      if (this.joinOffer) { this.net.send({ t: 'questJoin' }); return; }
+      const st = this.storyDir.nearest();
+      if (st) { this.storyDir.interact(st); return; }
       const s = this.shopNearMe();
       if (s) { this.panels.openTalk(s); return; }
       const ph = this.phoneNearMe();
@@ -231,7 +250,7 @@ export class Game {
     this.input.onInventory = () => this.panels.toggleInventory();
     this.input.onWeaponSlot = (slot) => this.net.send({ t: 'weapon', slot });
     this.input.onWeaponCycle = (dir) => this.net.send({ t: 'weapon', dir });
-    this.chat.onOpenChange = (open) => { this.input.blocked = open; this.touch.setBlocked(open); if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
+    this.chat.onOpenChange = (open) => { this.input.blocked = open || this.storyBlock; this.touch.setBlocked(open || this.storyBlock); if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
     this.chat.onSend = (text) => this.net.send({ t: 'chat', text });
 
     net.onMessage = (msg) => this.onMessage(msg);
@@ -344,7 +363,16 @@ export class Game {
       case 'tune':
         applyTune(msg.cls, msg.values, msg.assists);
         break;
-      case 'phone': this.panels.openPhone(msg.name, msg.quests); break;
+      case 'phone': {
+        const c = msg.npc ? charOf(msg.npc) : undefined;
+        this.panels.openPhone(c ? c.name : msg.name, msg.quests, msg.talk, c?.color);
+        break;
+      }
+      case 'story': this.storyDir.setState(msg.s); this.panels.setStory(msg.s, this.storyDir.goalText()); break;
+      case 'dialog': case 'rankUp': case 'choice':
+        this.storyDir.onMessage(msg);
+        if (msg.t === 'rankUp') this.sfx.ui('good', 0.8);
+        break;
       case 'questLog': this.panels.setQuestLog(msg.done, msg.cooldowns); break;
       case 'error':
         this.hud.toast(msg.text, 'bad');
@@ -378,6 +406,9 @@ export class Game {
     this.net.send({ t: 'attack', aim });
     this.fireT = (WEAPONS[weapon]?.cooldown ?? 0.4) * 0.95;
   }
+
+  /** Tageszeit für die Darstellung (Story-Szenen dürfen sie überschreiben, z. B. Sonnenuntergang im Intro). */
+  private viewDay() { return this.storyDir.dayOverride ?? this.day; }
 
   private phoneNearMe(): PhoneDef | null {
     const me = this.predictor.view();
@@ -420,7 +451,7 @@ export class Game {
     if (snap.af) { this.map.floors = snap.af.map(unpackFloor); this.arenas.set(this.map.floors); }
     this.predictor.reconcile(snap, this.myId, SIM_DT);
     this.day = snap.day;
-    if (snap.me) { this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.wanted = snap.me.stats.wanted; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
+    if (snap.me) { this.joinOffer = snap.me.join ?? null; this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.wanted = snap.me.stats.wanted; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
   }
 
   /** Lautstärke + Stereo-Position eines Weltpunkts relativ zur Kamera */
@@ -693,7 +724,7 @@ export class Game {
     U.uTime.value += dt;
     U.uFocus.value.set(me.x, myY + 1, me.z);
     this.sky.setMood(moodFor(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.style ?? null));
-    this.sky.update(this.day, this.rig.target, dt);
+    this.sky.update(this.viewDay(), this.rig.target, dt);
     this.world.update(this.rig.target.x, this.rig.target.z);
     this.world.setNight(this.sky.night);
     this.world.setLight(this.sky.light);
@@ -711,9 +742,11 @@ export class Game {
     this.stores.setTalkable(talk);
     this.stores.update(dt, me.x, me.z, this.predictor.inVehicle);
     this.phonesView.update(dt); this.questMarkers.update(dt); this.arenas.update(dt);
+    this.storyDir.update(dt); this.storyUi.update();
     // Linienstärke: mit dem Zoom dünner, mit der Auflösung dicker (Referenz 720p)
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
-    const dusk = Math.max(0, 1 - Math.abs(this.day - 0.74) / 0.08, 1 - Math.abs(this.day - 0.27) / 0.06);
+    const day = this.viewDay();
+    const dusk = Math.max(0, 1 - Math.abs(day - 0.74) / 0.08, 1 - Math.abs(day - 0.27) / 0.06);
     this.post.update(this.sky.mood, this.sky.night, dusk);
     this.rig.camera.getWorldDirection(tmpV3);
     this.sfx.frame(rawDt, this.rig.target.x, myY, this.rig.target.z, tmpV3.x, tmpV3.z);
@@ -865,10 +898,10 @@ export class Game {
       const pa = a.players.get(pb[0]) ?? pb;
       const pw = this.predictor.pawn;
       const st: PlayerState = isMe
-        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0 }
+        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0 }
         : {
             id: pb[0], name: pb[1], x: lerp(pa[2], pb[2], t), z: lerp(pa[3], pb[3], t),
-            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, weapon: pb[10] ?? 0,
+            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
           };
       const seat = st.veh >= 0 ? vehicleStates.get(st.veh) ?? null : null;
       if (seat) { st.x = seat.x; st.z = seat.z; }
@@ -1032,7 +1065,7 @@ export class Game {
 
   private updateHud(latest: SnapshotMsg | null, vehicles: Map<number, VehicleViewState>, me: ReturnType<Predictor['view']>) {
     this.hud.setZone(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.name ?? null);
-    this.hud.setClock(this.day);
+    this.hud.setClock(this.viewDay());
     this.hud.setSpeed(null);
     const mine = latest?.players.find((p) => p[0] === this.myId);
     this.hud.setQuestState(this.questState);
@@ -1045,7 +1078,10 @@ export class Game {
       this.drive.drift(st.driftT > 0.3 ? st.driftPts : null, driftMultiplier(st));
     } else { this.drive.set(null); this.drive.drift(null, 1); }
 
-    if (this.chat.isOpen) { this.hud.setHint(null); return; }
+    if (this.chat.isOpen || this.storyBlock) { this.hud.setHint(null); return; }
+    if (this.joinOffer) { this.hud.setHint(`<b>F</b> Bei „${this.joinOffer}“ mitmachen`); return; }
+    const storyTarget = this.storyDir.nearest();
+    if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
     if (this.predictor.inVehicle && sim) {
       const c = sim.car;
       const ws = this.map.workshops.find((w) => Math.hypot(w.x - c.x, w.z - c.z) < w.r);
@@ -1105,6 +1141,7 @@ export class Game {
   private drawMinimap(latest: SnapshotMsg, vehicles: Map<number, VehicleViewState>, me: ReturnType<Predictor['view']>) {
     const dots: MapDot[] = [];
     dots.push(...this.staticDots());
+    dots.push(...this.storyDir.dots());
     for (const t of this.questState?.targets ?? []) dots.push({ x: t[0], z: t[1], color: t[3] === 5 ? '#ff3d5a' : t[3] === 2 ? '#ffd23a' : t[3] === 7 ? '#ffffff' : '#4dff9a', size: 4, ring: t[3] !== 5 });
     for (const c of this.copDots.values()) dots.push({ x: c[0], z: c[1], color: '#2a6bff', size: 3 });
     for (const v of vehicles.values()) {

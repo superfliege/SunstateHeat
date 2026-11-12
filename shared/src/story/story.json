@@ -1,0 +1,342 @@
+{
+  "characters": {
+    "lou":    { "name": "Lou Navarro", "short": "Lou", "title": "Autowäsche, Kurierdienste, Geschäftliches", "color": "#ffb347", "look": { "style": "casual", "shirt": "#ff8c42" } },
+    "gus":    { "name": "Augusto „Gus“ Medina", "short": "Gus", "title": "König der Nacht", "color": "#f4f4f0", "look": { "style": "business", "shirt": "#ffffff" } },
+    "carla":  { "name": "Carla Reyes", "short": "Carla", "title": "Managerin des Velvet Tide", "color": "#ff4f8b", "look": { "style": "business", "shirt": "#2b2b38" } },
+    "grady":  { "name": "Hollis Grady", "short": "Grady", "title": "Rancher, Pistenkönig, Schweiger", "color": "#d9a066", "look": { "style": "outdoor" } },
+    "racer":  { "name": "Roxy „Redline“ Ramirez", "short": "Roxy", "title": "Rennfahrerin", "color": "#ff6a3a", "look": { "style": "casual", "shirt": "#f25c3c" } },
+    "pilot":  { "name": "Captain Dale Huxley", "short": "Huxley", "title": "Pilot (laut eigener Aussage)", "color": "#7ac8ff", "look": { "style": "outdoor", "shirt": "#3a8dff" } },
+    "funk":   { "name": "Funkgerät", "short": "Funk", "title": "", "color": "#9a9aa4", "look": { "style": "casual" } },
+    "crew":   { "name": "Bankcrew", "short": "Crew", "title": "", "color": "#c98bff", "look": { "style": "gang" } },
+    "you":    { "name": "Du", "short": "Du", "title": "", "color": "#4ff2ff", "look": { "style": "player" } }
+  },
+
+  "intro": {
+    "title": "Zwölf Dollar. Ein Rucksack. Eine Stadt voller Möglichkeiten.",
+    "startCash": 12,
+    "day": 0.745,
+    "car": { "model": "proc_muscle", "color": 2, "name": "Lous Cabrio" },
+    "lines": [
+      { "who": "lou", "text": "Da bist du ja! Hab dich am Rucksack erkannt. Jeder hier fängt mit so einem an." },
+      { "who": "lou", "text": "Lou. Lou Navarro. Autowäsche, Kurierdienste, Geschäftliches. Hauptsächlich Autowäsche." },
+      { "who": "lou", "text": "Siehst du die Lichter da drüben? Da wohnen Leute, die mal genauso hier standen wie du." },
+      { "who": "lou", "text": "Der größte von denen heißt Gus. Gehört ihm der Club, gehört ihm die Nacht. Halt dich erst mal von ihm fern." },
+      { "who": "lou", "text": "Du kannst auf meinem Sofa pennen. Aber erst bringst du meinen Wagen zur Waschanlage. Ohne Kratzer, bitte." }
+    ],
+    "startMission": "story_01_ohne_kratzer"
+  },
+
+  "homes": {
+    "lou_sofa":  { "name": "Lous Sofa", "at": "carWash", "desc": "Hinterzimmer der Waschanlage „Bubble Bath“. Riecht nach Schaum und Hoffnung." },
+    "apartment": { "name": "Apartment am Ocean Strip", "at": "apartment", "desc": "Ein Geschenk von Gus. Meerblick, wenn man sich weit genug rauslehnt.", "locked": "Gus hat die Schlösser getauscht. Und den Teppich. Und vermutlich den Hausmeister." },
+    "campfire":  { "name": "Lagerfeuer vor Gradys Zaun", "at": "ranch", "desc": "Grady traut dir noch nicht. Du schläfst draußen. Die Kojoten finden das lustig." },
+    "ranch":     { "name": "Unterkunft auf Gradys Ranch", "at": "ranch", "desc": "Ein Feldbett, eine Kaffeemaschine und ein Pferd, das dich beurteilt." },
+    "hideout":   { "name": "Versteck an der Landebahn", "at": "hideout", "desc": "Dein eigener Hangar. Mit eigenem Kühlschrank. Das Imperium beginnt." },
+    "villa":     { "name": "Villa in Brickell Hills", "at": "estate", "desc": "Gus' ehemalige Villa. Der Brunnen bleibt. Das Ölgemälde von Gus bekommt einen Schnurrbart." },
+    "club_hq":   { "name": "Velvet Tide (Hauptquartier)", "at": "clubBack", "desc": "Dein Club. Deine Nacht. Deine Gästeliste." }
+  },
+
+  "npcs": [
+    { "id": "lou_bus", "character": "lou", "at": "louBus", "when": { "intro": true, "notDone": ["story_01_ohne_kratzer"] },
+      "talk": [{ "who": "lou", "text": "Das Cabrio steht direkt hier. Ohne Kratzer, ja? Der eine Kratzer da war schon. Der da auch." }] },
+    { "id": "lou_wash", "character": "lou", "at": "carWash", "when": { "done": ["story_01_ohne_kratzer"], "maxRank": "vertrauter" },
+      "talk": [
+        { "who": "lou", "text": "Willkommen im „Bubble Bath“! Heute im Angebot: Wäsche, Politur und Ausreden, warum die Bürste klemmt." },
+        { "who": "lou", "text": "Ich hab eine Geschäftsidee: Autowäsche für Boote. Nein? Okay. Notiert." },
+        { "who": "lou", "text": "Mein Kredithai hat mir eine Geburtstagskarte geschickt. Das ist entweder nett oder eine Drohung." }
+      ] },
+    { "id": "carla_club", "character": "carla", "at": "clubBack", "when": { "done": ["story_03_offene_rechnungen"], "maxRank": "vertrauter" },
+      "talk": [
+        { "who": "carla", "text": "Ich mache Gus' Bücher. Die echten und die, die er der Steuer zeigt. Die zweiten sind lustiger." },
+        { "who": "carla", "text": "Lehn dich nicht an die Bar. Die ist teurer als du." }
+      ] },
+    { "id": "gus_club", "character": "gus", "at": "club", "when": { "done": ["story_03_offene_rechnungen"], "maxRank": "vertrauter" },
+      "talk": [
+        { "who": "gus", "text": "Weiß ist keine Farbe, mein Freund. Weiß ist eine Haltung." },
+        { "who": "gus", "text": "Jeder in dieser Stadt will etwas von mir. Du auch? Gut. Ehrlichkeit ist selten. Und verdächtig." }
+      ] },
+    { "id": "grady_ranch", "character": "grady", "at": "ranch", "when": { "minRank": "ausgestossener" },
+      "talk": [
+        { "who": "grady", "text": "Hm." },
+        { "who": "grady", "text": "Die Piste ist schlecht. Mit Absicht. Hält Städter fern." },
+        { "who": "grady", "text": "Lou schuldet mir zweihundert Dollar und eine Entschuldigung. In der Reihenfolge." }
+      ] },
+    { "id": "lou_ranch", "character": "lou", "at": "louRanch", "when": { "done": ["story_10c_lou"], "maxRank": "unternehmer" },
+      "talk": [
+        { "who": "lou", "text": "Das Outback ist toll! Keine Steuern, keine Nachbarn, keine Waschanlagen. Wobei … Moment. Marktlücke!" },
+        { "who": "lou", "text": "Grady hat mich angelächelt. Glaube ich. Kann auch Sonnenbrand gewesen sein." }
+      ] },
+    { "id": "racer_cane", "character": "racer", "at": "racer", "when": { "done": ["story_09_lieferung"] },
+      "talk": [
+        { "who": "racer", "text": "Ich fahre für Leute, die schneller sind als ich. Bisher hab ich niemanden getroffen. Gewinn die Cane Ridge Rally, dann reden wir." },
+        { "who": "racer", "text": "Das Renntelefon steht direkt da. Oder hast du Angst vor Staub?" }
+      ] },
+    { "id": "pilot_sunset", "character": "pilot", "at": "pilot", "when": { "done": ["story_09_lieferung"] },
+      "talk": [{ "who": "pilot", "text": "Ich bin dreihundert Mal gelandet. Zweihundertneunzig davon absichtlich." }] },
+    { "id": "carla_ranch", "character": "carla", "at": "carlaRanch", "when": { "done": ["story_11_konvoi"], "maxRank": "unternehmer" },
+      "talk": [{ "who": "carla", "text": "Ich hab Gus' Buchhaltung mitgenommen. Und seine Lieblingskaffeetasse. Kleinlich? Ja. Befriedigend? Sehr." }] },
+    { "id": "carla_hq", "character": "carla", "at": "clubBack", "when": { "minRank": "boss" },
+      "talk": [{ "who": "carla", "text": "Die Bücher stimmen, Boss. Zum ersten Mal in der Geschichte dieses Clubs. Gruselig, oder?" }] },
+    { "id": "lou_villa", "character": "lou", "at": "estate", "when": { "minRank": "boss" },
+      "talk": [
+        { "who": "lou", "text": "Ich hab im Pool eine Waschstraße eingerichtet. Für Gummienten. Erste Kunden sind begeistert." },
+        { "who": "lou", "text": "Zwölf Dollar, Mann. Ich erzähl das jedem. Auch denen, die es nicht hören wollen." }
+      ] }
+  ],
+
+  "choices": {
+    "debt_ramon": {
+      "who": "Ramón (Domino-Veteran)",
+      "prompt": [
+        { "who": "Ramón (Domino-Veteran)", "text": "Gus' Geld? Ich hab es beim Domino verloren. An Gus. Der hat gezinkte Steine. Aus Elfenbein. Aus Prinzip." },
+        { "who": "Ramón (Domino-Veteran)", "text": "Ich hab 400 Dollar und einen Hund namens Fidel. Den Hund kriegst du nicht." }
+      ],
+      "options": [
+        { "id": "hard", "label": "Einschüchtern: „Gib her, oder Fidel bekommt einen neuen Besitzer.“", "style": -1, "money": 150, "rep": { "neon": 3 },
+          "reply": [{ "who": "Ramón (Domino-Veteran)", "text": "Okay! Okay! Hier, alles. Fidel, versteck dich. Der Neue ist ein Monster." }] },
+        { "id": "smooth", "label": "Verhandeln: „Ratenzahlung. Und ich hab dich nie beim Domino gesehen.“", "style": 1, "money": 60,
+          "reply": [{ "who": "Ramón (Domino-Veteran)", "text": "Ein Mann mit Manieren! In diesem Viertel! Hier, die Hälfte. Und ein Kaffee. Der Kaffee ist gratis, der Rest wird teuer." }] }
+      ]
+    },
+    "debt_chad": {
+      "who": "Chad (Start-up-Gründer)",
+      "prompt": [
+        { "who": "Chad (Start-up-Gründer)", "text": "Bro. Ich disrupte gerade das Konzept „Schulden“. Gus bekommt statt Geld Anteile an meiner App: Uber, aber für Mittagessen." },
+        { "who": "Chad (Start-up-Gründer)", "text": "Bewertung: zwei Milliarden. Umsatz: ein Sandwich. Das Sandwich hab ich selbst gegessen." }
+      ],
+      "options": [
+        { "id": "hard", "label": "Einschüchtern: Sein Stehpult aus dem Fenster halten.", "style": -1, "money": 200, "rep": { "neon": 3 }, "wanted": 1,
+          "reply": [{ "who": "Chad (Start-up-Gründer)", "text": "NICHT DAS STEHPULT! Hier, Cash! Ich ruf meinen Anwalt! Und die Polizei! Und meinen Life-Coach!" }] },
+        { "id": "smooth", "label": "Verhandeln: „Gus investiert. Zahl die Zinsen, dann reden wir über die Series A.“", "style": 1, "money": 80,
+          "reply": [{ "who": "Chad (Start-up-Gründer)", "text": "Series A? Bro. BRO. Hier, Zinsen. Ich sag meinem Board, wir haben einen Angel. Einen sehr, sehr gefährlichen Angel." }] }
+      ]
+    },
+    "debt_kimberly": {
+      "who": "Kimberly (Influencerin)",
+      "prompt": [
+        { "who": "Kimberly (Influencerin)", "text": "Ich zahle Gus in Reichweite, Babe. Dreihundert Likes sind locker so viel wert wie dreihundert Dollar." },
+        { "who": "Kimberly (Influencerin)", "text": "Okay, es sind elf Likes. Aber einer davon ist von meiner Mom. Das zählt doppelt." }
+      ],
+      "options": [
+        { "id": "hard", "label": "Einschüchtern: Ihr Ringlicht konfiszieren.", "style": -1, "money": 180, "rep": { "neon": 3 },
+          "reply": [{ "who": "Kimberly (Influencerin)", "text": "Ohne Ringlicht sehe ich aus wie … ein Mensch! Nimm das Geld! Nimm es! #gezwungen #trotzdemblessed" }] },
+        { "id": "smooth", "label": "Verhandeln: „Ein Werbepost für Gus' Club, und die Hälfte ist erledigt.“", "style": 1, "money": 70,
+          "reply": [{ "who": "Kimberly (Influencerin)", "text": "Kooperation! Ich liebe Kooperationen! #anzeige #velvettide #schuldenfreiungefähr" }] }
+      ]
+    }
+  },
+
+  "style": { "hard": "Gefürchtet", "smooth": "Respektiert", "mixed": "Undurchschaubar" },
+
+  "income": { "intervalMinutes": 10, "amount": 250, "bossFactor": 2, "text": "Die Landebahn zahlt sich aus: +${amount} (Lieferungen laufen, keiner fragt)." },
+
+  "scenes": {
+    "balcony": {
+      "day": 0.745,
+      "lines": [
+        { "who": "lou", "text": "Zwölf Dollar. Weißt du noch?" },
+        { "who": "carla", "text": "Der Club gehört jetzt dir. Ich hab die Gästeliste schon umgeschrieben. Gus steht drauf. Unter „Nein“." },
+        { "who": "grady", "text": "Hm. Schöne Aussicht." },
+        { "who": "lou", "text": "Und das Beste: Die Villa hat eine Garage mit Waschanlage. Ich fang morgen an. Oder übermorgen. Ganz oben hat man Zeit." }
+      ]
+    }
+  },
+
+  "texts": {
+    "rankUp": "Neuer Rang",
+    "homeUnlocked": "Neues Zuhause freigeschaltet: {home}",
+    "homeLocked": "Zugang gesperrt: {home}",
+    "homeSet": "Dein Zuhause ist jetzt: {home}",
+    "garage": "{vehicle} steht bereit.",
+    "garageNone": "Für deinen Rang gibt es noch kein Garagenfahrzeug. Lou leiht dir sein Fahrrad. Er hat keins.",
+    "crewJoined": "Neu in deiner Crew: {name}",
+    "crewDone": "Deine Crew ist komplett!",
+    "joinHint": "Bei „{title}“ mitmachen",
+    "nextGoal": "Nächstes Ziel",
+    "clubLocked": "Hausverbot im Velvet Tide. Der Türsteher hat dein Foto. Ein unvorteilhaftes."
+  },
+
+  "missions": [
+    { "id": "story_01_ohne_kratzer", "act": 1, "giver": "lou", "kind": "main", "order": 1, "when": { "intro": true },
+      "hint": "Fahr Lous Cabrio vom Busbahnhof zur Waschanlage „Bubble Bath“ in Northgate.",
+      "briefing": [{ "who": "lou", "text": "Das Cabrio. Ohne Kratzer. Die Wegpunkte zeigen dir den Weg – ich hab sie selbst gemalt." }],
+      "outro": [
+        { "who": "lou", "text": "Du hast es geschafft! Und das Auto auch! Das ist bei mir nicht selbstverständlich." },
+        { "who": "lou", "text": "Das Sofa gehört dir. Die Kissen nicht, die sind Deko. Willkommen bei Lou Navarro Enterprises, Laufbursche!" }
+      ],
+      "effects": { "rank": "laufbursche", "unlockHomes": ["lou_sofa"], "home": "lou_sofa" } },
+
+    { "id": "story_02_express", "act": 1, "giver": "lou", "kind": "main", "order": 2, "when": { "done": ["story_01_ohne_kratzer"] },
+      "hint": "Sprich mit Lou an der Waschanlage „Bubble Bath“ (Northgate).",
+      "briefing": [
+        { "who": "lou", "text": "Lou's Express! Wir liefern alles, überall, superschnell. Steht so auf dem Flyer. Den Flyer haben wir leider nicht geliefert." },
+        { "who": "lou", "text": "Vier Päckchen, vier Adressen, ein Motorrad. Was in den Päckchen ist? Päckchen. Fahr!" }
+      ],
+      "outro": [{ "who": "lou", "text": "Vier von vier! Hier, dein erstes eigenes Geld. Gib es nicht für Dummheiten aus. Gib es für meine Dummheiten aus." }] },
+
+    { "id": "story_03_offene_rechnungen", "act": 1, "giver": "lou", "kind": "main", "order": 3, "when": { "done": ["story_02_express"] },
+      "hint": "Sprich mit Lou an der Waschanlage – er hat ein kleines Gus-Problem.",
+      "briefing": [
+        { "who": "lou", "text": "Kleines Problem: Ich schulde Gus Geld. Mittelgroßes Problem: viel Geld. Großes Problem: Er weiß, wo die Waschanlage ist." },
+        { "who": "lou", "text": "Gus sagt, ich kann abarbeiten. Also du. Drei Leute schulden IHM Geld. Treib es ein. Freundlich oder … weniger freundlich. Du entscheidest." }
+      ],
+      "outro": [
+        { "who": "lou", "text": "Gus hat angerufen. Persönlich! Er will dich kennenlernen." },
+        { "who": "lou", "text": "Das ist gut. Oder sehr schlecht. Bei Gus ist das dasselbe Telefonat. Carla wartet hinter dem Velvet Tide auf dich." }
+      ] },
+
+    { "id": "story_04_fluchtwagen", "act": 1, "giver": "carla", "kind": "main", "order": 4, "when": { "done": ["story_03_offene_rechnungen"] },
+      "hint": "Triff Carla hinter dem Club „Velvet Tide“ am Ocean Strip.",
+      "briefing": [
+        { "who": "carla", "text": "Du bist also Lous Neuer. Ich bin Carla. Ich führe den Club, die Bücher und gelegentlich Gus." },
+        { "who": "carla", "text": "Unsere Crew besucht heute die Bank in Downtown. Ohne Termin. Ich brauche einen Fahrer, der nicht schwitzt." },
+        { "who": "carla", "text": "Der Wagen steht vorn. Unauffällig, beige, langweilig. Genau wie du sein musst." }
+      ],
+      "outro": [
+        { "who": "carla", "text": "Sauber gefahren. Die Crew ist begeistert, die Polizei weniger. Das ist das richtige Verhältnis." },
+        { "who": "carla", "text": "Ab heute bist du unser Fahrer. Gus will dich sehen. Zieh was Ordentliches an. Also: irgendwas." }
+      ],
+      "effects": { "rank": "fahrer" } },
+
+    { "id": "story_05_party", "act": 1, "giver": "gus", "kind": "main", "order": 5, "when": { "done": ["story_04_fluchtwagen"] },
+      "hint": "Gus erwartet dich am Eingang des „Velvet Tide“ (Ocean Strip). Andere Spieler können mitmachen.",
+      "briefing": [
+        { "who": "gus", "text": "Da ist er ja, Lous kleiner Wunderfahrer. Komm rein, trink was. Nicht das Blaue, das ist für Gäste, die ich nicht mag." },
+        { "who": "gus", "text": "Ich hab gehört, du treibst Geld ein, ohne dass jemand weint.", "if": "smooth" },
+        { "who": "gus", "text": "Ich hab gehört, Chads Stehpult hat Flugangst entwickelt. Ich mag deinen Stil.", "if": "hard" }
+      ],
+      "outro": [
+        { "who": "gus", "text": "Beeindruckend. Wirklich. Mein letzter Leibwächter hat bei so etwas geweint. Und gekündigt. Und mich verklagt." },
+        { "who": "gus", "text": "Hier. Schlüssel. Ein kleines Apartment am Strip. Ab heute bist du mein Vertrauter. Enttäusch mich nicht. Das tun nur Leute einmal." }
+      ],
+      "effects": { "rank": "vertrauter", "unlockHomes": ["apartment"], "home": "apartment" } },
+
+    { "id": "story_06_deal", "act": 1, "giver": "gus", "kind": "main", "order": 6, "outroKind": "radio", "when": { "done": ["story_05_party"] },
+      "hint": "Gus hat einen großen Deal für dich. Er wartet im „Velvet Tide“.",
+      "briefing": [
+        { "who": "gus", "text": "Großes Geschäft heute Nacht, am Kai auf der Hafeninsel. Du fährst. Du übergibst. Du lächelst." },
+        { "who": "gus", "text": "Du bist schnell aufgestiegen, weißt du. Sehr schnell. Fast … zu schnell. Ach, egal. Gute Fahrt!" }
+      ],
+      "outro": [
+        { "who": "lou", "text": "*knister* Hörst du mich? Gus hat dich verkauft! Dein Apartment ist weg, im Club hängt dein Foto mit einem roten Kreis drum!" },
+        { "who": "lou", "text": "Fahr ins Outback, zu Hollis Grady. Pine Hollow Road, die Ranch mit dem schiefen Zaun. Der schuldet mir noch was. Glaube ich." }
+      ],
+      "effects": { "rank": "ausgestossener", "lockHomes": ["apartment"], "unlockHomes": ["campfire"], "home": "campfire", "rep": { "neon": -40 } } },
+
+    { "id": "story_07_staub", "act": 2, "giver": "grady", "kind": "main", "order": 7, "when": { "done": ["story_06_deal"] },
+      "hint": "Fahr zu Hollis Gradys Ranch an der Pine Hollow Road (Dry Pine Country).",
+      "briefing": [
+        { "who": "grady", "text": "Lou schickt dich. Hm. Das letzte Mal, als Lou jemanden geschickt hat, war's ein Lama." },
+        { "who": "grady", "text": "Truck. Ladung. Cane Ridge. Über den Okee Trail. Wenn die Kisten heil ankommen, reden wir. Wenn nicht, läufst du." }
+      ],
+      "outro": [
+        { "who": "grady", "text": "Kisten heil. Hm." },
+        { "who": "grady", "text": "Kannst drinnen schlafen. Das Feldbett quietscht. Das Pferd auch." }
+      ],
+      "effects": { "unlockHomes": ["ranch"], "home": "ranch" } },
+
+    { "id": "story_08_landebahn", "act": 2, "giver": "grady", "kind": "main", "order": 8, "when": { "done": ["story_07_staub"] },
+      "hint": "Grady hat ein Biker-Problem an seiner alten Landebahn. Sprich mit ihm auf der Ranch. (Koop empfohlen)",
+      "briefing": [
+        { "who": "grady", "text": "Meine alte Landebahn bei Port Sabal. Biker. Mangrove-Pack. Sie grillen auf der Rollbahn." },
+        { "who": "grady", "text": "Schmeiß sie raus, und die Bahn gehört uns beiden. Halbe-halbe. Bring Freunde mit, falls du welche hast." }
+      ],
+      "outro": [
+        { "who": "grady", "text": "Bahn ist frei. Hm. Gute Arbeit." },
+        { "who": "grady", "text": "Partner. Ab heute. Ich schreib's nicht auf. Ich merk's mir. Das ist mehr wert." }
+      ],
+      "effects": { "rank": "unternehmer" } },
+
+    { "id": "story_09_lieferung", "act": 2, "giver": "grady", "kind": "main", "order": 9, "when": { "done": ["story_08_landebahn"] },
+      "hint": "Dein erster eigener Auftrag: Sprich mit Grady auf der Ranch.",
+      "briefing": [
+        { "who": "grady", "text": "Erste eigene Ladung ist gelandet. Deine Ware, dein Risiko, dein Geld." },
+        { "who": "grady", "text": "Gus hat Wind bekommen. Seine Leute sperren die Straßen. Route 41 oder Pine Hollow Road – such's dir aus. Beide sind schlecht." }
+      ],
+      "outro": [
+        { "who": "grady", "text": "Angekommen. Hm. Die Landebahn wirft jetzt regelmäßig was ab. Und der alte Hangar ist deins. Mach ein Versteck draus." },
+        { "who": "grady", "text": "Allein schaffst du Gus aber nicht. Du brauchst Leute. Gute Leute. Oder wenigstens Lou." }
+      ],
+      "effects": { "income": true, "unlockHomes": ["hideout"], "home": "hideout" } },
+
+    { "id": "story_10_crew", "act": 2, "giver": "you", "kind": "main", "order": 10, "virtual": true, "title": "Eine Crew", "when": { "done": ["story_09_lieferung"] },
+      "hint": "Rekrutiere deine Crew: Roxy (Cane Ridge), Captain Huxley (Flugfeld Sunset Key) und Lou (wartet auf deinen Anruf).",
+      "outro": [{ "who": "lou", "text": "Die Crew ist komplett! Roxy fährt, Huxley fliegt, ich rede. Wir sind unaufhaltsam. Oder zumindest laut." }] },
+
+    { "id": "story_10a_rennfahrerin", "act": 2, "giver": "racer", "kind": "main", "order": 10.1, "virtual": true, "title": "Eine Crew: Die Rennfahrerin", "when": { "done": ["story_09_lieferung"] },
+      "hint": "Gewinne die Cane Ridge Rally (Renntelefon in Cane Ridge), um Roxy zu überzeugen.",
+      "outro": [{ "who": "racer", "text": "Erster Platz. Gegen mich hättest du verloren, aber gegen die anderen … okay. Ich bin dabei. Ich fahre, du bezahlst die Reifen." }],
+      "effects": { "crew": "racer" } },
+
+    { "id": "story_10b_pilot", "act": 2, "giver": "pilot", "kind": "main", "order": 10.2, "when": { "done": ["story_09_lieferung"] },
+      "hint": "Captain Huxley am Flugfeld Sunset Key braucht einen Gefallen.",
+      "briefing": [
+        { "who": "pilot", "text": "Du willst einen Piloten? Ich bin der beste. Der einzige im Umkreis, aber auch der beste." },
+        { "who": "pilot", "text": "Ein Gefallen zuerst: Marlin-Club-Rowdys haben meinen Glücks-Flamingo geklaut. Ohne ihn fliege ich nicht. Mit ihm fliege ich … meistens." }
+      ],
+      "outro": [{ "who": "pilot", "text": "Flamingo! Mein Junge! Okay, Boss, ich fliege für dich. Wohin auch immer. Am liebsten geradeaus." }],
+      "effects": { "crew": "pilot" } },
+
+    { "id": "story_10c_lou", "act": 2, "giver": "lou", "kind": "main", "order": 10.3, "when": { "done": ["story_09_lieferung"] },
+      "hint": "Lou hat angerufen – er steckt auf dem Highway 9 in der Klemme. Annehmen im Quest-Log (J).",
+      "call": [{ "who": "lou", "text": "*keuch* Ich musste aus der Stadt fliehen! Gus' Leute haben mich auf dem Highway 9 umzingelt! Ich hab mich hinter einem Kaktus versteckt. Der Kaktus ist sehr dünn!" }],
+      "briefing": [{ "who": "lou", "text": "Highway 9! Schnell! Und bring was mit, das lauter ist als meine Hupe!" }],
+      "outro": [{ "who": "lou", "text": "Du hast mich gerettet! Ich bin dabei, Partner! Ich bin die Crew-Abteilung für … Stimmung. Und Autowäsche." }],
+      "effects": { "crew": "lou" } },
+
+    { "id": "story_11_konvoi", "act": 2, "giver": "carla", "kind": "main", "order": 11, "when": { "done": ["story_10_crew"] },
+      "hint": "Carla hat angerufen: Gus' Geldtransport rollt über die Route 41. Annehmen im Quest-Log (J). (Koop möglich)",
+      "call": [
+        { "who": "carla", "text": "Hier ist Carla. Ja, die Carla. Nein, Gus weiß nicht, dass ich anrufe. Er weiß vieles nicht mehr." },
+        { "who": "carla", "text": "Ich habe genug. Er bezahlt mich in Komplimenten und Drohungen. Heute fährt sein Geldtransport über die Route 41 bei Port Sabal. Interesse?" }
+      ],
+      "briefing": [{ "who": "carla", "text": "Ein gepanzerter Transporter, Eskorte vorne und hinten. Die Eskorte ist schlecht bezahlt. Ich weiß das. Ich mache die Gehaltsabrechnung." }],
+      "outro": [
+        { "who": "carla", "text": "Gus ist pleite. Seine Kreditkarten wurden abgelehnt – im eigenen Club. Ich war dabei. Es war wunderschön." },
+        { "who": "carla", "text": "Ich bin raus aus der Stadt. Wir sehen uns auf der Ranch, Partner." }
+      ] },
+
+    { "id": "story_12_ganz_oben", "act": 2, "giver": "grady", "kind": "main", "order": 12, "when": { "done": ["story_11_konvoi"] },
+      "hint": "Das Finale: Sprich mit Grady auf der Ranch. Dann geht's nach Brickell Hills. (Koop)",
+      "briefing": [
+        { "who": "grady", "text": "Crew ist bereit. Carla hat die Pläne. Lou hat … Snacks." },
+        { "who": "grady", "text": "Holen wir uns die Stadt zurück. Gus' Villa, Brickell Hills. Ich fahr ungern in die Stadt. Heute mach ich eine Ausnahme." }
+      ],
+      "outro": [{ "who": "gus", "text": "Du … warst ein Niemand! Mit zwölf Dollar! Ich hab dich groß gemacht!" }, { "who": "you", "text": "Und du hast mich fallen lassen. Danke für beides." }],
+      "effects": { "rank": "boss", "unlockHomes": ["villa", "club_hq", "apartment"], "home": "villa", "scene": "balcony", "rep": { "neon": 40 } } },
+
+    { "id": "prolog_01_fresh_goods", "act": 1, "giver": "lou", "kind": "side", "order": 101, "when": { "done": ["story_01_ohne_kratzer"] },
+      "hint": "Lous Nebenjob am Telefon am Busbahnhof.",
+      "briefing": [
+        { "who": "lou", "text": "Nebenjob! Vor dem Supermarkt steht ein Lieferwagen, den mir ein Typ „quasi geschenkt“ hat. Er weiß es nur noch nicht." },
+        { "who": "lou", "text": "Hol ihn, dreh eine Runde über den Hafen, damit's offiziell aussieht, und bring ihn zum Trailerpark. Drei Minuten! Der Typ ist schnell beleidigt." }
+      ] },
+    { "id": "neon_01_neon_night", "act": 1, "giver": "gus", "kind": "side", "order": 102, "when": { "done": ["story_05_party"], "maxRank": "vertrauter" },
+      "hint": "Gus' Nebenjob (nachts) am Telefon Ocean Strip.",
+      "briefing": [
+        { "who": "gus", "text": "Heute Nacht ist Ladies' Night im Velvet Tide. Der Marlin Club will mitfeiern. Uneingeladen." },
+        { "who": "gus", "text": "Halt mir den Türsteher am Leben und hol den Geldkoffer aus dem Hinterhof. Der Koffer ist wichtiger als der Türsteher. Sag's ihm nicht." }
+      ] },
+    { "id": "indep_01_cool_down", "act": 2, "giver": "grady", "kind": "side", "order": 103, "when": { "minRank": "ausgestossener" },
+      "hint": "Gradys Nebenjob am Telefon Sunny Acres.",
+      "briefing": [{ "who": "grady", "text": "Du ziehst Ärger an wie Mist die Fliegen. Zeig, dass du wieder rauskommst. Zwei Minuten mit Sternen, dann weg damit." }] },
+    { "id": "dustline_01_orange_express", "act": 2, "giver": "grady", "kind": "side", "order": 104, "when": { "minRank": "ausgestossener" },
+      "hint": "Gradys Nebenjob am Telefon Cane Ridge.",
+      "briefing": [{ "who": "grady", "text": "Orangen. Hafen. Die Mangrove Kings mögen keine Orangen. Oder mich. Einer fährt, die anderen passen auf." }] },
+    { "id": "mangrove_01_swamp_whispers", "act": 2, "giver": "lou", "kind": "side", "order": 105, "when": { "done": ["story_10c_lou"] },
+      "hint": "Lous Nebenjob am Telefon Mangrove Bend.",
+      "briefing": [
+        { "who": "lou", "text": "Ich hab Kontakte im Sumpf! Die Mangrove Kings! Wir sind quasi Brüder. Halbbrüder. Bekannte." },
+        { "who": "lou", "text": "Folg einem Dustline-Truck, schnapp dir die Ersatzteile, bring sie zum Stelzenhaus. Die letzte Strecke per Airboat. Ich hab Airboat gesagt, weil es cool klingt." }
+      ] },
+    { "id": "marlin_01_bridge_day", "act": 2, "giver": "carla", "kind": "side", "order": 106, "when": { "minRank": "unternehmer" },
+      "hint": "Carlas Nebenjob (Marlin-Club-Kontakt) am Telefon Sunset Village.",
+      "briefing": [{ "who": "carla", "text": "Der Marlin Club hasst Gus fast so sehr wie ich. Sie haben einen Job: Schnellboot in der Marina, Parcours, Küstenwache ärgern. Gut fürs Netzwerk." }] },
+    { "id": "marlin_02_beacon", "act": 2, "giver": "carla", "kind": "side", "order": 107, "when": { "minRank": "unternehmer" },
+      "hint": "Carlas Nebenjob (nachts) am Telefon Sunset Village.",
+      "briefing": [{ "who": "carla", "text": "Lieferung für den Marlin Club heute Nacht. Das Leuchtfeuer muss brennen, und Gus' Neon-Leute wollen es ausknipsen. Knips sie aus." }] },
+    { "id": "indep_02_gator_grand_prix", "act": 2, "giver": "racer", "kind": "side", "order": 108, "when": { "done": ["story_10a_rennfahrerin"] },
+      "hint": "Roxys Nebenjob: Airboat-Rennen am Telefon Rennstrecke (Gator Flats).",
+      "briefing": [{ "who": "racer", "text": "Airboat-Rennen durch Gator Flats. Zwölf Checkpoints, null Bremsen, ein paar Alligatoren. Wer zuerst ankommt, kassiert." }] }
+  ]
+}

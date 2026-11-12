@@ -4,6 +4,7 @@ import { mulberry32 } from './math';
 import { raceTracks } from './races';
 import { findFootSpot } from './sim/movement';
 import { storeAt } from './shops';
+import { storyPlaces } from './story/places';
 import { TAXI_HUNT_ID, TAXI_HUNT_NAME } from './taxiHunt';
 import { MG_PHONE_PREFIX, MINIGAMES, type MinigameId } from './minigames';
 import { pointInPolygon } from './world/geometry';
@@ -106,7 +107,14 @@ export function racePoints(map: WorldMap, start: Point, n: number, seed = 7): Po
 }
 
 /** Alle benannten Orte (Schlüssel -> Punkt). */
+const locCache = new WeakMap<WorldMap, Record<string, Point>>();
 export function questLocations(map: WorldMap): Record<string, Point> {
+  let c = locCache.get(map);
+  if (!c) { c = computeLocations(map); locCache.set(map, c); }
+  return c;
+}
+
+function computeLocations(map: WorldMap): Record<string, Point> {
   const sp = map.spawn;
   const ocean = centroid(map, 'Ocean Strip');
   const keys = centroid(map, 'Sunset Village');
@@ -136,6 +144,9 @@ export function questLocations(map: WorldMap): Record<string, Point> {
     airboatStart: stiltDock,
     stiltFar,
   };
+  // Orte der Hauptgeschichte (shared/story/places.ts)
+  const racePhone = (id: string) => { const t = raceTracks(map).find((r) => r.def.id === id); return t ? foot(map, t.phone.x + 4, t.phone.z + 3) : null; };
+  Object.assign(loc, storyPlaces(map, (x, z) => foot(map, x, z), loc, racePhone));
   return loc;
 }
 

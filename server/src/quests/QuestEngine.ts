@@ -6,8 +6,10 @@ import { dist2 } from '../../../shared/src/math';
 import type { PhoneQuest, QuestState } from '../../../shared/src/protocol';
 import { QUESTS, QUEST_BY_ID } from '../../../shared/src/questData';
 import { racePoints, waterNear, type Point } from '../../../shared/src/questLocations';
-import type { Objective, QuestAction, QuestDefinition } from '../../../shared/src/quests';
+import type { DialogueLine, Objective, QuestAction, QuestDefinition } from '../../../shared/src/quests';
+import { CAR_VARIANTS } from '../../../shared/src/sim/handling';
 import { findFootSpot } from '../../../shared/src/sim/movement';
+import { snapRoad } from '../../../shared/src/story/places';
 import { defaultVariant } from '../../../shared/src/sim/vehicle';
 import { VehicleKind } from '../../../shared/src/sim/vehicleDefs';
 import { DRIVER_NPC, type ServerPlayer, type ServerVehicle } from '../entities/types';
@@ -25,9 +27,11 @@ export interface QuestHost {
   positionOf(p: ServerPlayer): { x: number; z: number; inVehicle: boolean };
   isNight(): boolean;
   notice(p: ServerPlayer, text: string, kind: 'info' | 'good' | 'bad'): void;
-  spawnVehicle(kind: number, variant: number, x: number, z: number, a: number): ServerVehicle | null;
+  spawnVehicle(kind: number, variant: number, x: number, z: number, a: number, color?: number): ServerVehicle | null;
   removeVehicle(id: number): void;
-  spawnEnemy(gang: GangId, x: number, z: number, o: { tag: string; run: number; tgt: string }): Ped;
+  /** Fahrzeug an den Verkehr übergeben (ein NPC fährt es, z. B. Konvoi). */
+  adoptTraffic(v: ServerVehicle): void;
+  spawnEnemy(gang: GangId, x: number, z: number, o: { tag: string; run: number; tgt: string; hp?: number }): Ped;
   spawnNpc(x: number, z: number, o: { tag: string; run: number; hp: number }): Ped;
   nearestTraffic(x: number, z: number, maxR: number): ServerVehicle | null;
   addMoney(p: ServerPlayer, amount: number, reason: string): void;
@@ -35,6 +39,17 @@ export interface QuestHost {
   persist(p: ServerPlayer): void;
   raiseWanted(p: ServerPlayer, level: number): void;
   sendLog(p: ServerPlayer): void;
+  // ---- Story (server/quests/Story.ts)
+  /** Story-Sperre: '' = erlaubt, sonst der Grund. */
+  gate(p: ServerPlayer, def: QuestDefinition): string;
+  /** Darf der Spieler bei diesem Auftrag mitmachen (Koop-Start, Beitritt)? */
+  canJoin(p: ServerPlayer, def: QuestDefinition): boolean;
+  /** Auftrag erfolgreich beendet (firstTime: zum ersten Mal) – Rang, Wohnorte, Abschlussdialog. */
+  completed(p: ServerPlayer, def: QuestDefinition, firstTime: boolean): void;
+  dialog(p: ServerPlayer, lines: DialogueLine[], kind: 'talk' | 'radio' | 'call'): void;
+  /** Entscheidung anbieten bzw. anwenden (Rückgabe: gültige Option). */
+  offerChoice(p: ServerPlayer, id: string): void;
+  applyChoice(p: ServerPlayer, id: string, option: string): boolean;
 }
 
 interface Pickup { tag: string; x: number; z: number }
@@ -58,6 +73,10 @@ interface Run {
 
 const PHONE_RANGE = 10;
 const JOIN_RANGE = 50;
+/** Laufenden Koop-Aufträgen (openJoin) beitreten: Abstand zu einem Teilnehmer. */
+const LATE_JOIN_RANGE = 60;
+const CHOICE_RANGE = 6;
+const variantByModel = (model: string) => Math.max(0, CAR_VARIANTS.findIndex((v) => v.model === model));
 let nextRun = 1;
 
 export class QuestEngine {
@@ -71,6 +90,8 @@ export class QuestEngine {
   unavailable(p: ServerPlayer, def: QuestDefinition, level: number): string {
     const pr = p.profile;
     if (this.byPlayer.has(p.id)) return 'Du hast bereits einen aktiven Auftrag.';
+    const gate = this.h.gate(p, def);
+    if (gate) return gate;
     if (level < def.minLevel) return `Ab Stufe ${def.minLevel}.`;
     if (!def.repeatable && pr.questsDone.includes(def.id)) return 'Bereits abgeschlossen.';
     const cd = pr.questCooldowns[def.id] ?? 0;
@@ -84,13 +105,7 @@ export class QuestEngine {
   }
 
   listing(p: ServerPlayer, phoneId: string, level: number): PhoneQuest[] {
-    return QUESTS.filter((q) => q.giver.id === phoneId).map((q) => {
-      const reason = this.unavailable(p, q, level);
-      const r = q.rewards;
-      const money = r.byPlace ? `bis $${r.byPlace[0]}` : `$${r.money}`;
-      const rep = r.reputation ? ` · ${GANGS[r.reputation.gang].name} +${r.reputation.gain}` : '';
-      return { id: q.id, title: q.title, intro: q.intro, rewardText: `${money} · ${r.xp} XP${rep}`, coop: [q.coop.min, q.coop.max], ok: !reason, reason };
-    });
+    return this.listingOf(p, QUESTS.filter((q) => q.giver.type === 'payphone' && q.giver.id === phoneId), level);
   }
 
   // ------------------------------------------------------------------ Start/Ende
@@ -100,7 +115,7 @@ export class QuestEngine {
     const sp = this.h.positionOf(starter);
     const crew: ServerPlayer[] = [starter];
     for (const o of this.h.players.values()) {
-      if (o === starter || crew.length >= def.coop.max || this.byPlayer.has(o.id) || o.downT > 0) continue;
+      if (o === starter || crew.length >= def.coop.max || this.byPlayer.has(o.id) || o.downT > 0 || !this.h.canJoin(o, def)) continue;
       const q = this.h.positionOf(o);
       if (dist2(q.x, q.z, sp.x, sp.z) <= JOIN_RANGE * JOIN_RANGE) crew.push(o);
     }
@@ -119,6 +134,62 @@ export class QuestEngine {
     }
     this.beginStage(run, 0);
     return true;
+  }
+
+  /** Laufender Koop-Auftrag in der Nähe, dem p beitreten kann (openJoin). */
+  joinable(p: ServerPlayer): Run | null {
+    if (this.byPlayer.has(p.id) || p.downT > 0) return null;
+    const me = this.h.positionOf(p);
+    for (const run of this.runs.values()) {
+      if (!run.def.openJoin || run.ending > 0 || run.participants.size >= run.def.coop.max || !this.h.canJoin(p, run.def)) continue;
+      for (const q of this.members(run)) {
+        const o = this.h.positionOf(q);
+        if (dist2(o.x, o.z, me.x, me.z) <= LATE_JOIN_RANGE * LATE_JOIN_RANGE) return run;
+      }
+    }
+    return null;
+  }
+  joinableTitle(p: ServerPlayer): string | undefined { return this.joinable(p)?.def.title; }
+
+  join(p: ServerPlayer): boolean {
+    const run = this.joinable(p);
+    if (!run) return false;
+    run.participants.add(p.id);
+    this.byPlayer.set(p.id, run);
+    this.notifyAll(run, `${p.name} macht bei „${run.def.title}“ mit!`, 'good');
+    this.h.notice(p, run.def.stages[run.stage].description, 'info');
+    return true;
+  }
+
+  /** Antwort auf eine angebotene Entscheidung. */
+  choose(p: ServerPlayer, id: string, option: string) {
+    const run = this.byPlayer.get(p.id);
+    if (!run || run.ending > 0) return;
+    const o = run.objs.find((x) => !x.done && x.def.type === 'choice' && x.def.id === id);
+    if (!o || o.def.type !== 'choice') return;
+    const l = this.loc(run, o.def.at), q = this.h.positionOf(p);
+    const r = (o.def.radius ?? CHOICE_RANGE) + 4;
+    if (!l || dist2(l.x, l.z, q.x, q.z) > r * r) return;
+    if (this.h.applyChoice(p, id, option)) o.done = true;
+  }
+
+  /** Dev: aktiven Auftrag sofort erfolgreich beenden. */
+  forceComplete(p: ServerPlayer): string | null {
+    const run = this.byPlayer.get(p.id);
+    if (!run || run.ending > 0) return null;
+    this.finish(run, true);
+    return run.def.id;
+  }
+
+  /** Auftragsliste für beliebige Definitionen (Telefon oder Story-Figur). */
+  listingOf(p: ServerPlayer, defs: QuestDefinition[], level: number): PhoneQuest[] {
+    return defs.map((q) => {
+      const reason = this.unavailable(p, q, level);
+      const r = q.rewards;
+      const money = r.byPlace ? `bis $${r.byPlace[0]}` : `$${r.money}`;
+      const rep = r.reputation ? ` · ${GANGS[r.reputation.gang].name} +${r.reputation.gain}` : '';
+      return { id: q.id, title: q.title, intro: q.intro, rewardText: `${money} · ${r.xp} XP${rep}`, coop: [q.coop.min, q.coop.max], ok: !reason, reason };
+    });
   }
 
   abandon(p: ServerPlayer) {
@@ -152,7 +223,14 @@ export class QuestEngine {
     const crew = this.members(run);
     if (success) {
       const d = run.def, r = d.rewards;
+      // Bonus für ein (fast) unbeschädigtes Fahrzeug
+      let bonus = 0;
+      if (r.damageBonus) {
+        const v = this.tagged(run, r.damageBonus.tag).veh[0];
+        if (v && !v.sim.dmg.wreck && v.sim.dmg.hp / 1000 >= r.damageBonus.minHealth) bonus = r.damageBonus.money;
+      }
       for (const p of crew) {
+        const firstTime = !p.profile.questsDone.includes(d.id);
         const place = run.places.indexOf(p.id);
         const money = r.byPlace ? (place >= 0 ? r.byPlace[Math.min(place, r.byPlace.length - 1)] ?? 0 : 0) : r.money;
         if (r.byPlace && place < 0) { this.h.notice(p, `„${d.title}“ nicht beendet – keine Belohnung.`, 'bad'); continue; }
@@ -165,6 +243,8 @@ export class QuestEngine {
         if (d.cooldownMinutes) p.profile.questCooldowns[d.id] = Date.now() + d.cooldownMinutes * 60000;
         const place1 = r.byPlace ? ` (Platz ${place + 1})` : '';
         this.h.notice(p, `Auftrag erfüllt: ${d.title}${place1}! +$${money} · +${r.xp} XP${r.reputation ? ` · ${GANGS[r.reputation.gang].name} +${r.reputation.gain}` : ''}`, 'good');
+        if (bonus) { this.h.addMoney(p, bonus, `quest:${d.id}:bonus`); this.h.notice(p, `Bonus: kaum Kratzer! +$${bonus}`, 'good'); }
+        this.h.completed(p, d, firstTime);
         this.h.persist(p);
         this.h.sendLog(p);
       }
@@ -208,6 +288,12 @@ export class QuestEngine {
 
   private loc(run: Run, ref: string): Point | null {
     if (ref === 'here') return run.start;
+    if (ref.startsWith('tag:')) {
+      const t = this.tagged(run, ref.slice(4));
+      if (t.veh[0]) return { x: t.veh[0].sim.car.x, z: t.veh[0].sim.car.z };
+      if (t.ped[0]) return { x: t.ped[0].x, z: t.ped[0].z };
+      return null;
+    }
     return this.h.locations[ref] ?? null;
   }
 
@@ -215,6 +301,7 @@ export class QuestEngine {
     const crew = this.members(run);
     switch (a.do) {
       case 'say': this.notifyAll(run, a.text, 'info'); break;
+      case 'dialog': for (const p of crew) this.h.dialog(p, a.lines, a.kind ?? 'talk'); break;
       case 'setWanted': for (const p of crew) this.h.raiseWanted(p, a.level); break;
       case 'spawnVehicle': {
         const base = this.loc(run, a.at);
@@ -223,11 +310,27 @@ export class QuestEngine {
         for (let i = 0; i < count; i++) {
           const ang = (i / Math.max(1, count)) * Math.PI * 2;
           const want = { x: base.x + Math.cos(ang) * (count > 1 ? 9 : 0), z: base.z + Math.sin(ang) * (count > 1 ? 9 : 0) };
-          const spot = a.water ? waterNear(this.h.map, want.x, want.z) : findFootSpot(this.h.map, want.x, want.z, 12);
+          let heading = Math.random() * Math.PI * 2;
+          let spot: Point | null;
+          if (a.pose && !a.water) {
+            // Auf die Straße stellen: in Fahrtrichtung bzw. quer (Straßensperre), optional versetzt
+            const r = snapRoad(this.h.map, want.x, want.z);
+            // Freien Platz entlang der Straße suchen (z. B. mehrere neue Spieler gleichzeitig am Busbahnhof)
+            const base0 = (a.ahead ?? 0) + (count > 1 ? i * 9 : 0);
+            let r2 = r;
+            for (let k = 0; k < 8; k++) {
+              const ahead = base0 + (k === 0 ? 0 : (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 7);
+              r2 = ahead ? snapRoad(this.h.map, r.x + Math.sin(r.a) * ahead, r.z + Math.cos(r.a) * ahead) : r;
+              if (![...this.h.vehicles.values()].some((o) => dist2(o.sim.car.x, o.sim.car.z, r2.x, r2.z) < 5 * 5)) break;
+            }
+            spot = { x: r2.x, z: r2.z };
+            heading = a.pose === 'across' ? r2.a + Math.PI / 2 : r2.a;
+          } else spot = a.water ? waterNear(this.h.map, want.x, want.z) : findFootSpot(this.h.map, want.x, want.z, 12);
           if (!spot) continue;
-          const kind = a.kind === 'boat' ? VehicleKind.Boat : a.kind === 'airboat' ? VehicleKind.Airboat : VehicleKind.Car;
-          const v = this.h.spawnVehicle(kind, a.variant ?? defaultVariant(kind, 0), spot.x, spot.z, Math.random() * Math.PI * 2);
-          if (v) { v.qtag = a.tag; v.qrun = run.id; v.home = null; }
+          const kind = a.kind === 'boat' ? VehicleKind.Boat : a.kind === 'airboat' ? VehicleKind.Airboat : a.kind === 'bike' ? VehicleKind.Bike : VehicleKind.Car;
+          const variant = a.model && kind === VehicleKind.Car ? variantByModel(a.model) : a.variant ?? defaultVariant(kind, 0);
+          const v = this.h.spawnVehicle(kind, variant, spot.x, spot.z, heading, a.color);
+          if (v) { v.qtag = a.tag; v.qrun = run.id; v.home = null; if (a.traffic) this.h.adoptTraffic(v); }
         }
         break;
       }
@@ -245,7 +348,7 @@ export class QuestEngine {
           const ang = Math.random() * Math.PI * 2, r = (a.radius ?? 20) * (0.6 + Math.random() * 0.4);
           const spot = findFootSpot(this.h.map, base.x + Math.cos(ang) * r, base.z + Math.sin(ang) * r, 3);
           if (!spot) continue;
-          this.h.spawnEnemy(a.gang, spot.x, spot.z, { tag: a.tag, run: run.id, tgt });
+          this.h.spawnEnemy(a.gang, spot.x, spot.z, { tag: a.tag, run: run.id, tgt, hp: a.hp });
           n++;
         }
         run.spawned.set(a.tag, (run.spawned.get(a.tag) ?? 0) + n);
@@ -417,6 +520,23 @@ export class QuestEngine {
         if (crew.every((p) => { const q = at(p); return dist2(q.x, q.z, l.x, l.z) <= r * r; })) o.done = true;
         break;
       }
+      case 'choice': {
+        // Wer zu Fuß in der Nähe steht, bekommt die Entscheidung angeboten (einmal je Annäherung)
+        const l = this.loc(run, d.at); if (!l) { o.done = true; break; }
+        const r = d.radius ?? CHOICE_RANGE;
+        for (const p of crew) {
+          const q = at(p), dd = dist2(q.x, q.z, l.x, l.z);
+          if (dd <= r * r && !q.inVehicle) { if (!o.idx.has(p.id)) { o.idx.set(p.id, 1); this.h.offerChoice(p, d.id); } }
+          else if (dd > (r + 4) * (r + 4)) o.idx.delete(p.id);
+        }
+        break;
+      }
+      case 'destroy': {
+        const v = this.tagged(run, d.tag).veh[0];
+        if (!v) return 'Das Ziel ist entkommen.';
+        if (v.sim.dmg.wreck || v.sim.dmg.hp <= 0) o.done = true;
+        break;
+      }
       case 'interact': {
         const l = this.loc(run, d.at); if (!l) { o.done = true; break; }
         const holding = crew.some((p) => { const q = at(p); return p.hold && !q.inVehicle && dist2(q.x, q.z, l.x, l.z) <= 7 * 7; });
@@ -449,6 +569,12 @@ export class QuestEngine {
       const l = 'at' in d ? this.loc(run, d.at) : null;
       switch (d.type) {
         case 'goTo': case 'deliverVehicle': case 'groupAt': if (l && !o.done) targets.push([l.x, l.z, d.radius ?? 12, 1]); break;
+        case 'choice': if (l && !o.done) { targets.push([l.x, l.z, 3, 4]); prog.push('Hingehen und reden'); } break;
+        case 'destroy': {
+          const v = this.tagged(run, d.tag).veh[0];
+          if (v && !o.done) { targets.push([v.sim.car.x, v.sim.car.z, 4, 5]); prog.push(`Ziel: ${Math.max(0, Math.round(v.sim.dmg.hp / 10))} %`); }
+          break;
+        }
         case 'interact': if (l && !o.done) { targets.push([l.x, l.z, 7, 1]); prog.push(`Halten ${Math.floor(o.t)}/${d.holdSeconds} s (F)`); } break;
         case 'race': {
           const i = o.idx.get(p.id) ?? 0, pts = o.pts ?? [];

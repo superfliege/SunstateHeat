@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { QuestState } from '../../../shared/src/protocol';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 
-function sign(text: string, color: number): THREE.Sprite {
+export function sign(text: string, color: number): THREE.Sprite {
   const c = document.createElement('canvas');
   c.width = 320; c.height = 72;
   const ctx = c.getContext('2d')!;
