@@ -32,6 +32,8 @@ export interface RaceHost {
   addMoney(p: ServerPlayer, amount: number, reason: string): void;
   grantXp(p: ServerPlayer, xp: number): void;
   persist(p: ServerPlayer): void;
+  /** Spieler ist im Ziel (Story: Sieg bei der Cane Ridge Rally wirbt die Rennfahrerin an). */
+  finished?(p: ServerPlayer, raceId: string, place: number): void;
 }
 
 const LOBBY_TIME = 15;
@@ -308,6 +310,7 @@ export class Races {
     this.h.grantXp(p, xp);
     this.h.persist(p);
     this.h.notice(p, `🏁 Ziel! Platz ${r.place} von ${RACE_FIELD} in ${time} – +$${money} · +${xp} XP`, r.place === 1 ? 'good' : 'info');
+    this.h.finished?.(p, d.id, r.place);
   }
 
   private ranking(race: Race): Racer[] {

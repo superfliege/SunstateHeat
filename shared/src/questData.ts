@@ -1,7 +1,9 @@
 // Die acht Beispielquests (Spec 13.5) als Daten. Neue Quests: hier ergänzen – die Engine bleibt unverändert.
+// Story-Missionen stehen in shared/story/missions.json; Briefings der Nebenjobs in shared/story/story.json.
 import type { QuestDefinition } from './quests';
+import { STORY_QUESTS, withStoryText } from './story';
 
-export const QUESTS: QuestDefinition[] = [
+const BASE_QUESTS: QuestDefinition[] = [
   {
     id: 'prolog_01_fresh_goods', title: 'Frische Ware',
     giver: { type: 'payphone', id: 'bus' }, minLevel: 1, coop: { min: 1, max: 4 }, repeatable: false,
@@ -117,5 +119,8 @@ export const QUESTS: QuestDefinition[] = [
     rewards: { money: 0, xp: 250, byPlace: [1000, 600, 300] },
   },
 ];
+
+/** Alle Quests: die Beispielquests (als Nebenjobs der Story-Figuren) und die Story-Missionen (shared/story). */
+export const QUESTS: QuestDefinition[] = withStoryText([...BASE_QUESTS, ...STORY_QUESTS]);
 
 export const QUEST_BY_ID = new Map(QUESTS.map((q) => [q.id, q]));

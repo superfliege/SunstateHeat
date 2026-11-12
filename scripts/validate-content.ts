@@ -7,6 +7,12 @@ import { GANG_PROFILES, gangRelation } from '../shared/src/factions';
 import { DISTRICT_DNA, DISTRICT_IDS } from '../shared/src/world/districts';
 import { DISTRICTS } from '../shared/src/world/palmara';
 import { ZONE_NAMES } from '../shared/src/world/WorldMap';
+import { MAP_SEED } from '../shared/src/constants';
+import { generateWorld } from '../shared/src/world/mapgen';
+import { payphones, questLocations } from '../shared/src/questLocations';
+import { QUESTS } from '../shared/src/questData';
+import { validateQuests } from '../shared/src/quests';
+import { validateStory } from '../shared/src/story';
 
 const errs: string[] = [];
 const arch = new Set(ARCHETYPES.map((a) => a.id));
@@ -47,6 +53,14 @@ for (const g of GANG_IDS) {
   for (const k of Object.keys(p.slang.districtMockery)) if (!DISTRICT_DNA[k as keyof typeof DISTRICT_DNA]) f(`Spott über unbekanntes Viertel ${k}`);
   for (const s of p.scenarios) if (!s.lines.length) f(`Szenario ${s.id} ohne Zeilen`);
   for (const [k, v] of Object.entries(p.ai)) if (v < 0 || v > 1) f(`KI-Neigung ${k} außerhalb 0–1`);
+}
+
+// Quests und Hauptgeschichte (Orte werden aus der echten Karte abgeleitet)
+{
+  const world = generateWorld(MAP_SEED);
+  const locs = new Set(Object.keys(questLocations(world)));
+  errs.push(...validateQuests(QUESTS, locs, new Set(payphones(world).map((p) => p.id))));
+  errs.push(...validateStory(locs, new Set(QUESTS.map((q) => q.id))));
 }
 
 // Ereignisse

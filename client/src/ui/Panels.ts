@@ -6,9 +6,12 @@ import { QUESTS } from '../../../shared/src/questData';
 import { BACKPACK_SLOTS, ITEMS } from '../../../shared/src/items';
 import { shopCatalog, SHOP_COLORS, type ShopDef, type ShopType } from '../../../shared/src/shops';
 import { CARRY_SLOTS, WEAPONS, type WeaponId } from '../../../shared/src/weapons';
+import type { DialogueLine } from '../../../shared/src/quests';
+import { charOf, CREW_IDS, MISSION_META, missionTitle, RANKS, rankOf, STORY, styleName, type StoryView } from '../../../shared/src/story';
+import { speaker } from './StoryUi';
 
 type TalkStep = 'hello' | 'buy';
-type Mode = { kind: 'talk'; shop: ShopDef; step: TalkStep; line: string } | { kind: 'inv' } | { kind: 'log' } | { kind: 'phone'; name: string; quests: PhoneQuest[] } | null;
+type Mode = { kind: 'talk'; shop: ShopDef; step: TalkStep; line: string } | { kind: 'inv' } | { kind: 'log' } | { kind: 'phone'; name: string; quests: PhoneQuest[]; talk?: DialogueLine[]; color?: string } | null;
 
 // ------------------------------------------------------------------ Gesprächszeilen
 const GREET: Record<ShopType, string[]> = {
@@ -61,6 +64,8 @@ export class Panels {
   private done: string[] = [];
   private cooldowns: Record<string, number> = {};
   private quest: QuestState | null = null;
+  private story: StoryView | null = null;
+  private goal: string | null = null;
   /** Gesprächsoptionen der aktuellen Ansicht (Tasten 1–9). */
   private options: (() => void)[] = [];
   onOpenChange: (open: boolean) => void = () => {};
@@ -96,7 +101,9 @@ export class Panels {
     this.mode = { ...this.mode, step, line };
     this.render();
   }
-  openPhone(name: string, quests: PhoneQuest[]) { this.setMode({ kind: 'phone', name, quests }); }
+  /** Telefon oder Story-Figur (talk = Gesprächszeile, color = Farbe der Figur). */
+  openPhone(name: string, quests: PhoneQuest[], talk?: DialogueLine[], color?: string) { this.setMode({ kind: 'phone', name, quests, talk, color }); }
+  setStory(s: StoryView, goal: string | null) { this.story = s; this.goal = goal; this.sig = ''; if (this.mode?.kind === 'log') this.render(); }
   toggleLog() { if (this.mode?.kind === 'log') this.close(); else this.setMode({ kind: 'log' }); }
   setQuestLog(done: string[], cooldowns: Record<string, number>) { this.done = done; this.cooldowns = cooldowns; this.sig = ''; if (this.mode?.kind === 'log') this.render(); }
   toggleInventory() { if (this.mode?.kind === 'inv') this.close(); else this.setMode({ kind: 'inv' }); }
@@ -142,7 +149,7 @@ export class Panels {
     head.append(title, el('span', 'pn-cash', `${money(this.cash)} · Stufe ${s.level}`), close);
     box.append(head);
     if (m.kind === 'talk') this.renderTalk(box, m.shop, m.step, m.line, s);
-    else if (m.kind === 'phone') this.renderPhone(box, m.quests);
+    else if (m.kind === 'phone') { if (m.color) box.style.borderColor = m.color; this.renderPhone(box, m.quests, m.talk, m.color); }
     else if (m.kind === 'log') this.renderLog(box, s);
     else this.renderInventory(box, s);
     this.root.replaceChildren(box);
@@ -197,8 +204,16 @@ export class Panels {
     box.append(list);
   }
 
-  private renderPhone(box: HTMLElement, quests: PhoneQuest[]) {
-    if (!quests.length) box.append(el('p', 'pn-foot', 'Hier klingelt nichts.'));
+  private renderPhone(box: HTMLElement, quests: PhoneQuest[], talk?: DialogueLine[], color?: string) {
+    for (const l of talk ?? []) {
+      const npc = el('div', 'pn-npc');
+      if (color) npc.style.borderColor = color;
+      const who = el('b', undefined, speaker(l.who).name);
+      who.style.color = speaker(l.who).color;
+      npc.append(who, el('span', undefined, `„${l.text}“`));
+      box.append(npc);
+    }
+    if (!quests.length) box.append(el('p', 'pn-foot', talk ? 'Gerade kein Auftrag.' : 'Hier klingelt nichts.'));
     for (const q of quests) {
       const wrap = el('div', 'pn-row');
       wrap.style.flexDirection = 'column';
@@ -213,7 +228,9 @@ export class Panels {
       wrap.append(top);
       for (const line of q.intro) {
         const d = el('div', 'pn-dlg');
-        d.append(el('b', undefined, line.who + ': '), document.createTextNode(line.text));
+        const who = el('b', undefined, speaker(line.who).name + ': ');
+        who.style.color = speaker(line.who).color;
+        d.append(who, document.createTextNode(line.text));
         wrap.append(d);
       }
       box.append(wrap);
@@ -221,7 +238,43 @@ export class Panels {
     box.append(el('p', 'pn-foot', 'Esc oder F zum Auflegen'));
   }
 
+  /** Story-Abschnitt im Quest-Log: Rang, Ruf, Zuhause, Crew, Ziel, Hauptmissionen, Anrufe. */
+  private renderStory(box: HTMLElement) {
+    const st = this.story;
+    if (!st) return;
+    const r = rankOf(st.rank);
+    box.append(el('h3', undefined, `Story · ${r.icon} ${r.name} (Rang ${st.rank + 1}/${RANKS.length})`));
+    const info = el('div', 'pn-row');
+    const txt = el('div', 'pn-info');
+    const home = st.home ? STORY.homes[st.home]?.name : '–';
+    const crew = CREW_IDS.filter((c) => st.crew.includes(c)).map((c) => charOf(c)?.short ?? c).join(', ') || '–';
+    txt.append(el('b', undefined, r.desc), el('small', undefined, `Ruf: ${styleName(st.style)} · Zuhause: ${home} · Crew: ${crew}`));
+    if (this.goal) txt.append(el('small', 'pn-goal', `➜ ${this.goal}`));
+    info.append(txt);
+    box.append(info);
+    const list = el('div', 'pn-list');
+    const mains = STORY.missions.filter((m) => m.kind === 'main').sort((a, b) => a.order - b.order);
+    for (const m of mains) {
+      const done = st.done.includes(m.id), open = st.unlocked.includes(m.id);
+      if (!done && !open) continue; // Zukünftige Missionen bleiben geheim
+      const row = el('div', 'pn-row');
+      const i = el('div', 'pn-info');
+      const giver = charOf(m.giver);
+      i.append(el('b', undefined, `${m.act === 1 ? 'Akt 1' : 'Akt 2'} · ${missionTitle(m.id)}`), el('small', undefined, done ? `${giver?.short ?? ''} · erledigt` : m.hint));
+      row.append(i);
+      const def = QUESTS.find((q) => q.id === m.id);
+      if (!done && def?.giver.type === 'phone' && this.quest?.id !== m.id) {
+        const btn = el('button', 'pn-buy', '📞 Annehmen');
+        btn.onclick = () => { this.send({ t: 'questAccept', id: m.id }); this.close(); };
+        row.append(btn);
+      } else row.append(el('span', 'pn-state', done ? 'Erledigt ✓' : this.quest?.id === m.id ? 'Aktiv' : 'Offen'));
+      list.append(row);
+    }
+    box.append(list);
+  }
+
   private renderLog(box: HTMLElement, s: PlayerStats) {
+    this.renderStory(box);
     if (this.quest) {
       const row = el('div', 'pn-row');
       const info = el('div', 'pn-info');
@@ -233,16 +286,19 @@ export class Panels {
     }
     const list = el('div', 'pn-list');
     for (const q of QUESTS) {
+      const meta = MISSION_META.get(q.id);
+      if (meta?.kind === 'main') continue; // Hauptmissionen stehen oben im Story-Abschnitt
       const row = el('div', 'pn-row');
       const info = el('div', 'pn-info');
-      const gang = q.gang ? ` · ${GANGS[q.gang].name}` : '';
+      const gang = (meta ? ` · Nebenjob von ${charOf(meta.giver)?.short ?? meta.giver}` : '') + (q.gang ? ` · ${GANGS[q.gang].name}` : '');
       info.append(el('b', undefined, q.title), el('small', undefined, `Stufe ${q.minLevel}${gang} · ${q.coop.min === q.coop.max ? q.coop.min : q.coop.min + '–' + q.coop.max} Spieler${q.nightOnly ? ' · nachts' : ''}`));
       const cd = this.cooldowns[q.id] ?? 0;
-      const state = this.quest?.id === q.id ? 'Aktiv' : this.done.includes(q.id) && !q.repeatable ? 'Erledigt ✓' : cd > Date.now() ? `in ${Math.ceil((cd - Date.now()) / 60000)} Min.` : s.level < q.minLevel ? `ab Stufe ${q.minLevel}` : this.done.includes(q.id) ? 'Wiederholbar ✓' : 'Verfügbar';
+      const locked = !!meta && !!this.story && !this.story.unlocked.includes(q.id) && !this.done.includes(q.id);
+      const state = this.quest?.id === q.id ? 'Aktiv' : this.done.includes(q.id) && !q.repeatable ? 'Erledigt ✓' : locked ? '🔒 Story' : cd > Date.now() ? `in ${Math.ceil((cd - Date.now()) / 60000)} Min.` : s.level < q.minLevel ? `ab Stufe ${q.minLevel}` : this.done.includes(q.id) ? 'Wiederholbar ✓' : 'Verfügbar';
       row.append(info, el('span', 'pn-state', state));
       list.append(row);
     }
-    box.append(el('h3', undefined, 'Aufträge'), list, el('p', 'pn-foot', 'Telefone: gelbe Markierungen (F). Esc oder J zum Schließen'));
+    box.append(el('h3', undefined, 'Nebenjobs & Aufträge'), list, el('p', 'pn-foot', 'Story-Figuren: ❗/💬-Markierungen (F) · Telefone: gelbe Markierungen (F) · Esc oder J zum Schließen'));
   }
 
   private renderInventory(box: HTMLElement, s: PlayerStats) {

@@ -1,0 +1,246 @@
+[
+  {
+    "id": "story_01_ohne_kratzer", "title": "Ohne Kratzer",
+    "giver": { "type": "npc", "id": "lou" }, "minLevel": 1, "coop": { "min": 1, "max": 1 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "enter", "description": "Steig in Lous Cabrio (E).",
+        "onStart": [{ "do": "spawnVehicle", "tag": "cabrio", "kind": "car", "model": "proc_muscle", "color": 2, "at": "introCar", "pose": "road" }],
+        "objectives": [{ "type": "enterVehicle", "tag": "cabrio" }] },
+      { "id": "learn", "description": "Fahrschule bei Lou: W/S = Gas/Bremse, A/D = Lenken, Leertaste = Handbremse. Fahr durch die Wegpunkte.",
+        "objectives": [{ "type": "race", "points": ["tut1", "tut2", "tut3"], "vehicleTag": "cabrio" }] },
+      { "id": "deliver", "description": "Stell das Cabrio an der Waschanlage „Bubble Bath“ in Northgate ab. Ohne Kratzer gibt's einen Bonus!",
+        "objectives": [{ "type": "deliverVehicle", "tag": "cabrio", "at": "carWashRoad", "radius": 12, "minHealth": 0.1 }] }
+    ],
+    "rewards": { "money": 50, "xp": 80, "damageBonus": { "tag": "cabrio", "minHealth": 0.9, "money": 100 } }
+  },
+  {
+    "id": "story_02_express", "title": "Express",
+    "giver": { "type": "npc", "id": "lou" }, "minLevel": 1, "coop": { "min": 1, "max": 1 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "bike", "description": "Schnapp dir Lous Kurier-Motorrad vor der Waschanlage.",
+        "onStart": [{ "do": "spawnVehicle", "tag": "bike", "kind": "bike", "at": "carWashRoad", "pose": "road" }],
+        "objectives": [{ "type": "enterVehicle", "tag": "bike" }] },
+      { "id": "deliver", "description": "Liefere 4 Päckchen: Northgate, Little Havana Heights, Downtown, Ocean Strip. Express heißt Express!", "timeLimitSeconds": 170,
+        "objectives": [{ "type": "race", "points": ["addr1", "addr2", "addr3", "addr4"], "vehicleTag": "bike" }] }
+    ],
+    "rewards": { "money": 300, "xp": 120 }
+  },
+  {
+    "id": "story_03_offene_rechnungen", "title": "Offene Rechnungen",
+    "giver": { "type": "npc", "id": "lou" }, "minLevel": 1, "coop": { "min": 1, "max": 1 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "ramon", "description": "Schuldner 1: Ramón im Domino-Park von Little Havana Heights. Einschüchtern oder verhandeln?",
+        "onStart": [{ "do": "spawnNpc", "tag": "ramon", "at": "debtor1", "hp": 200 }],
+        "objectives": [{ "type": "choice", "at": "debtor1", "id": "debt_ramon" }] },
+      { "id": "chad", "description": "Schuldner 2: Chad, Start-up-Gründer in Downtown. Er „disruptet“ gerade.",
+        "onStart": [{ "do": "spawnNpc", "tag": "chad", "at": "debtor2", "hp": 200 }],
+        "objectives": [{ "type": "choice", "at": "debtor2", "id": "debt_chad" }] },
+      { "id": "kimberly", "description": "Schuldnerin 3: Kimberly, Influencerin am Ocean Strip.",
+        "onStart": [{ "do": "spawnNpc", "tag": "kimberly", "at": "debtor3", "hp": 200 }],
+        "objectives": [{ "type": "choice", "at": "debtor3", "id": "debt_kimberly" }] },
+      { "id": "back", "description": "Bring das Geld zu Lou an die Waschanlage „Bubble Bath“.",
+        "objectives": [{ "type": "goTo", "at": "carWash", "radius": 12 }] }
+    ],
+    "rewards": { "money": 250, "xp": 200 }
+  },
+  {
+    "id": "story_04_fluchtwagen", "title": "Fluchtwagen",
+    "giver": { "type": "npc", "id": "carla" }, "minLevel": 1, "coop": { "min": 1, "max": 2 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "car", "description": "Steig in den beigen Fluchtwagen vor dem Velvet Tide.",
+        "onStart": [{ "do": "spawnVehicle", "tag": "getaway", "kind": "car", "model": "ck-sedan", "color": 7, "at": "clubRoad", "pose": "road" }],
+        "objectives": [{ "type": "enterVehicle", "tag": "getaway" }] },
+      { "id": "bank", "description": "Fahr zur Bank in Downtown und halte davor.",
+        "objectives": [{ "type": "goTo", "at": "bank", "radius": 12, "vehicleTag": "getaway" }] },
+      { "id": "wait", "description": "Die Crew ist drin. Lass den Motor laufen und guck unschuldig.",
+        "onStart": [{ "do": "dialog", "kind": "radio", "lines": [{ "who": "crew", "text": "Wir sind drin. Der Kassierer fragt, ob wir Kundenkarten haben. Wir sagen ja." }] }],
+        "objectives": [{ "type": "survive", "seconds": 15 }] },
+      { "id": "escape", "description": "Die Crew springt rein – Alarm! Häng die Polizei ab.",
+        "onStart": [{ "do": "dialog", "kind": "radio", "lines": [{ "who": "crew", "text": "LOS LOS LOS! Und fahr nicht über Rot! … Okay, fahr über Rot!" }] }, { "do": "setWanted", "level": 3 }],
+        "objectives": [{ "type": "loseWanted" }] },
+      { "id": "drop", "description": "Bring Crew und Wagen zur Waschanlage „Bubble Bath“. Carla sagt, da sucht niemand. Nicht mal Lou.",
+        "objectives": [{ "type": "deliverVehicle", "tag": "getaway", "at": "carWashRoad", "radius": 14 }] }
+    ],
+    "rewards": { "money": 1500, "xp": 350 }
+  },
+  {
+    "id": "story_05_party", "title": "Party im Club",
+    "giver": { "type": "npc", "id": "gus" }, "minLevel": 1, "coop": { "min": 1, "max": 4 }, "openJoin": true, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "meet", "description": "Geh zu Gus an den Eingang des Velvet Tide.",
+        "objectives": [{ "type": "goTo", "at": "club", "radius": 8 }],
+        "onComplete": [{ "do": "dialog", "kind": "talk", "lines": [
+          { "who": "gus", "text": "Weißt du, was ich an dieser Stadt liebe? Jeder kann hier alles werden. Solange ich es erlaube." },
+          { "who": "gus", "text": "Also, über deine Zukunft – Moment. Ist das … der Marlin Club? Auf MEINER Party? Ohne Gästeliste?!" }
+        ] }] },
+      { "id": "wave1", "description": "Der Marlin Club stürmt die Party! Erste Welle abwehren. (Spieler in der Nähe können mitmachen.)",
+        "onStart": [{ "do": "spawnNpc", "tag": "gus", "at": "club", "hp": 900 }, { "do": "spawnEnemies", "tag": "w1", "gang": "marlin", "count": 4, "at": "club", "radius": 30 }],
+        "objectives": [{ "type": "defeat", "tag": "w1" }] },
+      { "id": "wave2", "description": "Zweite Welle! Sie haben Verstärkung von der Yacht geholt.",
+        "onStart": [{ "do": "dialog", "kind": "talk", "lines": [{ "who": "gus", "text": "Nicht auf den Anzug! NICHT AUF DEN ANZUG!" }] }, { "do": "spawnEnemies", "tag": "w2", "gang": "marlin", "count": 6, "at": "club", "radius": 34 }],
+        "objectives": [{ "type": "defeat", "tag": "w2" }] },
+      { "id": "wave3", "description": "Letzte Welle – ihr „Kapitän“ ist persönlich da. Mit Kapitänsmütze.",
+        "onStart": [{ "do": "spawnEnemies", "tag": "w3", "gang": "marlin", "count": 4, "at": "club", "radius": 30 }, { "do": "spawnEnemies", "tag": "captain", "gang": "marlin", "count": 1, "at": "club", "radius": 22, "hp": 260 }],
+        "objectives": [{ "type": "defeat", "tag": "w3" }, { "type": "defeat", "tag": "captain" }] }
+    ],
+    "rewards": { "money": 2500, "xp": 500, "reputation": { "gang": "neon", "gain": 10, "rivalLoss": 8 } }
+  },
+  {
+    "id": "story_06_deal", "title": "Der Deal",
+    "giver": { "type": "npc", "id": "gus" }, "minLevel": 1, "coop": { "min": 1, "max": 2 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "car", "description": "Steig in Gus' Wagen mit der „Ware“ vor dem Velvet Tide.",
+        "onStart": [{ "do": "spawnVehicle", "tag": "deal", "kind": "car", "model": "ck-suv-luxury", "color": 8, "at": "clubRoad", "pose": "road" }],
+        "objectives": [{ "type": "enterVehicle", "tag": "deal" }] },
+      { "id": "harbor", "description": "Fahr zum Kai auf der Hafeninsel. Pünktlich – Gus hasst Unpünktlichkeit fast so sehr wie Ehrgeiz.",
+        "objectives": [{ "type": "goTo", "at": "harbor", "radius": 16, "vehicleTag": "deal" }] },
+      { "id": "trap", "description": "FALLE! Polizei und Gus' Leute! Flieh aus der Stadt: Route 41 Richtung Westen.", "timeLimitSeconds": 240,
+        "onStart": [
+          { "do": "dialog", "kind": "call", "lines": [
+            { "who": "gus", "text": "Nimm's nicht persönlich. Du bist einfach zu schnell aufgestiegen. Das macht mich nervös. Und wenn ich nervös bin, verschenke ich Leute an die Polizei." },
+            { "who": "gus", "text": "Die Tasche ist übrigens leer. Wie dein Apartment. Ciao!" }
+          ] },
+          { "do": "setWanted", "level": 3 },
+          { "do": "spawnEnemies", "tag": "traitors", "gang": "neon", "count": 5, "at": "harbor", "radius": 30 }
+        ],
+        "objectives": [{ "type": "goTo", "at": "cityExit", "radius": 28 }] },
+      { "id": "lose", "description": "Häng die Verfolger ab. Das Outback wartet.",
+        "objectives": [{ "type": "loseWanted" }] }
+    ],
+    "rewards": { "money": 0, "xp": 600 }
+  },
+  {
+    "id": "story_07_staub", "title": "Staub",
+    "giver": { "type": "npc", "id": "grady" }, "minLevel": 1, "coop": { "min": 1, "max": 2 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "truck", "description": "Steig in Gradys Truck hinter der Scheune.",
+        "onStart": [{ "do": "spawnVehicle", "tag": "truck", "kind": "car", "model": "proc_boxtruck", "at": "ranchRoad", "pose": "road" }],
+        "objectives": [{ "type": "enterVehicle", "tag": "truck" }] },
+      { "id": "trail", "description": "Nimm den Okee Trail nach Norden. Schlaglöcher sind hier Kulturerbe.",
+        "objectives": [{ "type": "race", "points": ["okee1", "okee2", "okee3"], "vehicleTag": "truck" }] },
+      { "id": "deliver", "description": "Liefere die Ladung in Cane Ridge ab – mit mindestens 50 % Zustand, sonst ist sie Kompott.",
+        "objectives": [{ "type": "deliverVehicle", "tag": "truck", "at": "caneDepot", "radius": 20, "minHealth": 0.5 }] }
+    ],
+    "rewards": { "money": 900, "xp": 400 }
+  },
+  {
+    "id": "story_08_landebahn", "title": "Die Landebahn",
+    "giver": { "type": "npc", "id": "grady" }, "minLevel": 1, "coop": { "min": 1, "max": 4 }, "openJoin": true, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "go", "description": "Fahr zur alten Landebahn bei Port Sabal. (Spieler in der Nähe können mitmachen.)",
+        "objectives": [{ "type": "goTo", "at": "airstrip", "radius": 35 }] },
+      { "id": "bikers", "description": "Die Mangrove-Biker grillen auf der Rollbahn. Räum sie ab.",
+        "onStart": [
+          { "do": "dialog", "kind": "talk", "lines": [{ "who": "Biker", "text": "Ey, das ist unsere Grillbahn! Hier wird nur gelandet, wenn das Steak fertig ist!" }] },
+          { "do": "spawnEnemies", "tag": "bikers", "gang": "mangrove", "count": 6, "at": "airstrip", "radius": 35 }
+        ],
+        "objectives": [{ "type": "defeat", "tag": "bikers" }] },
+      { "id": "hog", "description": "Ihr Anführer „Big Hog“ kommt mit Verstärkung. Und Grillzange.",
+        "onStart": [{ "do": "spawnEnemies", "tag": "hog", "gang": "mangrove", "count": 1, "at": "airstrip", "radius": 25, "hp": 320 }, { "do": "spawnEnemies", "tag": "bikers2", "gang": "mangrove", "count": 4, "at": "airstrip", "radius": 30 }],
+        "objectives": [{ "type": "defeat", "tag": "hog" }, { "type": "defeat", "tag": "bikers2" }] }
+    ],
+    "rewards": { "money": 2000, "xp": 600, "reputation": { "gang": "dustline", "gain": 8, "rivalLoss": 8 } }
+  },
+  {
+    "id": "story_09_lieferung", "title": "Erste eigene Lieferung",
+    "giver": { "type": "npc", "id": "grady" }, "minLevel": 1, "coop": { "min": 1, "max": 3 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "van", "description": "Hol die Ware an der Landebahn ab.",
+        "onStart": [{ "do": "spawnVehicle", "tag": "van", "kind": "car", "model": "ck-van", "at": "airstripRoad", "pose": "road" }],
+        "objectives": [{ "type": "enterVehicle", "tag": "van" }] },
+      { "id": "route", "description": "Bring die Ware zum Trailerpark Sunny Acres – über Route 41 oder die Pine Hollow Road. Gus' Leute sperren beide Straßen!",
+        "onStart": [
+          { "do": "spawnVehicle", "tag": "blockA", "kind": "car", "model": "ck-sedan", "at": "block1", "pose": "across" },
+          { "do": "spawnVehicle", "tag": "blockB", "kind": "car", "model": "truck_red", "at": "block2", "pose": "across" },
+          { "do": "spawnEnemies", "tag": "blockersA", "gang": "neon", "count": 3, "at": "block1", "radius": 10 },
+          { "do": "spawnEnemies", "tag": "blockersB", "gang": "neon", "count": 2, "at": "block2", "radius": 10 }
+        ],
+        "objectives": [{ "type": "deliverVehicle", "tag": "van", "at": "trailerpark", "radius": 20, "minHealth": 0.25 }] }
+    ],
+    "rewards": { "money": 2200, "xp": 500 }
+  },
+  {
+    "id": "story_10b_pilot", "title": "Eine Crew: Der Pilot",
+    "giver": { "type": "npc", "id": "pilot" }, "minLevel": 1, "coop": { "min": 1, "max": 2 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "go", "description": "Fahr zum Leuchtturm in Sunset Village – dort feiern die Diebe mit Huxleys Glücks-Flamingo.",
+        "objectives": [{ "type": "goTo", "at": "lighthouse", "radius": 22 }] },
+      { "id": "fight", "description": "Hol dir den Plastik-Flamingo zurück.",
+        "onStart": [{ "do": "spawnEnemies", "tag": "thieves", "gang": "marlin", "count": 4, "at": "lighthouse", "radius": 20 }, { "do": "spawnPickups", "tag": "flamingo", "at": "lighthouse", "count": 1, "radius": 6 }],
+        "objectives": [{ "type": "defeat", "tag": "thieves" }, { "type": "collect", "tag": "flamingo" }] },
+      { "id": "return", "description": "Bring den Flamingo zu Captain Huxley ans Flugfeld Sunset Key.",
+        "objectives": [{ "type": "goTo", "at": "pilot", "radius": 10 }] }
+    ],
+    "rewards": { "money": 800, "xp": 300 }
+  },
+  {
+    "id": "story_10c_lou", "title": "Eine Crew: Lou in Not",
+    "giver": { "type": "phone", "id": "lou" }, "minLevel": 1, "coop": { "min": 1, "max": 4 }, "openJoin": true, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "go", "description": "Lou steckt auf dem Highway 9 fest. Schnell, bevor der Kaktus aufgibt!", "timeLimitSeconds": 240,
+        "objectives": [{ "type": "goTo", "at": "louAmbush", "radius": 30 }] },
+      { "id": "rescue", "description": "Rette Lou vor Gus' Männern!",
+        "onStart": [{ "do": "spawnNpc", "tag": "lou", "at": "louAmbush", "hp": 500 }, { "do": "spawnEnemies", "tag": "goons", "gang": "neon", "count": 5, "at": "louAmbush", "radius": 24, "target": "lou" }],
+        "objectives": [{ "type": "defeat", "tag": "goons" }, { "type": "protect", "tag": "lou", "seconds": 20 }] },
+      { "id": "ranch", "description": "Bring Lou zur Ranch. Er fährt hinterher. Behauptet er.",
+        "onStart": [{ "do": "dialog", "kind": "talk", "lines": [{ "who": "lou", "text": "Ich hab mich gar nicht gefürchtet. Ich hab nur … laut nachgedacht. Sehr laut. Mit Schreien." }] }],
+        "objectives": [{ "type": "goTo", "at": "ranch", "radius": 16 }] }
+    ],
+    "rewards": { "money": 700, "xp": 300 }
+  },
+  {
+    "id": "story_11_konvoi", "title": "Carla ruft an",
+    "giver": { "type": "phone", "id": "carla" }, "minLevel": 1, "coop": { "min": 1, "max": 4 }, "openJoin": true, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "go", "description": "Fahr zur Route 41 bei Port Sabal. Der Geldtransport kommt gleich. (Spieler in der Nähe können mitmachen.)", "timeLimitSeconds": 360,
+        "objectives": [{ "type": "goTo", "at": "convoyStart", "radius": 45 }] },
+      { "id": "hit", "description": "Der Konvoi rollt! Zerstöre Gus' Geldtransporter – rammen, schießen, kreativ sein.", "timeLimitSeconds": 300,
+        "onStart": [
+          { "do": "spawnVehicle", "tag": "armored", "kind": "car", "model": "ck-truck", "color": 8, "at": "convoyStart", "pose": "road", "traffic": true },
+          { "do": "spawnVehicle", "tag": "escort", "kind": "car", "model": "ck-suv", "color": 9, "at": "convoyStart", "pose": "road", "traffic": true, "ahead": 14 },
+          { "do": "spawnVehicle", "tag": "escort", "kind": "car", "model": "ck-suv", "color": 9, "at": "convoyStart", "pose": "road", "traffic": true, "ahead": -14 },
+          { "do": "setWanted", "level": 1 }
+        ],
+        "objectives": [{ "type": "destroy", "tag": "armored" }] },
+      { "id": "loot", "description": "Schnapp dir die Geldsäcke aus dem Wrack. Gus' Wachleute steigen aus!",
+        "onStart": [{ "do": "spawnPickups", "tag": "cash", "at": "tag:armored", "count": 4, "radius": 9 }, { "do": "spawnEnemies", "tag": "guards", "gang": "neon", "count": 4, "at": "tag:armored", "radius": 14 }],
+        "objectives": [{ "type": "collect", "tag": "cash" }] },
+      { "id": "escape", "description": "Abhauen! Und zwar mit Stil.",
+        "onStart": [{ "do": "setWanted", "level": 2 }],
+        "objectives": [{ "type": "loseWanted" }] }
+    ],
+    "rewards": { "money": 5000, "xp": 800 }
+  },
+  {
+    "id": "story_12_ganz_oben", "title": "Ganz oben",
+    "giver": { "type": "npc", "id": "grady" }, "minLevel": 1, "coop": { "min": 1, "max": 4 }, "openJoin": true, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "gate", "description": "Fahr zum Tor von Gus' Villa in Brickell Hills. Die Crew wartet. (Spieler in der Nähe können mitmachen.)",
+        "objectives": [{ "type": "goTo", "at": "estateGate", "radius": 22 }] },
+      { "id": "yard", "description": "Stürmt das Anwesen! Gus hat sein ganzes Neon Syndicate zusammengetrommelt.",
+        "onStart": [
+          { "do": "dialog", "kind": "radio", "lines": [
+            { "who": "carla", "text": "Die Alarmanlage ist aus. Ich hab das Passwort geändert auf „GusIstPleite“." },
+            { "who": "racer", "text": "Fluchtwagen steht. Motor läuft. Ich auch – vor Ungeduld." },
+            { "who": "lou", "text": "Ich halte die Snacks! Das ist auch eine Aufgabe!" }
+          ] },
+          { "do": "spawnEnemies", "tag": "guards1", "gang": "neon", "count": 6, "at": "estate", "radius": 26 }
+        ],
+        "objectives": [{ "type": "defeat", "tag": "guards1" }] },
+      { "id": "inner", "description": "Weiter rein! Gus versteckt sich hinter Wachen. Und hinter einem sehr großen Brunnen.",
+        "onStart": [{ "do": "spawnEnemies", "tag": "guards2", "gang": "neon", "count": 6, "at": "estate", "radius": 18, "hp": 70 }],
+        "objectives": [{ "type": "defeat", "tag": "guards2" }] },
+      { "id": "gus", "description": "Showdown mit Gus!",
+        "onStart": [
+          { "do": "dialog", "kind": "talk", "lines": [
+            { "who": "gus", "text": "Du? DU? Ich hab dir ein Apartment geschenkt! Mit Meerblick! Wenn man sich rauslehnt!" },
+            { "who": "gus", "text": "Na schön. Dann eben altmodisch. Aber pass auf den Anzug auf, der ist aus Mailand!" }
+          ] },
+          { "do": "spawnEnemies", "tag": "gus", "gang": "neon", "count": 1, "at": "estate", "radius": 5, "hp": 650 },
+          { "do": "spawnEnemies", "tag": "bodyguards", "gang": "neon", "count": 2, "at": "estate", "radius": 8, "hp": 120 }
+        ],
+        "objectives": [{ "type": "defeat", "tag": "gus" }] }
+    ],
+    "rewards": { "money": 10000, "xp": 1500 }
+  }
+]

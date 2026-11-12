@@ -3,6 +3,8 @@
 // Fahrzeuge, Fußgänger und Props kommen als Delta: nur Einträge, die sich seit dem letzten
 // Snapshot an DIESEN Client geändert haben (plus Listen der verschwundenen IDs).
 import type { MgHud } from './minigames';
+import type { DialogueLine } from './quests';
+import type { StoryView } from './story';
 import type { FloorNet } from './world/arenaFloor';
 
 /** Bitmaske für Tasten in einem Eingabe-Kommando. */
@@ -37,6 +39,14 @@ export type ClientMsg =
   | { t: 'phone'; id: string }
   | { t: 'questAccept'; id: string }
   | { t: 'questAbandon' }
+  /** Story: Intro fertig angesehen (startet Mission 1), Story-Figur ansprechen, laufendem Koop-Auftrag beitreten. */
+  | { t: 'introDone' }
+  | { t: 'talk'; npc: string }
+  | { t: 'questJoin' }
+  /** Entscheidung in einer Mission (Option-ID aus shared/story/story.json → choices). */
+  | { t: 'choice'; id: string; option: string }
+  /** Am Wohnort: Garagenfahrzeug holen bzw. als Zuhause (Spawnpunkt) wählen. */
+  | { t: 'home'; do: 'garage' | 'set'; id: string }
   /** F gedrückt gehalten (Interaktion mit Haltedauer, z. B. Leuchtfeuer). */
   | { t: 'hold'; on: boolean }
   /** Nur Dev-Modus: Handling-Werte live ändern (Server übernimmt sie, damit die Prediction passt). */
@@ -45,8 +55,8 @@ export type ClientMsg =
   | { t: 'npcDebug'; on: boolean };
 
 // ---------- Server -> Client ----------
-/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll), ragdoll 0/1, Waffenindex] */
-export type PlayerTuple = [number, string, number, number, number, number, number, number, number, number, number];
+/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll), ragdoll 0/1, Waffenindex, Story-Rang] */
+export type PlayerTuple = [number, string, number, number, number, number, number, number, number, number, number, number];
 /**
  * Fahrzeug-Bewegung: [id, x, z, y, yaw, vx, vz, steer, flags, pitch, roll, vy, rpm/100]
  * flags: VehFlag
@@ -156,7 +166,7 @@ export interface SnapshotMsg {
   day: number; // Tageszeit 0..1 (0 = Mitternacht, 0.5 = Mittag)
   ack: number; // letzte verarbeitete Eingabe-Sequenz DIESES Clients
   /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt], Fahrzeug (packCar) oder null, Geld. */
-  me?: { pawn: number[]; veh: number[] | null; money: number; stats: PlayerStats; quest: QuestState | null };
+  me?: { pawn: number[]; veh: number[] | null; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
   players: PlayerTuple[];
   /** Geänderte Fahrzeuge / Stammdaten / verschwundene IDs */
   v?: VehicleTuple[];
@@ -183,7 +193,16 @@ export type ServerMsg =
   | SnapshotMsg
   | { t: 'chat'; from: string; text: string; color: number; system?: boolean }
   | { t: 'notice'; text: string; kind: 'info' | 'good' | 'bad' }
-  | { t: 'phone'; id: string; name: string; quests: PhoneQuest[] }
+  /** Auftragsliste eines Telefons oder einer Story-Figur (npc gesetzt: Gespräch mit talk-Zeilen). */
+  | { t: 'phone'; id: string; name: string; quests: PhoneQuest[]; npc?: string; talk?: DialogueLine[] }
+  /** Story-Fortschritt (bei Login und jeder Änderung). */
+  | { t: 'story'; s: StoryView }
+  /** Dialog/Funkspruch/Anruf; scene: Zwischensequenz aus story.json (z. B. Balkon). */
+  | { t: 'dialog'; lines: DialogueLine[]; kind: 'talk' | 'radio' | 'call'; scene?: string; title?: string }
+  /** Neuer Rang (Banner). */
+  | { t: 'rankUp'; rank: number }
+  /** Entscheidung anbieten (Mission 3). */
+  | { t: 'choice'; id: string; who: string; prompt: DialogueLine[]; options: { id: string; label: string }[] }
   | { t: 'questLog'; done: string[]; cooldowns: Record<string, number> }
   | { t: 'bonus'; kind: string; points: number; money: number; info: string; total: number }
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }

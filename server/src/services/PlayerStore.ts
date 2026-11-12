@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { rename, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BALANCE } from '../../../shared/src/balance';
+import { freshStory, type StoryProgress } from '../../../shared/src/story';
 
 export interface PlayerProfile {
   /** Schlüssel im Speicher: "acc:<name>" (Konto) oder "guest:<id>" (Gast). */
@@ -27,6 +28,8 @@ export interface PlayerProfile {
   questCooldowns: Record<string, number>;
   /** Besessene Waffen mit Munition (Nahkampfwaffen: 0). Fäuste hat jeder. */
   weapons: Record<string, number>;
+  /** Hauptgeschichte: Intro, Rang, Entscheidungen, Wohnorte, Crew (shared/story). Fehlt bei alten Spielständen. */
+  story?: StoryProgress;
   /** Letzte Position (null = Standard-Spawn). */
   pos: { x: number; z: number } | null;
   playtimeSeconds: number;
@@ -53,7 +56,7 @@ function freshProfile(key: string, name: string): PlayerProfile {
     key, name,
     money: BALANCE.economy.startCash, bank: BALANCE.economy.startBank, xp: 0,
     health: BALANCE.player.maxHealth, armor: 0,
-    reputation: {}, inventory: {}, questsDone: [], questCooldowns: {}, weapons: {}, pos: null,
+    reputation: {}, inventory: {}, questsDone: [], questCooldowns: {}, weapons: {}, story: freshStory(), pos: null,
     playtimeSeconds: 0, createdAt: now, lastLogin: now,
   };
 }

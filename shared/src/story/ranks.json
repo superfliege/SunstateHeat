@@ -1,0 +1,51 @@
+[
+  {
+    "id": "niemand", "name": "Niemand", "icon": "🎒",
+    "desc": "Zwölf Dollar, ein Rucksack und ein Gesicht, das sich noch niemand merken muss.",
+    "home": null, "vehicle": null,
+    "look": { "style": "player" },
+    "perks": ["Ein Rucksack (inklusive Rucksack)"]
+  },
+  {
+    "id": "laufbursche", "name": "Laufbursche", "icon": "📦",
+    "desc": "Du bringst Dinge von A nach B. Manchmal sogar unbeschädigt.",
+    "home": "lou_sofa", "vehicle": { "kind": "bike", "name": "Lous Kurier-Motorrad" },
+    "look": { "style": "player", "shirt": "#ff8c42" },
+    "perks": ["Zuhause: Lous Sofa (Waschanlage „Bubble Bath“)", "Garage: Lous Kurier-Motorrad", "Outfit: Bubble-Bath-Shirt in Warnorange"]
+  },
+  {
+    "id": "fahrer", "name": "Fahrer", "icon": "🏎️",
+    "desc": "Man ruft dich, wenn es schnell gehen muss. Und wenn es nicht legal sein muss.",
+    "home": null, "vehicle": { "kind": "car", "model": "proc_muscle", "name": "Gator V8" },
+    "look": { "style": "player", "shirt": "#2b2b38" },
+    "perks": ["Garage: Gator V8", "Outfit: schwarze Fahrerjacke (sehr wichtig für die Aerodynamik)"]
+  },
+  {
+    "id": "vertrauter", "name": "Vertrauter", "icon": "🕶️",
+    "desc": "Gus kennt deinen Namen. Fast immer den richtigen.",
+    "home": "apartment", "vehicle": { "kind": "car", "model": "ck-sedan-sports", "name": "Riviera GT" },
+    "look": { "style": "business", "shirt": "#3a8dff" },
+    "perks": ["Zuhause: Apartment am Ocean Strip (mit Meerblick, wenn man sich weit rauslehnt)", "Garage: Riviera GT", "Outfit: Anzug mit Sonnenbrille, auch nachts"]
+  },
+  {
+    "id": "ausgestossener", "name": "Ausgestoßener", "icon": "🌵",
+    "desc": "Die Stadt hat dich ausgespuckt. Das Outback kaut noch.",
+    "home": "ranch", "vehicle": { "kind": "car", "model": "truck_yellow", "name": "Ranch Hauler" },
+    "look": { "style": "outdoor" },
+    "perks": ["Zuhause: Unterkunft auf Gradys Ranch (ab „Staub“)", "Garage: Ranch Hauler", "Outfit: Staub. Sehr viel Staub."]
+  },
+  {
+    "id": "unternehmer", "name": "Unternehmer", "icon": "🛩️",
+    "desc": "Eigene Landebahn, eigene Routen, eigene Visitenkarten (handgeschrieben).",
+    "home": "hideout", "vehicle": { "kind": "car", "model": "ck-suv-luxury", "name": "Brickell Prestige" },
+    "look": { "style": "outdoor", "shirt": "#ffe14d" },
+    "perks": ["Zuhause: Versteck an der Landebahn (ab „Erste eigene Lieferung“)", "Garage: Brickell Prestige", "Einnahmen aus der Landebahn", "Outfit: Hawaiihemd des Erfolgs"]
+  },
+  {
+    "id": "boss", "name": "Boss", "icon": "👑",
+    "desc": "Ganz oben. Die Aussicht ist gut, die Luft ist dünn, der Champagner ist warm.",
+    "home": "villa", "vehicle": { "kind": "car", "model": "proc_sport", "name": "Neon Vortex" },
+    "look": { "style": "business", "shirt": "#ffffff" },
+    "perks": ["Zuhause: Villa in Brickell Hills", "Hauptquartier: Club „Velvet Tide“", "Garage: Neon Vortex", "Doppelte Einnahmen", "Outfit: weißer Anzug (Gus hat ihn nicht mehr gebraucht)"]
+  }
+]

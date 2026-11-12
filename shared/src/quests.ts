@@ -2,16 +2,22 @@
 // wertet sie aus. Orte werden über Schlüssel angegeben (siehe questLocations.ts).
 import type { GangId } from './gangs';
 
+/** Ortsschlüssel aus questLocations.ts, 'here' (Startpunkt des Laufs) oder 'tag:<tag>' (Position eines Quest-Fahrzeugs/-NPCs). */
 export type LocRef = string;
 
-export interface DialogueLine { who: string; text: string }
+/** who: Name oder Figuren-ID aus shared/story (dann mit Farbe/Namen). if: nur bei passendem Spielstil ('hard' | 'smooth'). */
+export interface DialogueLine { who: string; text: string; if?: string }
 
 /** Aktionen beim Start/Ende einer Stufe. */
 export type QuestAction =
-  /** Fahrzeug bereitstellen und unter `tag` merken. kind: car | bike | boat | airboat */
-  | { do: 'spawnVehicle'; tag: string; kind: 'car' | 'boat' | 'airboat'; variant?: number; at: LocRef; water?: boolean; perPlayer?: boolean }
-  /** Gegner (Gang-NPCs) erzeugen, die die Teilnehmer angreifen. */
-  | { do: 'spawnEnemies'; tag: string; gang: GangId; count: number; at: LocRef; radius?: number; target?: 'players' | string }
+  /**
+   * Fahrzeug bereitstellen und unter `tag` merken. kind: car | bike | boat | airboat.
+   * model: Modellname aus CAR_VARIANTS (statt variant), pose: 'road' = in Fahrtrichtung auf die nächste Straße,
+   * 'across' = quer über die Straße (Straßensperre), ahead: Versatz entlang der Straße (m), traffic: ein NPC fährt es (Konvoi), color: Lackfarbe.
+   */
+  | { do: 'spawnVehicle'; tag: string; kind: 'car' | 'bike' | 'boat' | 'airboat'; variant?: number; model?: string; at: LocRef; water?: boolean; perPlayer?: boolean; pose?: 'road' | 'across'; traffic?: boolean; color?: number; ahead?: number }
+  /** Gegner (Gang-NPCs) erzeugen, die die Teilnehmer angreifen. hp: Lebenspunkte je Gegner (Standard 50). */
+  | { do: 'spawnEnemies'; tag: string; gang: GangId; count: number; at: LocRef; radius?: number; target?: 'players' | string; hp?: number }
   /** NPC, der geschützt werden muss (bleibt stehen). */
   | { do: 'spawnNpc'; tag: string; at: LocRef; hp: number }
   /** Sammelobjekte im Gebiet erzeugen. */
@@ -19,7 +25,9 @@ export type QuestAction =
   | { do: 'setWanted'; level: number }
   /** Nächstgelegenes Verkehrsfahrzeug als Verfolgungsziel markieren. */
   | { do: 'tagTraffic'; tag: string; near: LocRef }
-  | { do: 'say'; text: string };
+  | { do: 'say'; text: string }
+  /** Dialog/Funkspruch für alle Teilnehmer einblenden (Texte siehe shared/story). */
+  | { do: 'dialog'; lines: DialogueLine[]; kind?: 'talk' | 'radio' | 'call' };
 
 export type Objective =
   | { type: 'goTo'; at: LocRef; radius?: number; vehicleKind?: 'car' | 'boat' | 'airboat'; vehicleTag?: string; text?: string }
@@ -33,7 +41,11 @@ export type Objective =
   | { type: 'loseWanted'; text?: string }
   | { type: 'race'; points: LocRef | LocRef[]; count?: number; vehicleTag?: string; text?: string }
   | { type: 'groupAt'; at: LocRef; radius?: number; text?: string }
-  | { type: 'interact'; at: LocRef; holdSeconds: number; text?: string };
+  | { type: 'interact'; at: LocRef; holdSeconds: number; text?: string }
+  /** Entscheidung an einem Ort (zu Fuß, F): Optionen stehen in shared/story/story.json unter choices[id]. */
+  | { type: 'choice'; at: LocRef; id: string; radius?: number; text?: string }
+  /** Markiertes Fahrzeug zerstören (Wrack). */
+  | { type: 'destroy'; tag: string; text?: string };
 
 export interface QuestStage {
   id: string;
@@ -49,11 +61,14 @@ export type FailCondition = 'timeout' | 'allDown' | 'targetLost' | 'vehicleDestr
 export interface QuestDefinition {
   id: string;
   title: string;
+  /** payphone: Münztelefon (id = Telefon), npc: Story-Figur (id = Figur, siehe shared/story), phone: Anruf (überall annehmbar). */
   giver: { type: 'payphone' | 'npc' | 'phone'; id: string };
   gang?: GangId;
   minLevel: number;
   requirements?: { reputation?: Partial<Record<GangId, number>>; questsCompleted?: string[] };
   coop: { min: number; max: number };
+  /** Spieler in der Nähe können dem laufenden Auftrag beitreten (F am Einsatzort). */
+  openJoin?: boolean;
   repeatable: boolean;
   cooldownMinutes?: number;
   /** Nur nachts verfügbar. */
@@ -66,6 +81,8 @@ export interface QuestDefinition {
     reputation?: { gang: GangId; gain: number; rivalLoss: number };
     /** Preisgeld nach Platzierung (Rennen), ersetzt money. */
     byPlace?: number[];
+    /** Bonus, wenn das markierte Fahrzeug am Ende noch mindestens minHealth (0–1) Zustand hat. */
+    damageBonus?: { tag: string; minHealth: number; money: number };
   };
 }
 
@@ -74,7 +91,7 @@ export function validateQuests(defs: QuestDefinition[], locations: Set<string>, 
   const errs: string[] = [];
   const ids = new Set<string>();
   const loc = (q: string, ref: unknown) => {
-    if (typeof ref === 'string' && !locations.has(ref)) errs.push(`${q}: unbekannter Ort "${ref}"`);
+    if (typeof ref === 'string' && ref !== 'here' && !ref.startsWith('tag:') && !locations.has(ref)) errs.push(`${q}: unbekannter Ort "${ref}"`);
   };
   for (const q of defs) {
     if (ids.has(q.id)) errs.push(`${q.id}: doppelte ID`);
@@ -85,7 +102,7 @@ export function validateQuests(defs: QuestDefinition[], locations: Set<string>, 
     for (const r of q.requirements?.questsCompleted ?? []) if (!defs.some((d) => d.id === r)) errs.push(`${q.id}: Voraussetzung "${r}" existiert nicht`);
     for (const st of q.stages) {
       if (!st.objectives.length) errs.push(`${q.id}/${st.id}: keine Ziele`);
-      for (const a of [...(st.onStart ?? []), ...(st.onComplete ?? [])]) if ('at' in a) loc(q.id, a.at);
+      for (const a of [...(st.onStart ?? []), ...(st.onComplete ?? [])]) { if ('at' in a) loc(q.id, a.at); if (a.do === 'tagTraffic') loc(q.id, a.near); }
       for (const o of st.objectives) {
         if ('at' in o) loc(q.id, o.at);
         if (o.type === 'race') for (const p of Array.isArray(o.points) ? o.points : [o.points]) loc(q.id, p);

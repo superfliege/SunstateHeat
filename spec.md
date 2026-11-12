@@ -515,17 +515,20 @@ Belohnungen erhält jeder Teilnehmer voll (kein Aufteilen), solange er mindesten
 Spezielle Koop-Ziele: ein Spieler fährt, ein anderer schießt; zwei Fahrzeuge müssen gleichzeitig ankommen; einer lenkt Polizei ab, während der andere liefert.
 13.4 Story-Rahmen
 
-Prämisse: Der Spieler ist frisch mit dem Bus in Port Coralia angekommen, pleite und mit einer Schuld bei einem mysteriösen Kredithai namens „Mister Sunday". Um die Schuld zu bezahlen, arbeitet der Spieler für die vier Gangs, deckt dabei auf, dass Mister Sunday die Gangs gegeneinander ausspielt, um ein Bauprojekt auf den Coral Keys durchzusetzen, und entscheidet am Ende, mit welcher Gang er gegen ihn vorgeht.
+Hauptgeschichte „Zwölf Dollar“ / „Ganz oben“ (Daten: shared/story/*.json, Regeln: shared/story/index.ts, Server: server/src/quests/Story.ts).
 
-Aufbau:
+Prämisse: Der Spieler kommt pleite mit zwölf Dollar am Busbahnhof von Port Coralia an. Lou Navarro (Autowaschanlage „Bubble Bath“, Northgate) nimmt ihn auf. Er steigt zur rechten Hand von Augusto „Gus“ Medina (Club „Velvet Tide“, Ocean Strip) auf, wird verraten, flieht ins Outback zu Hollis Grady (Ranch an der Pine Hollow Road), baut mit eigener Crew ein Imperium auf und stürzt Gus (Villa in Brickell Hills).
+
+Ränge (im HUD sichtbar): Niemand → Laufbursche → Fahrer → Vertrauter → Ausgestoßener → Unternehmer → Boss. Jeder Rang bringt Zuhause/Spawnpunkt, Garagenfahrzeug und Look (shared/story/ranks.json). Der Verrat entfernt keine Gegenstände, nur Zugänge (Apartment, Club).
 
 Akt	Inhalt	Missionen
-Prolog	Ankunft, erste Jobs, Tutorial	3
-Akt 1	Je 3 Einstiegsmissionen pro Gang	12
-Akt 2	Rivalitäten eskalieren, Spuren zu Mister Sunday	8
-Akt 3	Wahl einer Verbündeten-Gang, Finale (4 Varianten-Enden)	5
+Intro	Ankunft am Busbahnhof, Lou holt den Spieler ab (nur für diesen Spieler sichtbar)	–
+Akt 1 „Zwölf Dollar“ (Stadt)	Ohne Kratzer, Express, Offene Rechnungen, Fluchtwagen, Party im Club, Der Deal	6
+Akt 2 „Ganz oben“ (Outback)	Staub, Die Landebahn, Erste eigene Lieferung, Eine Crew (3 Anwerbungen), Carla ruft an, Ganz oben	6
 
-Story-Missionen sind alle solo spielbar; Gruppenmitglieder können mitmachen (Fortschritt zählt für alle, die die Mission noch nicht abgeschlossen haben).
+Die acht Beispielquests (13.5) sind Nebenjobs der Story-Figuren und werden über den Rang freigeschaltet.
+
+Story-Missionen sind alle solo spielbar; Spieler in der Nähe können Koop-Missionen beitreten, wenn die Mission für sie freigeschaltet ist oder sie sie schon kennen (Story-Folgen nur beim ersten Abschluss).
 
 13.5 Beispielquests
 

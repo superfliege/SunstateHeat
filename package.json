@@ -14,7 +14,8 @@
     "assets": "node scripts/fetch-assets.mjs",
     "textures": "tsx scripts/process-textures.ts",
     "audio": "tsx scripts/process-audio.ts",
-    "test": "tsx scripts/validate-content.ts"
+    "test": "tsx scripts/validate-content.ts",
+    "story-test": "tsx scripts/story-smoke.ts"
   },
   "dependencies": {
     "three": "0.170.0",
