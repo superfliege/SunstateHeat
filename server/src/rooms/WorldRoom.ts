@@ -26,6 +26,7 @@ import { VehicleKind, isAircraft, isWaterVehicle } from '../../../shared/src/sim
 import { AIR_LEVEL_NAMES, AIR_SETTINGS, AIRCRAFT, aircraftDef, airLevel, canExitAircraft, sameAirLevel } from '../../../shared/src/sim/aircraft';
 import { AIR_FUEL, AIRPORT_NAME } from '../../../shared/src/world/airport';
 import { AirFleet } from '../sim/AirFleet';
+import { PoliceHeli } from '../sim/PoliceHeli';
 import { centroid } from '../../../shared/src/world/geometry';
 import { generateProps, TRACK_SPAWN } from '../../../shared/src/world/features';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
@@ -156,6 +157,7 @@ export class WorldRoom {
         driver: DRIVER_NONE, home: sp, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false,
       });
     }
+    this.peds = new Pedestrians(map, () => this.allocId());
     this.air = new AirFleet({
       map, vehicles: this.vehicles, players: this.players,
       allocId: () => this.allocId(),
@@ -164,8 +166,17 @@ export class WorldRoom {
       positionOf: (p) => this.positionOf(p),
       clearOccupants: (v) => this.clearOccupants(v),
       resend: (v) => { for (const p of this.players.values()) { p.view.dmg.delete(v.id); p.view.veh.delete(v.id); } this.emit(v.sim.car.x, v.sim.car.z, ['repair', v.id], v.id); },
+      peds: this.peds,
     });
-    this.peds = new Pedestrians(map, () => this.allocId());
+    this.copter = new PoliceHeli({
+      map, players: this.players, vehicles: this.vehicles,
+      allocId: () => this.allocId(),
+      positionOf: (p) => this.positionOf(p),
+      hurtPlayer: (p, dmg) => this.hurtPlayer(p, dmg),
+      emit: (x, z, ev) => this.emit(x, z, ev as GameEvent),
+      notice: (p, text, kind) => this.noticeTo(p, text, kind),
+      step: (v, ax, ay, buttons) => this.physicsStep(v, ax, ay, buttons, null),
+    });
     const playerPos = () => [...this.players.values()].map((p) => this.positionOf(p));
     this.brain = new NpcBrain({
       map, peds: this.peds, vehicles: this.vehicles,
@@ -436,6 +447,8 @@ export class WorldRoom {
   allocId() { return this.nextId++; }
   /** Luftfahrzeug-Flotte (Flughafen) */
   private air!: AirFleet;
+  /** Polizeihubschrauber (hohe Fahndungsstufe) */
+  private copter!: PoliceHeli;
   /** Zähler für seltenere Updates entfernter Luftfahrzeuge */
   private snapNo = 0;
 
@@ -1708,6 +1721,7 @@ export class WorldRoom {
     this.hunt.update(dt);
     this.mg.update(dt);
     this.police.update(dt);
+    this.copter.update(dt, steps, SIM_DT);
     this.updatePullOut(dt);
     this.updateSinking(dt);
     this.quests.update(dt);

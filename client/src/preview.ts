@@ -2,7 +2,7 @@
 // Parameter: ?x=..&z=.. (Position, Standard = Spawn), ?day=0.5 (Tageszeit), ?district=Ocean Strip,
 //            ?ragdoll=1 (Passanten werden reihum weggeschleudert – Ragdoll testen),
 //            ?retro=1, ?zoom=1.4 (Kameraabstand-Faktor), ?air=1 (Luftfahrzeug-Vitrine statt Autos, ?alt=30 Flughöhe).
-//            Shader-Fehler werden auf der Seite angezeigt.
+//            ?deco=<s> (Deko-Flugzeug: Sekunde im Umlauf). Shader-Fehler werden auf der Seite angezeigt.
 import * as THREE from 'three';
 import { MAP_SEED } from '../../shared/src/constants';
 import { centroid } from '../../shared/src/world/geometry';
@@ -22,6 +22,8 @@ import { Sky } from './render/Sky';
 import { WorldView } from './render/WorldView';
 import { PropsView } from './render/PropsView';
 import { FeaturesView } from './render/FeaturesView';
+import { AirportView } from './render/AirportView';
+import { toonVC, vehicleMat } from './render/models';
 import { profileOf } from '../../shared/src/sim/vehicle';
 import { CAR_VARIANTS } from '../../shared/src/sim/handling';
 import { AIRCRAFT } from '../../shared/src/sim/aircraft';
@@ -78,6 +80,11 @@ async function main() {
   const props = new PropsView(map);
   const features = new FeaturesView(map);
   scene.add(props.group, features.group);
+  const airport = new AirportView(map, vehicleMat, toonVC);
+  scene.add(airport.group);
+  // ?deco=Sekunde im Umlauf des Deko-Flugzeugs (Standard: aktuelle Uhrzeit)
+  const decoT0 = q.get('deco') !== null ? Number(q.get('deco')) * 1000 : null;
+  let simT = 0;
   const dentDemo = [[0.3, 0.1, 2.3, 0, 0, -1, 0.9], [-0.9, 0.2, 0.4, 1, 0, 0, 0.6]];
   let damaged = false;
   const ragdollDemo = q.get('ragdoll') === '1';
@@ -123,6 +130,8 @@ async function main() {
       views.setDamage(201, (1 << 0) | (2 << 4) | (1 << 8), 1, 1, 0, false, 0, 0);
     }
     views.endFrame();
+    simT += dt;
+    airport.update(dt, sky.night, decoT0 !== null ? decoT0 + simT * 1000 : Date.now(), [], rig.target);
     rig.update(x, map.surfaceY(x, z), z, 0, 0, 0, zoom > 1, dt);
     U.uTime.value += dt;
     sky.update(day, rig.target, 1);

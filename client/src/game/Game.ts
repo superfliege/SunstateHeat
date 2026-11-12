@@ -41,7 +41,8 @@ import { Predictor, type Obstacle } from '../net/Prediction';
 import { CameraRig } from '../render/CameraRig';
 import { FeaturesView } from '../render/FeaturesView';
 import { U } from '../render/materials/toon';
-import { vehicleMat } from '../render/models';
+import { toonVC, vehicleMat } from '../render/models';
+import { AirportView } from '../render/AirportView';
 import { moodFor } from '../render/palette';
 import { Particles } from '../render/Particles';
 import { Tracers } from '../render/Tracers';
@@ -133,6 +134,8 @@ export class Game {
   private minimapTimer = 0;
   private day = 0.35;
   private buttons = 0;
+  /** Flughafen: Schranke, Neon, Gepäckwagen, Deko-Flugzeug */
+  private airport: AirportView;
   /** Mitfahrer in einem Luftfahrzeug (Fahrzeug-ID, -1 = nein) */
   private ride = -1;
   private post: PostFX;
@@ -210,7 +213,8 @@ export class Game {
       if (b) { this.input.clear(); this.input.fire = false; }
     };
     this.particles = new Particles(this.map);
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group);
+    this.airport = new AirportView(this.map, vehicleMat, toonVC);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.applyGfx();
@@ -750,6 +754,7 @@ export class Game {
       myY = g + alt * 0.8; // Fokus leicht unter dem Luftfahrzeug: es erscheint mit der Höhe größer
     }
     this.rig.altitude = alt;
+    this.airport.update(dt, this.sky.night, this.buffer.serverNow, vehicleStates.values(), this.rig.target);
     this.sky.fogScale = 1 + Math.min(alt, AIR_SETTINGS.ceiling) / 90;
     // Minispiel-Zuschauer (ausgeschieden/wartend, zu Fuß): Kamera auf die Arena
     const spec = this.predictor.inVehicle ? undefined : this.questState?.mg?.spectate;
@@ -911,7 +916,7 @@ export class Game {
         if (s.flags & VehFlag.HORN && driver >= 0) car.horn(id, soundClass(variant), own ? null : pos);
         if (rec.dmg.burn > 0 && !own) car.fire(id, pos, 1, dt);
         // Sirene: Streifenwagen bei Einsatzfahrt oder solange nach mir gefahndet wird
-        if (driver === DRIVER_COP_ID && variant !== TANK_VARIANT && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
+        if (driver === DRIVER_COP_ID && variant !== TANK_VARIANT && !isAircraft(kind) && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
       }
       if (id !== myVehicle && driver !== -1 && !rec.dmg.wreck) engines.push({ id, d: Math.hypot(s.x - focus.x, s.z - focus.z), s, rpm });
     }
@@ -1150,7 +1155,7 @@ export class Game {
         alt: Math.max(0, c.y - airGround(this.map, c.x, c.z, c.y, aircraftDef(sim.variant).type === 'heli').y), vs: f.ground ? 0 : c.vy,
         level: airLevel(c), fuel: AIR_SETTINGS.fuelEnabled ? f.fuel : null, stall: f.stall === 1,
       } : undefined;
-      this.drive.set({ speed: f ? Math.hypot(c.vx, c.vz) : c.s, gear: c.gear, rpm: c.rpm, redline: f ? 6000 : sim.prof.redline, nitro: c.nitro, hasNitro: !f && sim.prof.nitroForce > 0, hp: sim.dmg.hp, burning: sim.dmg.burn > 0, air });
+      this.drive.set({ speed: f ? Math.hypot(c.vx, c.vz) : c.s, gear: c.gear, rpm: c.rpm, redline: f ? 7500 : sim.prof.redline, nitro: c.nitro, hasNitro: !f && sim.prof.nitroForce > 0, hp: sim.dmg.hp, burning: sim.dmg.burn > 0, air });
       const st = this.predictor.stunts;
       this.drive.drift(st.driftT > 0.3 ? st.driftPts : null, driftMultiplier(st));
     } else { this.drive.set(null); this.drive.drift(null, 1); }

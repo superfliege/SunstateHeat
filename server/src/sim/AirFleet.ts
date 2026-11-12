@@ -7,7 +7,10 @@ import { resetDamage } from '../../../shared/src/sim/damage';
 import { createSimVehicle } from '../../../shared/src/sim/vehicle';
 import { VehicleKind, isAircraft } from '../../../shared/src/sim/vehicleDefs';
 import { rankIndex, rankOf } from '../../../shared/src/story';
-import { AIR_FUEL, airSpawnPoint, onRunway, runwayNames } from '../../../shared/src/world/airport';
+import { AIR_FUEL, AIRPORT_BUILDINGS, airSpawnPoint, onRunway, runwayNames, TERMINAL_WALKS } from '../../../shared/src/world/airport';
+import { ARCH_INDEX } from '../../../shared/src/npc/archetypes';
+import type { RoadEdge } from '../../../shared/src/world/WorldMap';
+import type { Pedestrians, Walkway } from './Pedestrians';
 import { decoFlight } from '../../../shared/src/world/airTraffic';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { DRIVER_NONE, type ServerPlayer, type ServerVehicle } from '../entities/types';
@@ -24,12 +27,21 @@ export interface AirHost {
   clearOccupants(v: ServerVehicle): void;
   /** Fahrzeug-Zustand an alle Clients neu senden (nach Reset). */
   resend(v: ServerVehicle): void;
+  /** Passanten (Fußgänger am Terminal) */
+  peds: Pedestrians;
 }
+
+/** Fußgänger am Terminal: so viele, solange ein Spieler in der Nähe ist. */
+const TERMINAL_PEDS = 9, TERMINAL_RANGE = 230;
 
 export const kindOf = (d: AircraftDef) => (d.type === 'heli' ? VehicleKind.Heli : VehicleKind.Plane);
 
 export class AirFleet {
   private warnAcc = 0;
+  private walkers = new Set<number>();
+  private walkAcc = 0;
+  /** Feste Gehwege am Terminal (ohne Straßengraph: Passanten pendeln) */
+  private walks: Walkway[] = TERMINAL_WALKS.map((pts) => ({ edge: { id: -1, a: -100, b: -101 } as RoadEdge, side: 1, pts, district: '' }));
 
   constructor(private h: AirHost) {
     for (const d of AIRCRAFT) if (d.spawn) this.spawnFleet(d);
@@ -81,6 +93,8 @@ export class AirFleet {
       this.maintain(v, dt, players);
     }
     this.refuel(dt, players);
+    this.walkAcc += dt;
+    if (this.walkAcc >= 1) { this.terminalLife(players); this.walkAcc = 0; }
     this.warnAcc += dt;
     if (this.warnAcc >= 0.5) { this.runwayWarnings(this.warnAcc, players); this.warnAcc = 0; }
   }
@@ -111,6 +125,25 @@ export class AirFleet {
     resetDamage(v.sim.dmg);
     v.dents = []; v.dmgVer++; a.deadT = 0; a.awayT = 0;
     this.h.resend(v);
+  }
+
+  /** Reisende am Terminal: erscheinen, wenn ein Spieler in der Nähe ist, und verschwinden danach wieder. */
+  private terminalLife(players: ServerPlayer[]) {
+    const peds = this.h.peds;
+    for (const id of [...this.walkers]) { const p = peds.peds.get(id); if (!p || p.hp <= 0 || !p.walk) this.walkers.delete(id); }
+    const t = AIRPORT_BUILDINGS.find((b) => b.tag === 'terminal')!;
+    const near = players.some((p) => { const q = this.h.positionOf(p); return dist2(q.x, q.z, t.x, t.z) < TERMINAL_RANGE ** 2; });
+    if (!near) {
+      for (const id of this.walkers) { const p = peds.peds.get(id); if (p && p.walk) peds.peds.delete(id); }
+      this.walkers.clear();
+      return;
+    }
+    if (this.walkers.size >= TERMINAL_PEDS) return;
+    const w = this.walks[Math.floor(Math.random() * this.walks.length)];
+    const q = w.pts[Math.floor(Math.random() * w.pts.length)];
+    const arch = Math.random() < 0.55 ? ARCH_INDEX.tourist : Math.random() < 0.6 ? ARCH_INDEX.businessman : ARCH_INDEX.local;
+    const ped = peds.spawnStroller(q[0] + (Math.random() - 0.5) * 2, q[1] + (Math.random() - 0.5) * 3, w, arch);
+    this.walkers.add(ped.id);
   }
 
   /** Tankstelle: am Boden, langsam, im Tankradius -> Tank füllt sich (kostet Geld). */

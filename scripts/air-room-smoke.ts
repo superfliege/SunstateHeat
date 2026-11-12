@@ -123,6 +123,40 @@ chat(C.p, '/flug pelikan');
 const pel = C.p.vehicleId >= 0 ? R.vehicles.get(C.p.vehicleId) : undefined;
 check(pel?.air === undefined && pel?.sim.car.fly !== undefined, '/flug pelikan stellt einen Pelikan bereit');
 
+// --- Bahnwarnung: Spieler zu Fuß auf der Südbahn, Sunbird startet dort
+{
+  const E = mk('Spaziergänger'), F = mk('Startpilot');
+  F.p.profile.story!.rank = rankIndex('fahrer');
+  const r = map.runways[1];
+  const sx = r.x - Math.sin(r.rot) * (r.len / 2 - 8), sz = r.z - Math.cos(r.rot) * (r.len / 2 - 8);
+  sb.sim.car.x = sx; sb.sim.car.z = sz; sb.sim.car.a = r.rot; sb.sim.car.sleep = 0;
+  put(F.p, sx + 2, sz + 3);
+  use(F.p);
+  put(E.p, r.x + 40, r.z);
+  run(5, [[F.p, 0, 1, 0]]);
+  const warn = E.msgs.some((m) => m.t === 'notice' && /Bahn/.test(m.text));
+  check(F.p.vehicleId === sb.id && warn, `Bahnwarnung: ${(E.msgs.filter((m) => m.t === 'notice').pop() as { text?: string } | undefined)?.text}`);
+  check(!F.msgs.some((m) => m.t === 'notice' && /runter von der Bahn/.test(m.text)), 'Pilot selbst bekommt keine Bahnwarnung');
+  use(F.p); run(3, [[F.p, 0, -1, Btn.BRAKE]]); use(F.p);
+  put(E.p, 300, 300); put(F.p, 300, 300);
+}
+
+// --- Polizeihubschrauber ab Fahndungsstufe 4
+const D = mk('Gesucht');
+put(D.p, 1300, 1000);
+chat(D.p, `/fahndung ${AIR_SETTINGS.policeHeliWanted}`);
+run(0.2);
+const heli = () => [...R.vehicles.values()].find((v) => v.copHeli === D.p.id);
+check(!!heli(), 'Polizeihubschrauber wird angefordert');
+for (let i = 0; i < 10; i++) { D.p.wanted = AIR_SETTINGS.policeHeliWanted; D.p.searchT = 0; run(1); }
+const h = heli();
+const hd = h ? Math.hypot(h.sim.car.x - D.p.pawn.x, h.sim.car.z - D.p.pawn.z) : 1e9;
+check(!!h && hd < 80 && h.sim.car.y > 20 && !h.sim.dmg.wreck, `Polizeihubschrauber kreist über dem Spieler (${hd.toFixed(0)} m, Höhe ${h?.sim.car.y.toFixed(0)} m)`);
+chat(D.p, '/fahndung 0');
+put(D.p, 300, 300);
+run(25);
+check(!heli(), 'Fahndung vorbei: Hubschrauber zieht ab');
+
 room.dispose();
 console.log(fails ? `\n${fails} Prüfung(en) fehlgeschlagen` : '\nAlle Luftfahrt-Server-Prüfungen bestanden.');
 process.exit(fails ? 1 : 0);

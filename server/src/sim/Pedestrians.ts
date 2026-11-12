@@ -187,6 +187,18 @@ export class Pedestrians {
     return best;
   }
 
+  /** Spaziergänger auf einem festen Weg ohne Straßengraph (z. B. Flughafen-Terminal): pendelt hin und her. */
+  spawnStroller(x: number, z: number, walk: Walkway, arch: number): Ped {
+    const ped = this.add(x, z, walk);
+    ped.arch = arch;
+    const def = archetypeOf(arch);
+    ped.spd = def.speed * (0.85 + Math.random() * 0.3);
+    if (def.shirts) ped.color = def.shirts[Math.floor(Math.random() * def.shirts.length)];
+    ped.idx = nearestIdx(walk, x, z);
+    ped.dir = Math.random() < 0.5 ? 1 : -1;
+    return ped;
+  }
+
   /** Ein NPC-Fahrer wurde aus seinem Auto "überredet" und rennt davon. */
   spawnFleeing(x: number, z: number) {
     const ped = this.add(x, z, null);
