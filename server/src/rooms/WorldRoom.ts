@@ -372,9 +372,9 @@ export class WorldRoom {
       positionOf: (p) => this.positionOf(p),
       notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
       chat: (p, text) => p.conn.send({ t: 'chat', from: 'Arenaleiter', text, color: 8, system: true }),
+      // Ein laufender Auftrag blockiert nicht: er wird beim Anmelden abgebrochen (acceptQuest)
       blocked: (p) => {
         if (p.downT > 0) return 'Du bist ausgeknockt.';
-        if (this.quests.isActive(p.id)) return 'Erst den aktiven Auftrag beenden.';
         if (this.races.has(p.id)) return 'Du bist für ein Rennen angemeldet.';
         if (this.hunt.has(p.id)) return 'Du spielst gerade Catch the Taxi.';
         if (p.wanted > 0) return 'Nicht mit der Polizei im Nacken!';
@@ -1209,7 +1209,7 @@ export class WorldRoom {
   private openPhone(p: ServerPlayer, id: string) {
     const ph = this.phoneNear(p, id);
     if (!ph || p.downT > 0) return;
-    const quests = ph.mg ? this.mg.listing(p, ph.mg) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level).map((q) => ({ ...q, intro: this.story.lines(p, q.intro) }));
+    const quests = ph.mg ? this.mg.listing(p, ph.mg).map((q) => (q.ok && this.quests.isActive(p.id) ? { ...q, intro: [...q.intro, { who: 'Arenaleiter', text: 'Achtung: Dein laufender Auftrag wird abgebrochen, wenn du mitmachst.' }] } : q)) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level).map((q) => ({ ...q, intro: this.story.lines(p, q.intro) }));
     p.conn.send({ t: 'phone', id: ph.id, name: ph.name, quests });
   }
 
@@ -1217,6 +1217,8 @@ export class WorldRoom {
     if (this.mg.isRequest(id)) {
       const ph = this.phones.find((q) => q.mg && MG_PREFIX + q.mg === id && this.phoneNear(p, q.id));
       if (!ph) { p.conn.send({ t: 'notice', text: 'Du musst an einem Arena-Telefon für dieses Minispiel stehen.', kind: 'bad' }); return; }
+      // Minispiel geht vor: laufenden Auftrag abbrechen (folgenlos, kann neu angenommen werden)
+      if (this.quests.isActive(p.id) && !this.mg.has(p.id) && this.mg.listing(p, ph.mg)[0]?.ok) this.quests.abandon(p);
       this.mg.request(p, id, ph);
       return;
     }
