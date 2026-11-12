@@ -32,6 +32,18 @@ const CLASS_SOUND: Record<HandlingClass, ClassSound> = {
   boat: { set: 'boat', turbo: 0, backfire: false, airBrake: false, horn: { f: [147, 185], wave: 'sawtooth', lp: 900, vol: 0.11 }, vol: 1 },
   airboat: { set: 'airboat', turbo: 0, backfire: false, airBrake: false, horn: { f: [220, 277], wave: 'sawtooth', lp: 1200, vol: 0.09 }, vol: 1 },
   tank: { set: 'truck', turbo: 0.3, backfire: false, airBrake: false, horn: { f: [110, 147], wave: 'sawtooth', lp: 800, vol: 0.12 }, vol: 1.25 },
+  // Land & Berg
+  tractor: { set: 'tractor', turbo: 0.2, backfire: false, airBrake: false, horn: { f: [262, 330], wave: 'square', lp: 1300, vol: 0.08 }, vol: 1.1 },
+  tractor_rig: { set: 'tractor', turbo: 0.2, backfire: false, airBrake: false, horn: { f: [262, 330], wave: 'square', lp: 1300, vol: 0.08 }, vol: 1.15 },
+  tractor_small: { set: 'tractor', turbo: 0, backfire: false, airBrake: false, horn: { f: [392], wave: 'square', lp: 1800, vol: 0.06 }, vol: 0.9 },
+  tractor_old: { set: 'tractor', turbo: 0, backfire: true, airBrake: false, horn: { f: [233], wave: 'sawtooth', lp: 1100, vol: 0.08 }, vol: 1.05 },
+  combine: { set: 'truck', turbo: 0.4, backfire: false, airBrake: false, horn: { f: [196, 247], wave: 'sawtooth', lp: 1200, vol: 0.1 }, vol: 1.2 },
+  quad: { set: 'quad', turbo: 0, backfire: true, airBrake: false, horn: { f: [587], wave: 'square', lp: 3000, vol: 0.05 }, vol: 0.85 },
+  buggy: { set: 'compact', turbo: 0.3, backfire: true, airBrake: false, horn: { f: [494, 622], wave: 'square', lp: 2600, vol: 0.06 }, vol: 1 },
+  mower: { set: 'mower', turbo: 0, backfire: false, airBrake: false, horn: { f: [659], wave: 'square', lp: 3000, vol: 0.04 }, vol: 0.8 },
+  dumper: { set: 'truck', turbo: 0.8, backfire: false, airBrake: true, horn: { f: [131, 165, 196], wave: 'sawtooth', lp: 1100, vol: 0.12 }, vol: 1.3 },
+  pickup_farm: { set: 'muscle', turbo: 0, backfire: true, airBrake: false, horn: { f: [330, 392], wave: 'square', lp: 1600, vol: 0.08 }, vol: 1 },
+  rv: { set: 'truck', turbo: 0.4, backfire: false, airBrake: false, horn: { f: [247, 311], wave: 'square', lp: 1500, vol: 0.09 }, vol: 1 },
 };
 export const classSound = (cls: HandlingClass) => CLASS_SOUND[cls] ?? CLASS_SOUND.sedan;
 
@@ -151,9 +163,9 @@ export interface RemoteCarInput {
 }
 
 const HARD = new Set<number>([Tile.ROAD, Tile.BRIDGE, Tile.PLAZA, Tile.SIDEWALK, Tile.DOCK]);
-const GRAVEL = new Set<number>([Tile.DIRT, Tile.BADLANDS, Tile.ROCK]);
+const GRAVEL = new Set<number>([Tile.DIRT, Tile.BADLANDS, Tile.ROCK, Tile.GRAVEL, Tile.SCREE, Tile.CLIFF]);
 const SAND = new Set<number>([Tile.SAND, Tile.DESERT]);
-const GRASS = new Set<number>([Tile.GRASS, Tile.FARM, Tile.FIELD]);
+const GRASS = new Set<number>([Tile.GRASS, Tile.FARM, Tile.FIELD, Tile.CROP, Tile.PASTURE]);
 
 // ------------------------------------------------------------------ Hauptklasse
 export class VehicleAudio {

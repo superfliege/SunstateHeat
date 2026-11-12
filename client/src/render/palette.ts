@@ -111,6 +111,10 @@ export interface Mood {
   exposure: number;
   /** Wie stark Neon nachts dominiert (Bloom-Stärke). */
   neon: number;
+  /** Goldene Stunde: zusätzliche Wärme/Glühen bei Sonnenauf- und -untergang (0..1). */
+  golden?: number;
+  /** Sternendichte nachts (1 = Stadt mit Lichtverschmutzung, > 1 = klarer Landhimmel). */
+  stars?: number;
   /** Basis-Palette für Texturen dieser Zone (Quantisierung, siehe scripts/process-textures.ts). */
   palette: number[];
 }
@@ -144,16 +148,18 @@ export const MOODS: Record<MoodId, Mood> = {
     palette: [0x356f45, 0x52b85a, 0x8fcc72, 0xb8c46a, 0x6e4e32, 0x9a7652, 0x5e5a6e, 0x2c2a40, 0xb3aab0, 0x9fe8de, 0x3fd8cc, 0xf2dca8, 0xffc9a8, 0x9a6bd8, 0xff9f5a, 0xf7f0e4],
   },
   // warm, staubig, ausgeblichenes Gelb/Rot
+  // Norden: wärmeres, staubigeres Licht, goldene Stunde betont, Dunst über den Feldern, viele Sterne, kaum Neon
   pine: {
-    fog: 0xf0d6a0, fogTint: 0.5, fogRange: 1.0, morningFog: 0.05, saturation: 0.92, warmth: 0.25, exposure: 1.04, neon: 0.8,
+    fog: 0xf0d098, fogTint: 0.55, fogRange: 0.95, morningFog: 0.18, saturation: 0.94, warmth: 0.32, exposure: 1.05, neon: 0.35, golden: 0.75, stars: 3.2,
     palette: [0xf2dca8, 0xb8c46a, 0xc0703f, 0xd4583f, 0xffb36b, 0x9a7652, 0x6e4e32, 0x356f45, 0x52b85a, 0x8fcc72, 0xf7f0e4, 0xb3aab0, 0x5e5a6e, 0x2c2a40, 0xffe468, 0x74d2f2],
   },
+  // Okee Peak: klare Bergluft, morgens Nebel in den Tälern, sehr viele Sterne
   highlands: {
-    fog: 0xc8d8c0, fogTint: 0.45, fogRange: 0.95, morningFog: 0.2, saturation: 0.95, warmth: 0.05, exposure: 1.0, neon: 0.7,
+    fog: 0xd0dcc8, fogTint: 0.45, fogRange: 1.05, morningFog: 0.5, saturation: 0.97, warmth: 0.14, exposure: 1.02, neon: 0.3, golden: 0.6, stars: 3.6,
     palette: [0x356f45, 0x52b85a, 0x8fcc72, 0xb3aab0, 0x5e5a6e, 0x9a7652, 0x6e4e32, 0xf7f0e4, 0xf2dca8, 0x2c2a40, 0xb8c46a, 0x74d2f2, 0xc0703f, 0x9fe8de, 0xffc9a8, 0xffe468],
   },
   town: {
-    fog: 0xe8dcb8, fogTint: 0.35, fogRange: 1.0, morningFog: 0.05, saturation: 1.0, warmth: 0.12, exposure: 1.02, neon: 0.9,
+    fog: 0xe8dcb8, fogTint: 0.35, fogRange: 1.0, morningFog: 0.05, saturation: 1.0, warmth: 0.16, exposure: 1.02, neon: 0.6, golden: 0.4, stars: 2.2,
     palette: [0xf7f0e4, 0xf2dca8, 0xffc9a8, 0xa8dcf5, 0xd4583f, 0x9a7652, 0x6e4e32, 0x52b85a, 0x8fcc72, 0xb8c46a, 0xb3aab0, 0x5e5a6e, 0x2c2a40, 0xffe468, 0x3fd8cc, 0xff9f5a],
   },
 };
@@ -211,4 +217,5 @@ export const MINIMAP_GROUND = {
   water: 0x2a8fb0, sand: 0xf2dca8, grass: 0x8fcc72, grassDry: 0xb8c46a, grassDark: 0x52b85a, swamp: 0x5a6a3a,
   road: 0x5e5a6e, sidewalk: 0xe6d6cc, building: 0x9a909e, dock: 0x9a7652, bridge: 0x7a7488, farm: 0x8aa04c,
   dirt: 0xc89a6a, plaza: 0xeedaca, rock: 0x948a80, field: 0xc8c46a, desert: 0xf0dcae, badlands: 0xc0703f,
+  gravel: 0xd8bc94, scree: 0xa49a90, cliff: 0x7a726c, reservoir: 0x3aa0c8, crop: 0x9a6a42, pasture: 0x9cd06a,
 };

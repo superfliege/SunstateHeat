@@ -74,6 +74,8 @@ export interface PoliceHost {
   witness?(ped: Ped, p: ServerPlayer, x: number, z: number): void;
   /** Spieler ist gerade von der Fahndung ausgenommen (z. B. Spielmodus „Catch the Taxi“). */
   exempt?(p: ServerPlayer): boolean;
+  /** Land (Norden): County Sheriff statt Stadtpolizei – weniger Streifen, aber hartnäckiger. */
+  isRural?(x: number, z: number): boolean;
 }
 
 interface CarBrain { stuck: number; reverse: number; /** Panzer: Sekunden bis zur nächsten Rakete */ fire: number; /** Besatzung ist ausgestiegen: Wagen steht still */ parked?: boolean }
@@ -217,9 +219,10 @@ export class Police {
     const own = [...this.h.vehicles.values()].filter((v) => v.cop === p.id);
     const cars = own.filter((v) => !isTank(v) && !this.cars.get(v.id)?.parked), tanks = own.filter(isTank);
 
-    // Nachschub
+    // Nachschub (auf dem Land: County Sheriff – höchstens ein Deputy zu Fuß, dafür Pick-ups und Sperren)
+    const rural = !!this.h.isRural?.(pos.x, pos.z);
     if (this.spawnT <= 0) {
-      if (foot.length < TARGET_FOOT[p.wanted]) { this.spawnFoot(p, pos); this.spawnT = 1.2; }
+      if (foot.length < (rural ? Math.min(1, TARGET_FOOT[p.wanted]) : TARGET_FOOT[p.wanted])) { this.spawnFoot(p, pos); this.spawnT = 1.2; }
       else if (cars.length < TARGET_CARS[p.wanted]) { this.spawnCar(p, pos, false); this.spawnT = 2.5; }
       else if (tanks.filter((v) => !v.sim.dmg.wreck).length < TARGET_TANKS[p.wanted]) { this.spawnCar(p, pos, true); this.spawnT = 6; }
     }
@@ -256,9 +259,10 @@ export class Police {
     // Abschütteln: ohne Polizeikontakt in Sichtweite
     if (this.nearestCop(p) > COP_SIGHT) {
       p.searchT += dt;
-      if (p.searchT >= SHAKE_TIME[p.wanted - 1]) {
+      // der Sheriff gibt so schnell nicht auf
+      if (p.searchT >= SHAKE_TIME[p.wanted - 1] * (rural ? 1.6 : 1)) {
         this.clear(p);
-        this.h.notice(p, 'Du hast die Polizei abgeschüttelt.', 'good');
+        this.h.notice(p, rural ? 'Der County Sheriff hat deine Spur verloren. Fürs Erste.' : 'Du hast die Polizei abgeschüttelt.', 'good');
       }
     } else p.searchT = 0;
   }

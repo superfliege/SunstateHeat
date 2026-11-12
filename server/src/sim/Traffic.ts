@@ -15,7 +15,9 @@
 import { dist2, wrapAngle } from '../../../shared/src/math';
 import { Btn, type GameEvent } from '../../../shared/src/protocol';
 import { groundHeight, placeCar, setYaw, syncDerived, upVector } from '../../../shared/src/sim/car';
-import { pickCarVariant, variantInfo } from '../../../shared/src/sim/handling';
+import { HANDLING, variantInfo, type HandlingClass } from '../../../shared/src/sim/handling';
+import { pickAreaVariant, SMALLTOWN_DISTRICTS, TRAFFIC_DENSITY } from '../../../shared/src/npc/countryside';
+import { ruralArea } from '../../../shared/src/world/north';
 import { footFree } from '../../../shared/src/sim/movement';
 import { createSimVehicle } from '../../../shared/src/sim/vehicle';
 import { VehicleKind } from '../../../shared/src/sim/vehicleDefs';
@@ -79,6 +81,8 @@ interface Brain {
   honkCd: number;
   blockedByPlayer: number;
   pool: Pool;
+  /** Höchsttempo des Fahrzeugs (Traktor, Mähdrescher …): die Reisegeschwindigkeit bleibt darunter -> Kolonnen dahinter */
+  vmax?: number;
   /** Ausgeparktes Auto: Parkplatz, auf den es später (außer Sicht) zurückkehrt */
   home?: ServerVehicle['home'];
   age?: number;
@@ -253,9 +257,16 @@ export class Traffic {
       }
       if (!free) continue;
       const id = this.host.allocId();
-      // Verkehr: keine Lkw auf Nebenstraßen
-      let variant = pickCarVariant(Math.random());
-      if (variantInfo(variant).cls === 'truck' && e.type !== RoadType.Highway && e.type !== RoadType.Main) variant = 1;
+      // Stadt vs. Land: Fahrzeugmischung nach Gebiet (Landstraße, Feldweg, Kleinstadt, Berg, Stadtrand)
+      const district = map.districtAt(p[0], p[1])?.name;
+      const area = district ? (SMALLTOWN_DISTRICTS.has(district) ? 'Kleinstadt' : null) : ruralArea(p[0], p[1], (x, z) => map.zoneAt(x, z), e.type === RoadType.Dirt);
+      // auf dem Land deutlich weniger Verkehr
+      if (area && Math.random() > TRAFFIC_DENSITY[area]) continue;
+      let variant = pickAreaVariant(area, Math.random);
+      // Verkehr: keine Lkw auf Nebenstraßen (in der Stadt); Mähdrescher nur auf Feldwegen/Landstraßen
+      if (!area && variantInfo(variant).cls === 'truck' && e.type !== RoadType.Highway && e.type !== RoadType.Main) variant = 1;
+      if (e.type === RoadType.Highway && variantInfo(variant).cls.startsWith('tractor')) variant = pickAreaVariant('Stadtrand', Math.random);
+      const vmax = HANDLING[variantInfo(variant).cls as HandlingClass].topSpeed * 0.9;
       const a = Math.atan2(q[0] - p[0], q[1] - p[1]);
       const sim = createSimVehicle(map, VehicleKind.Car, variant, p[0], p[1], a);
       const v: ServerVehicle = {
@@ -265,12 +276,47 @@ export class Traffic {
       this.host.vehicles.set(id, v);
       this.gridAdd(v);
       this.brains.set(id, newBrain({
-        path: path.slice(start + 1), edge: e.id, toNode: forward ? e.b : e.a, lane, cruise: CRUISE[e.type], mode: 'drive', pool,
-        speed: avoidPlayers ? CRUISE[e.type] * 0.6 : 0,
+        path: path.slice(start + 1), edge: e.id, toNode: forward ? e.b : e.a, lane, cruise: Math.min(CRUISE[e.type], vmax), mode: 'drive', pool,
+        speed: avoidPlayers ? Math.min(CRUISE[e.type], vmax) * 0.6 : 0, vmax,
       }));
       return true;
     }
     return false;
+  }
+
+  /**
+   * Mähdrescher-Kolonne (Ereignis E49 / Dev /kolonne): langsames Fahrzeug auf der nächsten Landstraße,
+   * dahinter n Autos derselben Spur – sie fahren auf und stauen sich (keine Überholmanöver der KI).
+   */
+  spawnConvoy(x: number, z: number, leadVariant: number, n: number): number {
+    const map = this.host.map;
+    let best: { e: RoadEdge; fwd: boolean; path: Vec2[]; i: number } | null = null, bd = 150 * 150;
+    for (const e of this.pools[1].edges) {
+      if (e.type === RoadType.Highway || e.len < 80) continue;
+      const path = this.lanePath(e, true, 0);
+      for (let i = Math.min(path.length - 2, 12); i < path.length - 2; i += 2) {
+        const d = dist2(path[i][0], path[i][1], x, z);
+        if (d < bd) { bd = d; best = { e, fwd: true, path, i }; }
+      }
+    }
+    if (!best) return 0;
+    let made = 0;
+    for (let k = 0; k <= n; k++) {
+      // Abstand ~9–11 m entlang der Spur nach hinten (2-m-Punkte)
+      const idx = best.i - k * 5;
+      if (idx < 0) break;
+      const p = best.path[idx], q = best.path[idx + 1];
+      const variant = k === 0 ? leadVariant : pickAreaVariant('Dry Pine Land', Math.random);
+      const vmax = HANDLING[variantInfo(variant).cls as HandlingClass].topSpeed * 0.9;
+      const id = this.host.allocId();
+      const sim = createSimVehicle(map, VehicleKind.Car, variant, p[0], p[1], Math.atan2(q[0] - p[0], q[1] - p[1]));
+      const v: ServerVehicle = { id, kind: VehicleKind.Car, color: Math.floor(Math.random() * 10), sim, driver: DRIVER_NPC, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: true };
+      this.host.vehicles.set(id, v);
+      this.gridAdd(v);
+      this.brains.set(id, newBrain({ path: best.path.slice(idx + 1), edge: best.e.id, toNode: best.e.b, lane: 0, cruise: Math.min(CRUISE[best.e.type], vmax), mode: 'drive', pool: 1, vmax }));
+      made++;
+    }
+    return made;
   }
 
   /** Auto spurlos entfernen (nur außer Sicht!) – der Pool setzt anderswo ein neues ein. */
@@ -324,7 +370,7 @@ export class Traffic {
     brain.edge = nextId;
     brain.toNode = forward ? next.b : next.a;
     brain.lane = lane;
-    brain.cruise = CRUISE[next.type];
+    brain.cruise = Math.min(CRUISE[next.type], brain.vmax ?? 99);
   }
 
   /** Erreichte bzw. schon passierte Wegpunkte abhaken; true, wenn es vorangeht. */
@@ -527,7 +573,7 @@ export class Traffic {
     if (!rest.length) return false;
     brain.path = rest;
     brain.turning = rest.map((_, k) => k < 3);
-    brain.edge = hit.e.id; brain.toNode = hit.fwd ? hit.e.b : hit.e.a; brain.lane = 0; brain.cruise = CRUISE[hit.e.type];
+    brain.edge = hit.e.id; brain.toNode = hit.fwd ? hit.e.b : hit.e.a; brain.lane = 0; brain.cruise = Math.min(CRUISE[hit.e.type], brain.vmax ?? 99);
     brain.avoidId = brain.blockId; brain.avoidT = 6; brain.uturnT = 5; brain.retryId = -1;
     brain.detourT = 0; brain.evade = 0; brain.evadeT = 0; brain.stuck = 0; brain.jam = 0; brain.fails = 0; brain.rev = 0;
     this.honk(v, brain);

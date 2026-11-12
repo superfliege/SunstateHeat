@@ -206,9 +206,9 @@ export class PostFX {
     const u = this.finalMat.uniforms;
     u.uExposure.value = mood.exposure * (1 + night * 0.18); // nachts etwas aufhellen (Sicht)
     u.uSaturation.value = mood.saturation;
-    u.uWarmth.value = mood.warmth * (1 - night * 0.7);
+    u.uWarmth.value = (mood.warmth + dusk * (mood.golden ?? 0) * 0.25) * (1 - night * 0.7);
     u.uDusk.value = dusk; u.uNight.value = night;
-    u.uBloom.value = 0.34 + night * 0.34 * mood.neon + dusk * 0.12; // Neon & Sonnenuntergang glühen
+    u.uBloom.value = 0.34 + night * 0.34 * mood.neon + dusk * (0.12 + (mood.golden ?? 0) * 0.1); // Neon & Sonnenuntergang glühen
   }
 
   private pass(mat: THREE.ShaderMaterial, target: THREE.WebGLRenderTarget | null) {

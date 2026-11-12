@@ -7,6 +7,8 @@ import {
 } from './geometry';
 import { CALM_COAST, COAST, DISTRICTS, HILLS, ISLANDS, LAKES, RIVERS, SPIT, ZONE_SEEDS } from './palmara';
 import { Tile } from './tiles';
+import { mountainRoads, okeeBase, okeeGround, okeePads, OKEE_TRAILS, RESERVOIR } from './okeePeak';
+import { applyFarmTiles } from './farms';
 import { Zone, type WorldMap } from './WorldMap';
 
 const N = GRID_SIZE;
@@ -146,6 +148,9 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
   }
 
   // ---------------------------------------------------------------- Berge
+  // Okee Peak (okeePeak.ts) + kleine Hügel. Außerhalb des Berg-Rechtecks wird nichts gerechnet.
+  const OK = { x0: 360, z0: 30, x1: 1280, z1: 580 };
+  const okee = (x: number, z: number) => (x > OK.x0 && x < OK.x1 && z > OK.z0 && z < OK.z1 ? okeeGround(x, z) : 0);
   const mountain = (x: number, z: number) => {
     let h = 0;
     for (const [hx, hz, r, peak] of HILLS) {
@@ -156,6 +161,8 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
     }
     return h * (0.8 + noise(x * 0.02 + 300, z * 0.02) * 0.4);
   };
+  // Stausee: eigene Wasserfläche oberhalb des Meeresspiegels (nicht Teil der Wasser-Distanzfelder)
+  rasterizePolygon(RESERVOIR.poly, CELL, N, (x, z) => { if (at(x, z) !== Tile.WATER) set(x, z, Tile.RESERVOIR); });
 
   // ---------------------------------------------------------------- Sumpf in Gator Flats
   const gatorRaw = new Float32Array(ZN * ZN);
@@ -201,8 +208,21 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
       const n1 = noise(px * 0.008 + 500, pz * 0.008), n2 = noise2(px * 0.02, pz * 0.02);
       const zone = map.zoneAt(px, pz);
       if (mountain(px, pz) > 7.5) { tiles[i] = Tile.ROCK; continue; }
-      // Ödland an der Nordküste (abseits des Gipfels) und im Westen
-      if (pz < 330 + (n2 - 0.5) * 140 && Math.hypot(px - 880, pz - 224) > 150 && n1 > 0.42) { tiles[i] = Tile.BADLANDS; continue; }
+      // Okee Peak: Untergrund nach Höhe und Steilheit (Fels, Geröll, trockenes Gras, Wald/Weide)
+      const ob = px > OK.x0 && px < OK.x1 && pz > OK.z0 && pz < OK.z1 ? okeeBase(px, pz) : 0;
+      if (ob > 4) {
+        const e = 2.5;
+        const hc = okee(px, pz);
+        const sl = Math.hypot(okee(px + e, pz) - okee(px - e, pz), okee(px, pz + e) - okee(px, pz - e)) / (2 * e);
+        const rough = noise2(px * 0.05 + 3, pz * 0.05);
+        if (sl > 1.05 + rough * 0.25) { tiles[i] = Tile.CLIFF; continue; }
+        if (sl > 0.62 + rough * 0.3 && hc > 30 && noise(px * 0.03 + 60, pz * 0.03) > 0.42) { tiles[i] = Tile.SCREE; continue; }
+        if (hc > 150 && rough > 0.55) { tiles[i] = Tile.SCREE; continue; }
+        if (hc > 120 && rough > 0.35) { tiles[i] = Tile.BADLANDS; continue; } // trockener, steiniger Boden
+        continue; // Gras (Wald/Busch je nach Höhe, vegetation.ts)
+      }
+      // Ödland an der Nordküste (Bergfuß) und im Westen
+      if (pz < 330 + (n2 - 0.5) * 140 && ob < 1 && n1 > 0.42) { tiles[i] = Tile.BADLANDS; continue; }
       if (Math.hypot((px - 624) / 90, (pz - 1120) / 80) + (n2 - 0.5) * 0.6 < 1) { tiles[i] = Tile.BADLANDS; continue; }
       // Wüste: um Port Sabal, Küstenstreifen nördlich der Stadt, Ebene am Flughafen
       if (Math.hypot((px - 544) / 110, (pz - 560) / 84) + (n2 - 0.5) * 0.7 < 1) { tiles[i] = Tile.DESERT; continue; }
@@ -218,6 +238,16 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
       if (zone === Zone.DryPine && noise(px * 0.02 + 100, pz * 0.02) > 0.78) tiles[i] = Tile.DIRT;
     }
   }
+  // Bergpfade (Schotter), ebene Plätze am Berg, Bauernhöfe (Felder, Weiden, Hofplätze)
+  for (const t of OKEE_TRAILS) {
+    rasterizePolyline(catmullRom(t.pts, 3), () => t.width / 2, CELL, N, (x, z) => { const k = z * N + x; if (tiles[k] !== Tile.WATER && tiles[k] !== Tile.RESERVOIR) tiles[k] = Tile.GRAVEL; });
+  }
+  const pads = okeePads();
+  for (const p of pads) {
+    if (p.tile === 'grass') continue;
+    rasterizePolygon(superellipse(p.x, p.z, p.r, p.r, 2.4, 24), CELL, N, (x, z) => { const k = z * N + x; if (tiles[k] !== Tile.WATER) tiles[k] = p.tile === 'plaza' ? Tile.PLAZA : Tile.GRAVEL; });
+  }
+  applyFarmTiles(tiles);
   map.ground.set(tiles);
 
   // ---------------------------------------------------------------- Höhenfeld
@@ -245,10 +275,13 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
         h = -1.6 - smooth(distLand[i] / 60) * 2.2;
       } else if (t === Tile.SWAMP) {
         h = -0.7;
+      } else if (t === Tile.RESERVOIR) {
+        h = okee(px, pz);
       } else {
         const rolling = (noise(px * 0.006 + 11, pz * 0.006) - 0.5) * 2 + (noise2(px * 0.017, pz * 0.017) - 0.5) * 0.7;
         const shore = smooth(distWater[i] / 50);
-        h = (rolling * ampAt(px, pz) + mountain(px, pz)) * shore;
+        // Berg mit steiler Küste (Kliffs zum Meer), Hügel und Wellen sanft zum Ufer
+        h = (rolling * ampAt(px, pz) + mountain(px, pz)) * shore + okee(px, pz) * smooth(distWater[i] / 16);
         if (distWater[i] < 4) h = Math.min(h, -0.12); // flacher Übergang ins Wasser
         if (t === Tile.SAND) h = Math.min(h, 0.2 + distWater[i] * 0.01);
       }
@@ -256,5 +289,44 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
     }
   }
 
-  return { land, water, distWater, distLand, mountain };
+  carveMountain(map, pads);
+  return { land, water, distWater, distLand, mountain: okee };
+}
+
+/**
+ * Bergstraßen und Plätze ins Höhenfeld schneiden: Fahrbahn auf ihr Profil (fahrbare Steigung),
+ * seitlich weich ins Gelände übergehen (Hangschnitt bergseitig, Damm talseitig).
+ */
+function carveMountain(map: WorldMap, pads: ReturnType<typeof okeePads>) {
+  const sumW = new Float32Array(HGRID * HGRID), sumH = new Float32Array(HGRID * HGRID), maxW = new Float32Array(HGRID * HGRID);
+  // Auf der Fahrbahn zählt allein der nächste Straßenpunkt (sonst mitteln sich an Haarnadeln die Höhen beider Schenkel)
+  const bestD = new Float32Array(HGRID * HGRID).fill(1e9), bestH = new Float32Array(HGRID * HGRID), bestIn = new Float32Array(HGRID * HGRID);
+  const splat = (x: number, z: number, h: number, inner: number, fall: number) => {
+    const R = inner + fall;
+    const g0x = Math.max(0, Math.floor((x - R) / HEIGHT_STEP)), g1x = Math.min(HGRID - 1, Math.ceil((x + R) / HEIGHT_STEP));
+    const g0z = Math.max(0, Math.floor((z - R) / HEIGHT_STEP)), g1z = Math.min(HGRID - 1, Math.ceil((z + R) / HEIGHT_STEP));
+    for (let gz = g0z; gz <= g1z; gz++) for (let gx = g0x; gx <= g1x; gx++) {
+      const d = Math.hypot(gx * HEIGHT_STEP - x, gz * HEIGHT_STEP - z);
+      if (d >= R) continue;
+      const w = 1 - smooth((d - inner) / fall);
+      const k = gz * HGRID + gx;
+      sumW[k] += w * w * w; sumH[k] += w * w * w * h; if (w > maxW[k]) maxW[k] = w;
+      if (d < bestD[k]) { bestD[k] = d; bestH[k] = h; bestIn[k] = inner; }
+    }
+  };
+  for (const r of mountainRoads()) {
+    const hw = r.type === 1 ? 4.6 : r.type === 2 ? 4 : 3.2;
+    r.pts.forEach(([x, z], k) => splat(x, z, r.prof[k], hw + 1.5, 12));
+  }
+  for (const p of pads) {
+    const h = p.h ?? map.terrainHeight(p.x, p.z);
+    for (let a = 0; a < Math.PI * 2; a += 0.35) for (const f of [0, 0.5, 0.9]) splat(p.x + Math.cos(a) * p.r * f, p.z + Math.sin(a) * p.r * f, h, p.r * 0.35 + 2, 10);
+  }
+  for (let k = 0; k < sumW.length; k++) {
+    if (maxW[k] <= 0) continue;
+    // Kern (Fahrbahn + Bankett): exakt das Profil des nächsten Punkts; außen weich gemittelt
+    const core = bestD[k] < bestIn[k] + 3 ? 1 : bestD[k] < bestIn[k] + 9 ? 1 - (bestD[k] - bestIn[k] - 3) / 6 : 0; // breiter Kern: Haarnadel-Innenseite ohne Grube
+    const target = (sumH[k] / sumW[k]) * (1 - core) + bestH[k] * core;
+    map.heights[k] += (target - map.heights[k]) * maxW[k];
+  }
 }

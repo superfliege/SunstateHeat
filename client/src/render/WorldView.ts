@@ -25,6 +25,7 @@ import { LAYER, terrainMaterial, type TerrainLayer } from './materials/terrain';
 import { addOutline, computeOutlineNormals, LINE } from './materials/toon';
 import { buildWaterInfo, waterMaterial } from './materials/water';
 import { MINIMAP_GROUND, palmaraize } from './palette';
+import { buildFarmBuilding, buildNorth, type NorthCtx } from './NorthBuilder';
 import type { CoverKind } from './plants';
 import { coverVariants, treeVariants, type PlantVariant } from './Vegetation';
 import { PlantField, type PlantKind } from './PlantField';
@@ -47,6 +48,12 @@ export const GROUND_COLORS: Record<number, number> = {
   [Tile.FIELD]: MINIMAP_GROUND.field,
   [Tile.DESERT]: MINIMAP_GROUND.desert,
   [Tile.BADLANDS]: MINIMAP_GROUND.badlands,
+  [Tile.GRAVEL]: MINIMAP_GROUND.gravel,
+  [Tile.SCREE]: MINIMAP_GROUND.scree,
+  [Tile.CLIFF]: MINIMAP_GROUND.cliff,
+  [Tile.RESERVOIR]: MINIMAP_GROUND.reservoir,
+  [Tile.CROP]: MINIMAP_GROUND.crop,
+  [Tile.PASTURE]: MINIMAP_GROUND.pasture,
 };
 
 /** Grasfarbe variiert je Zone (Wald dunkel, Hinterland trocken, Sumpf satt) – für die Minimap. */
@@ -179,6 +186,9 @@ export class WorldView {
   /** Baum-Index (Vegetation) -> Instanz, fürs Wackeln */
   private treeRefs: ({ entry: PlantEntry; idx: number } | null)[] = [];
   private wobbles: Wobble[] = [];
+  /** Zaunsegmente je Zaunlinie (farmFences) – zum Umkippen/Aufrichten. */
+  private fenceRefs: unknown[][] = [];
+  private fenceBase = new Map<string, THREE.Matrix4>();
 
   constructor(private map: WorldMap, private trees: TreeDef[]) {
     for (let i = 0; i < RC * RC; i++) {
@@ -200,6 +210,7 @@ export class WorldView {
     for (const n of map.nodes) this.buildJunction(n);
     this.buildRunways();
     map.buildings.forEach((b) => this.buildBuilding(b));
+    buildNorth(this.northCtx);
     this.buildStreetProps();
     this.buildCoast();
     this.buildHarbor();
@@ -266,6 +277,12 @@ export class WorldView {
       case Tile.ROCK: return 'rock';
       case Tile.FIELD: return 'cane_field';
       case Tile.FARM: return 'grove_soil';
+      case Tile.GRAVEL: return 'gravel';
+      case Tile.SCREE: return 'scree';
+      case Tile.CLIFF: return 'rock';
+      case Tile.RESERVOIR: return 'swamp_mud';
+      case Tile.CROP: return 'crop_rows';
+      case Tile.PASTURE: return 'meadow';
       default:
         return zone === Zone.DryPine || zone === Zone.CaneRidge ? 'grass_dry' : 'grass_tropical';
     }
@@ -291,9 +308,9 @@ export class WorldView {
     const gx0 = cx * n, gz0 = cz * n;
     const count = (n + 1) * (n + 1);
     const pos = new Float32Array(count * 3), col = new Float32Array(count * 3);
-    const lw0 = new Float32Array(count * 4), lw1 = new Float32Array(count * 4);
+    const lw0 = new Float32Array(count * 4), lw1 = new Float32Array(count * 4), lw2 = new Float32Array(count * 4);
     const c = new THREE.Color(), acc = new THREE.Color();
-    const w = new Float32Array(8);
+    const w = new Float32Array(12);
     let v = 0;
     for (let j = 0; j <= n; j++) {
       for (let i = 0; i <= n; i++, v++) {
@@ -318,7 +335,7 @@ export class WorldView {
             sum += k;
           }
         }
-        for (let k = 0; k < 4; k++) { lw0[v * 4 + k] = w[k] / sum; lw1[v * 4 + k] = w[k + 4] / sum; }
+        for (let k = 0; k < 4; k++) { lw0[v * 4 + k] = w[k] / sum; lw1[v * 4 + k] = w[k + 4] / sum; lw2[v * 4 + k] = w[k + 8] / sum; }
         // Helligkeits- und Farbtonvariation (großräumiges Rauschen + Zufall je Gitterpunkt)
         const nz = this.noise(x * 0.01, z * 0.01) - 0.5;
         const jit = ((((gx * 73856093) ^ (gz * 19349663)) & 255) / 255 - 0.5) * 0.06;
@@ -338,6 +355,7 @@ export class WorldView {
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
     g.setAttribute('lw0', new THREE.BufferAttribute(lw0, 4));
     g.setAttribute('lw1', new THREE.BufferAttribute(lw1, 4));
+    g.setAttribute('lw2', new THREE.BufferAttribute(lw2, 4));
     g.setIndex(idx);
     g.computeVertexNormals();
     g.computeBoundingSphere();
@@ -650,6 +668,17 @@ export class WorldView {
 
   /** Flughafen und Flugfelder (AirportBuilder.ts). */
   private get airportCtx(): AirportCtx { return { map: this.map, chunk: (x, z) => this.chunkAt(x, z) }; }
+  private get northCtx(): NorthCtx {
+    return {
+      map: this.map,
+      chunk: (x, z) => this.chunkAt(x, z),
+      facade: (x, z, w, d, rot, y0, h, mat, color, roof) => this.facadeBox(this.chunkAt(x, z), x, z, w, d, rot, y0, h, mat, color, roof),
+      cover: (kind, x, y, z, rot, s = 1) => this.addPlant(coverVariants(kind), x, y, z, rot, s, kind === 'cane' || kind === 'crop' || kind === 'melon'),
+      fenceRefs: this.fenceRefs,
+      tree: (type, x, y, z, rot, s) => { this.addPlant(treeVariants(type), x, y, z, rot, s, false); },
+      decal: (name, x, y, z, rot, scale = 1, color = WHITE) => this.decal(name, x, y, z, rot, scale, color),
+    };
+  }
   private buildRunways() {
     buildAirportGround(this.airportCtx);
   }
@@ -661,6 +690,7 @@ export class WorldView {
     const base = Math.max(0, ground);
     if (b.style === BuildingStyle.Store) { this.buildStore(b, ch, base); return; }
     if (b.style === BuildingStyle.Airport) { buildAirportBuilding(this.airportCtx, b, base); return; }
+    if (b.style === BuildingStyle.Farm) { buildFarmBuilding(this.northCtx, b, base); return; }
     if (b.style === BuildingStyle.Container && this.containerYard(b, ch, base)) return;
     if (this.kitBuilding(b, ch, base)) return;
     const rnd = this.rnd;
@@ -1236,7 +1266,8 @@ export class WorldView {
       for (let x = STEP / 2; x < WORLD_SIZE; x += STEP) {
         const px = x + (rnd() - 0.5) * STEP, pz = z + (rnd() - 0.5) * STEP;
         const t = map.tileAt(px, pz);
-        if (t !== Tile.GRASS && t !== Tile.SWAMP && t !== Tile.SAND && t !== Tile.DESERT && t !== Tile.BADLANDS && t !== Tile.ROCK && t !== Tile.FARM && t !== Tile.DIRT) continue;
+        if (t !== Tile.GRASS && t !== Tile.SWAMP && t !== Tile.SAND && t !== Tile.DESERT && t !== Tile.BADLANDS && t !== Tile.ROCK && t !== Tile.FARM && t !== Tile.DIRT
+          && t !== Tile.PASTURE && t !== Tile.SCREE && t !== Tile.CLIFF && t !== Tile.GRAVEL) continue;
         const zone = map.zoneAt(px, pz);
         const dense = this.noise(px * 0.02, pz * 0.02);
         const r = rnd();
@@ -1244,6 +1275,12 @@ export class WorldView {
         const s = 0.8 + rnd() * 0.5;
         switch (t) {
           case Tile.GRASS: {
+            // Okee Peak: oberhalb ~95 m Buschland, oberhalb ~150 m trockenes Gras zwischen Felsen
+            if (zone === Zone.Highlands && y > 95) {
+              if (r < 0.3) this.addCover('grassDry', px, y, pz, s);
+              else if (r < (y > 150 ? 0.36 : 0.42)) this.addCover(y > 150 ? 'rock' : 'bush', px, y, pz, s * (y > 150 ? 1.5 : 1));
+              break;
+            }
             const dry = zone === Zone.DryPine || zone === Zone.CaneRidge;
             if (r < 0.28 * dense + 0.04) this.addCover(dry ? 'grassDry' : 'grass', px, y, pz, s);
             else if (r < 0.3 * dense + 0.07 && !dry) this.addCover(zone === Zone.GatorFlats || zone === Zone.Highlands ? 'fern' : 'flower', px, y, pz, s);
@@ -1270,6 +1307,17 @@ export class WorldView {
             break;
           case Tile.FARM: case Tile.DIRT:
             if (r < 0.06) this.addCover('grassDry', px, y, pz, s);
+            break;
+          case Tile.PASTURE:
+            if (r < 0.32) this.addCover('grass', px, y, pz, s);
+            else if (r < 0.36) this.addCover('flower', px, y, pz, s);
+            break;
+          case Tile.SCREE: case Tile.CLIFF:
+            if (r < (t === Tile.SCREE ? 0.12 : 0.05)) this.addCover('rock', px, y, pz, s * (t === Tile.CLIFF ? 2.4 : 0.6 + rnd() * 0.8));
+            else if (r < 0.15) this.addCover('grassDry', px, y, pz, s);
+            break;
+          case Tile.GRAVEL:
+            if (r < 0.01) this.addCover('grassDry', px, y, pz, s * 0.8);
             break;
         }
       }
@@ -1365,6 +1413,18 @@ export class WorldView {
     const inv = new THREE.Matrix4().extractRotation(base).invert();
     const ax = new THREE.Vector3(dirZ / l, 0, -dirX / l).applyMatrix4(inv).normalize();
     this.wobbles.push({ entry: ref.entry, idx: ref.idx, base, t: 0, s: Math.min(1, 0.3 + strength), ax });
+  }
+
+  /** Zaunlinie umgefahren (on) bzw. repariert (off): Segmente kippen flach auf den Boden. */
+  setFenceBroken(index: number, on: boolean) {
+    for (const r of (this.fenceRefs[index] ?? []) as ({ entry: PlantEntry; idx: number } | null)[]) {
+      if (!r?.entry.kind) continue;
+      const key = `${index}:${r.idx}`;
+      let base = this.fenceBase.get(key);
+      if (!base) { base = this.plants.matrix(r.entry.kind, r.idx, new THREE.Matrix4()); this.fenceBase.set(key, base); }
+      const m = on ? base.clone().multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2 - 0.08)).multiply(new THREE.Matrix4().makeTranslation(0, -0.05, 0)) : base;
+      this.plants.setMatrix(r.entry.kind, r.idx, m);
+    }
   }
 
   /** Wackelnde Bäume animieren (gedämpfte Schwingung). */

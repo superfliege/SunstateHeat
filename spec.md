@@ -118,6 +118,7 @@ Nebel am Morgen, Glühwürmchen in der Nacht.
 Lange, gerade Highways, Kiefernwälder, Orangenplantagen, Sumpfkiefern, Kleinstädte.
 Wichtige Orte: Kleinstadt „Okeefield" mit Main Street, Tankstelle „Gas & Gator", Trailerpark „Sunny Acres", Orangenplantage, Rennstrecke auf Feldweg, Raketenstartrampen-Silhouette am Horizont (Deko).
 Truckerverkehr, Motorradfahrer, Viehweiden.
+Norden (Ausbau, siehe docs/norden.md): Okee Peak – befahrbarer Berg (Hauptgipfel ~210 m, Nebengipfel West Knob und Eagle Tooth, Grat) mit Switchback Road (Serpentinen, Haarnadeln, Gipfelschleife, Leitplanken, Aussichtsbuchten), Okee Notch Tunnel, Stausee mit Staumauer und Wasserfall, Steinbruch, Campingplatz, Ranger-Station, Gipfelcafé mit Fernrohren und Funkturm, Dustline-Truckstop. Sechs Bauernhöfe zwischen Okeefield und Berg (Sunny Grove Farm, Double R Ranch, Henderson Dairy, Cluck & Co., Big Melon Acres, Cane Creek Mill) mit Stammgästen, Landmaschinen, Tieren und eigenem Verkehrs-/Bevölkerungsmix; County Sheriff statt Stadtpolizei.
 3.7 Verbindungen
 Von	Nach	Verbindung
 Port Coralia	Coral Keys	Seven Spans Bridge, Fähre (M3)
@@ -392,6 +393,7 @@ Verhalten abhängig vom Ruf des Spielers (siehe Gangs & Ruf).
 10.5 Wildtiere
 Alligatoren (Gator Flats, Kanäle in der Stadt), Möwen und Pelikane (Deko), Flamingos (Deko).
 Alligatoren beißen bei unter 3 m Abstand (20 Schaden), verfolgen max. 10 m.
+Norden: Rinder, Milchkühe, Pferde, Hühner, Ziegen, Hofhunde (Weiden/Höfe), Hirsche und Wildtruthähne (Okee Peak) als Archetypen der Bevölkerung – fliehen vor Hupen/Fahrzeugen, Comic-Physik ohne Verletzungen; Greifvögel über dem Berg (Deko).
 10.6 Simulation
 NPCs werden serverseitig simuliert, aber nur in Chunks mit Spielern in der Nähe (Radius 150 m). Außerhalb werden sie entfernt bzw. „eingefroren".
 Clients interpolieren NPC-Positionen wie Spielerpositionen.

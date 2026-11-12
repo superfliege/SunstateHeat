@@ -1,13 +1,15 @@
-// Straßenereignisse Dry Pine Country / Okeefield (E39–E42).
+// Straßenereignisse Dry Pine Country / Okeefield (E39–E42) – verteilt auf die Höfe und Landstraßen
+// des Nordens (`at`: Doris’ Kühe auf der Double R, Orangen von Sunny Grove an der Switchback Road,
+// Gertrude von der Henderson Dairy, Hupkonzert am Dustline-Truckstop). Weitere: north.ts (E49–E56).
 import { act, animal, gang, npc, phase, prop, say, sfx, shout, think, veh, type StreetEventDef } from './schema';
 
 export const OKEEFIELD_EVENTS: StreetEventDef[] = [
   {
     id: 'E39', key: 'cow_breakout', title: 'Kuh-Ausbruch', district: 'okeefield', size: 'big',
     when: { parts: ['morning', 'noon', 'afternoon'] },
-    weight: 8, cooldown: 240, needs: ['highway', 'field'],
+    weight: 8, cooldown: 240, needs: ['highway', 'pasture'], at: ['double_r', 'henderson', 'Pinecrest Parkway', 'Okee Trail'],
     roles: [
-      animal('cows', 'cow', 'Kuhherde', [5, 8]), npc('rancher', 'farmer', 'Doris, Ranch (Stammgast)'), veh('mower', 'mower', 'Aufsitzrasenmäher', undefined, 'rancher'),
+      animal('cows', 'cow', 'Kuhherde', [5, 8]), npc('rancher', 'rancher', 'Doris Whitlock, Double R Ranch (Stammgast)'), veh('mower', 'mower', 'Aufsitzrasenmäher', undefined, 'rancher'),
       veh('semi', 'semi', 'Wartender Sattelschlepper', undefined, 'trucker'), npc('trucker', 'worker', 'Trucker'),
     ],
     phases: [
@@ -29,8 +31,8 @@ export const OKEEFIELD_EVENTS: StreetEventDef[] = [
   {
     id: 'E40', key: 'orange_avalanche', title: 'Orangen-Lawine', district: 'okeefield', size: 'big',
     when: { parts: ['morning', 'noon', 'afternoon'] },
-    weight: 7, cooldown: 240, needs: ['slope', 'road'],
-    roles: [veh('truck', 'truck', 'Plantagen-Lastwagen', undefined, 'driver'), npc('driver', 'farmer', 'Fahrer der Plantage'), npc('gatherers', 'local', 'Sammelnde Passanten', [3, 5]), prop('oranges', 'orange', 'Orangen', [200, 400]), prop('crates', 'orange_crate', 'Orangenkisten', [10, 10])],
+    weight: 7, cooldown: 240, needs: ['slope', 'country_road'], at: ['sunny_grove', 'Switchback Road', 'Sabal–Cane Road'],
+    roles: [veh('truck', 'truck', 'Plantagen-Lastwagen', undefined, 'driver'), npc('driver', 'farmhand', 'Fahrer von Sunny Grove Farm'), npc('gatherers', 'local', 'Sammelnde Passanten', [3, 5]), prop('oranges', 'orange', 'Orangen', [200, 400]), prop('crates', 'orange_crate', 'Orangenkisten', [10, 10])],
     phases: [
       phase('spill', [6, 8], {
         physics: [{ kind: 'spawn_pickups', prop: 'orange', count: 120, radius: 30, grip: 0.2, life: 300 }, { kind: 'spawn_pickups', prop: 'orange_crate', count: 10, radius: 20, life: 300 }],
@@ -49,8 +51,8 @@ export const OKEEFIELD_EVENTS: StreetEventDef[] = [
   {
     id: 'E41', key: 'goat_for_mayor', title: 'Ziege für Bürgermeisterin', district: 'okeefield', size: 'big',
     when: { parts: ['morning', 'noon', 'afternoon'], weekend: true },
-    weight: 5, cooldown: 600, needs: ['main_street'],
-    roles: [animal('gertrude', 'goat', 'Kandidatin Gertrude'), npc('manager', 'businessman', 'Wahlkampfmanager'), npc('fans', 'local', 'Leute mit Buttons', [4, 6]), prop('flyers', 'flyer', 'Wahlflyer', [5, 5]), prop('signs', 'campaign_sign', 'Wahlplakate')],
+    weight: 5, cooldown: 600, needs: ['main_street'], at: ['henderson', 'cluck'],
+    roles: [animal('gertrude', 'goat', 'Kandidatin Gertrude (wohnt auf der Henderson Dairy)'), npc('manager', 'businessman', 'Wahlkampfmanager'), npc('fans', 'local', 'Leute mit Buttons', [4, 6]), prop('flyers', 'flyer', 'Wahlflyer', [5, 5]), prop('signs', 'campaign_sign', 'Wahlplakate')],
     phases: [
       phase('rally', [30, 40], {
         actions: [act('manager', 'Talk'), act('fans', 'Watch', 'gather', 'gertrude')],
@@ -69,7 +71,7 @@ export const OKEEFIELD_EVENTS: StreetEventDef[] = [
   {
     id: 'E42', key: 'trucker_honk_concert', title: 'Hupkonzert der Trucker', district: 'okeefield', size: 'small',
     when: { parts: ['evening'] },
-    weight: 8, cooldown: 120, needs: ['highway'],
+    weight: 8, cooldown: 120, needs: ['highway', 'truck_stop'], at: ['truckstop', 'Pinecrest Parkway', 'Route 41'],
     roles: [veh('convoy', 'semi', 'Dustline-Konvoi', [3, 4]), npc('truckers', 'gang', 'Dustline Haulers', [3, 4]), npc('locals', 'local', 'Winkende Anwohner', [2, 4])],
     phases: [
       phase('concert', [16, 22], {

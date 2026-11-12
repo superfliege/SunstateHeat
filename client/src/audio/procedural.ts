@@ -91,6 +91,13 @@ export const ENGINE_SYNTH: Record<EngineSet, EngineSynth> = {
     offsets: [0, 0.375] },
   boat: { cyl: 6, idle: 700, redline: 5500, exhaust: 130, exDecay: 0.02, body: 50, noise: 0.45, clatter: 0.1, uneven: 0.08, drive: 1.6, bright: 1400, whine: 0.03, burble: 0.3 },
   airboat: { cyl: 4, idle: 900, redline: 4800, exhaust: 160, exDecay: 0.014, body: 60, noise: 0.5, clatter: 0.2, uneven: 0.08, drive: 2.0, bright: 2600, whine: 0.0, burble: 0.2 },
+  // Traktor-Diesel: langsames, unrundes Tuckern mit viel Nageln
+  tractor: { cyl: 3, idle: 650, redline: 2300, exhaust: 75, exDecay: 0.04, body: 32, noise: 0.45, clatter: 0.85, uneven: 0.18, drive: 2.4, bright: 1100, whine: 0.02, burble: 0.15,
+    offsets: [0, 0.31, 0.68] },
+  // Quad/ATV: kleiner Einzylinder, hell und knatternd
+  quad: { cyl: 1, idle: 1300, redline: 8500, exhaust: 290, exDecay: 0.009, body: 120, noise: 0.55, clatter: 0.2, uneven: 0.14, drive: 2.6, bright: 4200, whine: 0.04, burble: 0.35 },
+  // Aufsitzrasenmäher: Einzylinder mit Klappern und Messer-Surren
+  mower: { cyl: 1, idle: 1500, redline: 3600, exhaust: 180, exDecay: 0.012, body: 90, noise: 0.6, clatter: 0.5, uneven: 0.2, drive: 1.8, bright: 2600, whine: 0.25, burble: 0 },
 };
 
 /** Drehzahl eines Layers (bezogen auf die Synth-Klasse). */
@@ -204,7 +211,76 @@ function noiseLoop(sr: number, seconds: number, seed: number, fn: (white: number
   return normRms(loopify(d, xf), target);
 }
 
+/** Einfache Musik-Loops für die Radiosender (Ersatz, bis Tracks in assets-src/audio liegen). */
+function musicLoop(sr: number, bpm: number, bars: number, seed: number, voice: (t: number, beat: number, r: () => number) => number, target = 0.18) {
+  const seconds = (bars * 4 * 60) / bpm;
+  return noiseLoop(sr, seconds, seed, (_w, i, r) => { const t = i / sr; return voice(t, (t * bpm) / 60, r); }, [new Biquad(sr, 'lp', 5200, 0.7)], target);
+}
+const note = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
+const pluck = (f: number, dt: number, decay: number) => (dt < 0 ? 0 : (((dt * f) % 1) * 2 - 1) * Math.exp(-dt / decay) + Math.sin(2 * Math.PI * f * 2 * dt) * 0.3 * Math.exp(-dt / (decay * 0.5)));
+
 const LOOPS: Record<string, Gen> = {
+  // ---------------- Radio
+  // Swamp Radio 101: 12-Takt-Blues-Shuffle in E (Bass, Gitarren-Riff, Besen-Snare)
+  'radio:swamp': (_r, sr) => {
+    const prog = [40, 40, 40, 40, 45, 45, 40, 40, 47, 45, 40, 47];
+    return musicLoop(sr, 96, 12, 61, (t, beat, r) => {
+      const bar = Math.floor(beat / 4) % 12, root = prog[bar];
+      const sw = beat % 1, eighth = Math.floor(beat * 2) + (sw > 0.66 ? 1 : 0);
+      const bt = (beat - Math.floor(beat)) * 60 / 96;
+      const bass = pluck(note(root - 12 + ((Math.floor(beat) % 4) === 2 ? 7 : 0)), bt, 0.25) * 0.8;
+      const riffN = [0, 7, 9, 7][Math.floor(beat) % 4];
+      const gt = ((beat * 1.5) % 1) * 40 / 96;
+      const gtr = pluck(note(root + 12 + riffN), gt, 0.12) * 0.35 + pluck(note(root + 19 + riffN), gt, 0.1) * 0.2;
+      const snare = (Math.floor(beat) % 2 === 1 && sw < 0.08) ? (r() * 2 - 1) * (1 - sw / 0.08) * 0.5 : 0;
+      const kick = (Math.floor(beat) % 2 === 0 && sw < 0.1) ? Math.sin(2 * Math.PI * 60 * sw * 0.6) * (1 - sw / 0.1) * 0.9 : 0;
+      void eighth; void t;
+      return bass + gtr + snare + kick;
+    });
+  },
+  // Coral 88.1: Synthwave-Arpeggio über Am–F–C–G
+  'radio:coral': (_r, sr) => {
+    const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+    return musicLoop(sr, 110, 8, 67, (_t, beat, r) => {
+      const ch = chords[Math.floor(beat / 8) % 4];
+      const step = Math.floor(beat * 4) % 8, st = ((beat * 4) % 1) * 60 / 110 / 4;
+      const arp = Math.sin(2 * Math.PI * note(ch[step % 3] + 12) * st) * Math.exp(-st / 0.12) * 0.35;
+      const padT = (beat % 8) * 60 / 110;
+      let pad = 0; for (const n of ch) pad += Math.sin(2 * Math.PI * note(n) * padT) * 0.08;
+      const kick = (beat % 1) < 0.1 ? Math.sin(2 * Math.PI * 55 * (beat % 1)) * (1 - (beat % 1) / 0.1) : 0;
+      const hat = ((beat * 2) % 1) < 0.03 ? (r() * 2 - 1) * 0.2 : 0;
+      return arp + pad + kick * 0.8 + hat;
+    });
+  },
+  // Rauschen beim Umschalten / schwacher Empfang
+  'radio:static': (_r, sr) => noiseLoop(sr, 2, 71, (w, i) => w * (0.7 + 0.3 * Math.sin(i / sr * 23)), [new Biquad(sr, 'bp', 2200, 0.4)], 0.12),
+  // ---------------- Land & Berg (Ambience)
+  'amb:crickets': (_r, sr) => {
+    // Zirpen: viele Grillen mit leicht verschiedenen Pulsraten (Trägerton ~4,5 kHz)
+    const bugs = Array.from({ length: 7 }, (_, k) => ({ f: 4200 + k * 160, rate: 14 + k * 1.7, ph: k * 0.37, a: 0.4 + (k % 3) * 0.2 }));
+    return noiseLoop(sr, 4, 41, (w, i) => {
+      const t = i / sr;
+      let v = 0;
+      for (const b of bugs) { const gate = Math.max(0, Math.sin(2 * Math.PI * (t * b.rate + b.ph))) ** 6 * (Math.sin(2 * Math.PI * t * 0.5 + b.ph) > -0.3 ? 1 : 0); v += Math.sin(2 * Math.PI * b.f * t) * gate * b.a; }
+      return v * 0.35 + w * 0.01;
+    }, [new Biquad(sr, 'hp', 2500, 0.7)], 0.08);
+  },
+  'amb:wind': (_r, sr) => {
+    const lfo = (i: number) => 0.55 + 0.45 * Math.sin((2 * Math.PI * i) / sr * 0.13) * Math.sin((2 * Math.PI * i) / sr * 0.31 + 1);
+    let b = 0;
+    return noiseLoop(sr, 6, 43, (w, i) => { b = b * 0.97 + w * 0.03; return (b * 6 + w * 0.15) * lfo(i); }, [new Biquad(sr, 'bp', 520, 0.5), new Biquad(sr, 'lp', 1800)], 0.16);
+  },
+  'amb:waterfall': (_r, sr) => noiseLoop(sr, 3, 47, (w, i) => w * (0.85 + 0.15 * Math.sin(i / sr * 7)), [new Biquad(sr, 'lp', 2600, 0.5), new Biquad(sr, 'hp', 90)], 0.22),
+  'amb:birds': (_r, sr) => {
+    const r0 = rng(53);
+    const chirps = Array.from({ length: 14 }, () => ({ t0: r0() * 5.6, f: 2400 + r0() * 2600, d: 0.05 + r0() * 0.12, n: 1 + Math.floor(r0() * 4) }));
+    return noiseLoop(sr, 6, 53, (w, i) => {
+      const t = i / sr;
+      let v = 0;
+      for (const c of chirps) for (let k = 0; k < c.n; k++) { const dt = t - c.t0 - k * (c.d + 0.04); if (dt > 0 && dt < c.d) v += Math.sin(2 * Math.PI * (c.f + dt * 9000) * dt) * Math.sin(Math.PI * dt / c.d); }
+      return v * 0.5 + w * 0.004;
+    }, [new Biquad(sr, 'hp', 1500, 0.6)], 0.07);
+  },
   'water:rush': (_r, sr) => {
     const lfo = (i: number) => 0.7 + 0.3 * Math.sin((2 * Math.PI * i) / sr * 0.7) * Math.sin((2 * Math.PI * i) / sr * 1.9);
     return noiseLoop(sr, 3, 11, (w, i) => w * lfo(i), [new Biquad(sr, 'lp', 1100, 0.6), new Biquad(sr, 'hp', 120)], 0.2);
@@ -302,6 +378,51 @@ function metalPartials(r: () => number, base: number, count: number) {
 }
 
 const SHOTS: Record<string, (sr: number, v: number) => Float32Array> = {
+  // ---------------- Land & Berg
+  'amb:moo': (sr, v) => {
+    // Muhen: tiefer Sägezahn mit Formant, Tonhöhe fällt ab
+    const f0 = 105 + v * 12; const bp = new Biquad(sr, 'bp', 520 + v * 40, 2.2); const lp = new Biquad(sr, 'lp', 1400, 0.7);
+    let ph = 0;
+    return shot(sr, 1.6, 900 + v, (_i, t) => {
+      const f = f0 * (1.05 - Math.min(1, t / 1.4) * 0.25 + Math.sin(t * 9) * 0.01); ph += f / sr;
+      const saw = (ph % 1) * 2 - 1;
+      const envv = Math.min(1, t / 0.15) * Math.max(0, 1 - Math.max(0, t - 1.1) / 0.5);
+      return (bp.p(saw) * 2.2 + lp.p(saw) * 0.4) * envv;
+    });
+  },
+  'amb:cowbell': (sr, v) => shot(sr, 0.9, 910 + v, (_i, t) => (Math.sin(2 * Math.PI * (560 + v * 30) * t) + 0.6 * Math.sin(2 * Math.PI * (1340 + v * 50) * t) + 0.3 * Math.sin(2 * Math.PI * 2210 * t)) * Math.exp(-t / 0.22)),
+  'amb:rooster': (sr, v) => {
+    // Kikeriki: vier Silben mit Tonhöhenbogen
+    const sylls = [[0, 0.12, 620], [0.16, 0.12, 720], [0.32, 0.18, 800], [0.55, 0.55, 760]];
+    const bp = new Biquad(sr, 'bp', 1400, 1.4);
+    let ph = 0;
+    return shot(sr, 1.2, 920 + v, (_i, t) => {
+      let a = 0, f = 600;
+      for (const [s0, d, ff] of sylls) if (t >= s0 && t < s0 + d) { a = Math.sin(Math.PI * (t - s0) / d); f = ff * (1 + 0.15 * Math.sin(Math.PI * (t - s0) / d)) * (1 + v * 0.03); }
+      ph += f / sr; const saw = (ph % 1) * 2 - 1;
+      return bp.p(saw) * a * 2.5;
+    });
+  },
+  'amb:dog': (sr, v) => {
+    const bp = new Biquad(sr, 'bp', 700 + v * 60, 1.6); let ph = 0;
+    return shot(sr, 0.7, 930 + v, (_i, t, r) => {
+      const barks = [0, 0.32]; let a = 0;
+      for (const b of barks) if (t > b && t < b + 0.14) a = Math.sin(Math.PI * (t - b) / 0.14);
+      ph += (220 + v * 20 - (t % 0.32) * 300) / sr;
+      return (bp.p(((ph % 1) * 2 - 1) + (r() * 2 - 1) * 0.3)) * a * 2.4;
+    });
+  },
+  'amb:squeak': (sr, v) => { const sw = sweep(900 + v * 60, 1400, 0.35); return shot(sr, 0.5, 940 + v, (_i, t) => sw(t, sr) * Math.sin(Math.PI * Math.min(1, t / 0.45)) * 0.6 * (1 + 0.4 * Math.sin(t * 90))); },
+  'amb:churchbell': (sr, v) => shot(sr, 4, 950 + v, (_i, t) => {
+    const f = 196 * (1 + v * 0.06);
+    return (Math.sin(2 * Math.PI * f * t) * Math.exp(-t / 2.2) + 0.5 * Math.sin(2 * Math.PI * f * 2.4 * t) * Math.exp(-t / 1.1) + 0.3 * Math.sin(2 * Math.PI * f * 3 * t) * Math.exp(-t / 0.7) + 0.2 * Math.sin(2 * Math.PI * f * 0.5 * t) * Math.exp(-t / 3)) * 0.7;
+  }),
+  'amb:truckhorn': (sr, v) => {
+    const lp = new Biquad(sr, 'lp', 900, 0.7);
+    return shot(sr, 1.6, 960 + v, (_i, t) => { const a = Math.min(1, t / 0.05) * Math.max(0, 1 - Math.max(0, t - 0.9) / 0.5); let s = 0; for (const f of [185, 233, 277]) s += ((t * f) % 1) * 2 - 1; return lp.p(s * 0.4) * a; });
+  },
+  'amb:siren': (sr, v) => { let ph = 0; return shot(sr, 4, 970 + v, (_i, t) => { const f = 500 + 350 * (0.5 - 0.5 * Math.cos(2 * Math.PI * t / 2)); ph += f / sr; return Math.sin(2 * Math.PI * ph) * Math.min(1, t / 0.2) * Math.max(0, 1 - Math.max(0, t - 3.5) / 0.5) * 0.7; }); },
+  'amb:hawk': (sr, v) => { const sw = sweep(2600 + v * 100, 1700, 0.9); return shot(sr, 1.0, 980 + v, (_i, t, r) => (sw(t, sr) * 0.8 + (r() * 2 - 1) * 0.15) * Math.sin(Math.PI * Math.min(1, t / 0.95)) * 0.7); },
   'hit:thud': (sr, v) => {
     const sw = sweep(130 + v * 15, 38, 0.25); const lp = new Biquad(sr, 'lp', 500 + v * 80, 0.7);
     return shot(sr, 0.45, 100 + v, (_i, t, r) => sw(t, sr) * env(t * sr, sr, 0.11) + lp.p(r() * 2 - 1) * env(t * sr, sr, 0.05) * 1.5);

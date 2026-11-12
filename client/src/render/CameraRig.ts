@@ -41,6 +41,11 @@ export class CameraRig {
   shakeEnabled = true;
   /** Flughöhe über Grund (Luftfahrzeuge): Kamera zoomt heraus */
   altitude = 0;
+  /**
+   * Panorama-/Fotokamera (Fernrohr am Gipfel, Silhouetten-Ansicht): feste Position und Blickpunkt,
+   * weite Sichtweite. null = normale Top-Down-Kamera.
+   */
+  photo: { pos: THREE.Vector3; look: THREE.Vector3; fov?: number } | null = null;
 
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(BASE_FOV, aspect, 3, 700);
@@ -108,6 +113,15 @@ export class CameraRig {
       this.focus.z + Math.cos(PITCH) * this.distance + sz,
     );
     this.camera.lookAt(this.focus.x + sx * 0.5, this.focus.y, this.focus.z + sz * 0.5);
+    const far = this.photo ? 4200 : 700;
+    if (this.photo) {
+      this.camera.position.copy(this.photo.pos);
+      this.camera.lookAt(this.photo.look);
+      const f = this.photo.fov ?? BASE_FOV;
+      if (Math.abs(this.camera.fov - f) > 0.01) this.camera.fov = f;
+    }
+    if (this.camera.far !== far) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
+    else if (this.photo) this.camera.updateProjectionMatrix();
   }
 
   resize(aspect: number) {

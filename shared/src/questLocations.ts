@@ -10,6 +10,8 @@ import { MG_PHONE_PREFIX, MINIGAMES, type MinigameId } from './minigames';
 import { pointInPolygon } from './world/geometry';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
+import { FARMS } from './world/farms';
+import { mountainRoads, OKEE_PLACES, SUMMIT_PLATEAU } from './world/okeePeak';
 
 export interface Point { x: number; z: number }
 /** race = Renntelefon (Start eines Straßenrennens, siehe races.ts). */
@@ -145,6 +147,34 @@ function computeLocations(map: WorldMap): Record<string, Point> {
     stiltFar,
   };
   // Orte der Hauptgeschichte (shared/story/places.ts)
+  // Norden: Höfe, Okee Peak, Steinbruch (questsNorth.ts)
+  const F = (id: string) => FARMS.find((f) => f.id === id)!;
+  const hen = F('henderson'), ranch = F('double_r');
+  const hayField = hen.fields.find((f) => f.k === 'hay')!, barn = hen.buildings.find((b) => b.k === 'barn')!;
+  const pasture = ranch.fields[0];
+  const sw = mountainRoads()[0];
+  Object.assign(loc, {
+    okeeSummit: foot(map, SUMMIT_PLATEAU.x, SUMMIT_PLATEAU.z + 6),
+    okeeCafe: foot(map, OKEE_PLACES.cafe.x, OKEE_PLACES.cafe.z + 7),
+    okeeValley: foot(map, OKEE_PLACES.truckstop.x - 6, OKEE_PLACES.truckstop.z + 8),
+    switchbackFoot: { x: sw.pts[2][0], z: sw.pts[2][1] },
+    hayField: foot(map, hayField.x, hayField.z),
+    hayBarn: foot(map, barn.x, barn.z + barn.d / 2 + 4),
+    doubleR: foot(map, ranch.x, ranch.z),
+    cattlePasture: { x: pasture.x, z: pasture.z },
+    newPaddock: { x: hayField.x, z: hayField.z },
+    quarry: foot(map, OKEE_PLACES.quarry.x, OKEE_PLACES.quarry.z + 8),
+    okeefield: foot(map, centroid(map, 'Cane Ridge').x, centroid(map, 'Cane Ridge').z),
+  });
+  // Downhill-Strecke: Punkte entlang der Switchback Road (Gipfel -> Fuß), dann Parkway -> Cane Ridge
+  const swCum: number[] = [0];
+  for (let i = 1; i < sw.pts.length; i++) swCum.push(swCum[i - 1] + Math.hypot(sw.pts[i][0] - sw.pts[i - 1][0], sw.pts[i][1] - sw.pts[i - 1][1]));
+  const L = swCum[swCum.length - 1];
+  for (let k = 1; k <= 8; k++) {
+    const target = L * (1 - k / 9);
+    const i = swCum.findIndex((c) => c >= target);
+    loc[`downhill${k}`] = { x: sw.pts[i][0], z: sw.pts[i][1] };
+  }
   const racePhone = (id: string) => { const t = raceTracks(map).find((r) => r.def.id === id); return t ? foot(map, t.phone.x + 4, t.phone.z + 3) : null; };
   Object.assign(loc, storyPlaces(map, (x, z) => foot(map, x, z), loc, racePhone));
   return loc;
@@ -166,6 +196,10 @@ export function payphones(map: WorldMap): PhoneDef[] {
     at('mangrove', 'Telefon Mangrove Bend', loc.stiltHouse, 6, -4),
     at('dustline', 'Telefon Cane Ridge', loc.dustlineCamp, -10, 6),
     at('okeefield', 'Telefon Sunny Acres', dry, 12, -8),
+    // Norden: Missionstelefon am Gipfelcafé, Hoftelefon der Double R, Dustline-Truckstop
+    at('okee_summit', 'Missionstelefon Gipfelcafé', loc.okeeCafe, 3, 1),
+    at('okee_farm', 'Telefon Double R Ranch', loc.doubleR, 6, 6),
+    at('okee_truckstop', 'Telefon Dustline-Truckstop', loc.okeeValley, -4, 3),
     at('gator', 'Telefon Rennstrecke', loc.stiltHouse, -14, 10),
     ...raceTracks(map).map((t) => ({ id: t.def.id, name: `Straßenrennen: ${t.def.name}`, x: t.phone.x, z: t.phone.z, race: true })),
   ];

@@ -144,7 +144,7 @@ function smoothHeight(map: WorldMap, x: number, z: number): number {
 
 /** Kacheln, die für Autos eine Wand sind. */
 export function blocksCar(t: number): boolean {
-  return t === Tile.BUILDING || t === Tile.ROCK || t === Tile.VOID;
+  return t === Tile.BUILDING || t === Tile.ROCK || t === Tile.VOID || t === Tile.RESERVOIR;
 }
 
 // ------------------------------------------------------------------ Quaternion-Helfer
@@ -447,7 +447,9 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
     const tile = map.tileAt(px, pz);
     c.surf[i] = tile;
     const sg = surfaceGrip(tile);
-    let mu = (i < 2 ? p.gripFront : p.gripRear) * sg.grip * (isWet(map, px, pz) ? ASSISTS.wetGrip : 1);
+    // Geländegängige Fahrzeuge (Stollenreifen) verlieren auf losem Boden weniger Grip
+    const sGrip = sg.grip < 1 ? sg.grip + (1 - sg.grip) * p.offroad * 0.8 : sg.grip;
+    let mu = (i < 2 ? p.gripFront : p.gripRear) * sGrip * (isWet(map, px, pz) ? ASSISTS.wetGrip : 1);
     if (dmg && dmg.tires & (1 << i)) mu *= 0.45; // geplatzter Reifen
     const nominal = (m / 4) * g;
     mu *= Math.max(0.6, 1 - ASSISTS.loadSensitivity * (f / nominal - 1));

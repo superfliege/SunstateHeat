@@ -16,7 +16,7 @@ export const DUSTLINE_HAULERS: GangProfile = {
       personality: 'Brummig, ehrlich bis zur Unhöflichkeit, sentimental, wenn es um seinen ersten Truck geht. Hasst Papierkram mehr als die Kings.',
       quirk: 'Zerreißt jedes Formular, das man ihm reicht; nennt seinen Truck „Loretta“ und spricht mit ihm.',
       look: 'Rostrote Trucker-Cap, Jeansweste mit Aufnähern, Gürtelschnalle in Form eines Lkw.',
-      haunt: 'Truckstop „Big Mug“ / Tankstelle „Gas & Gator“',
+      haunt: 'Truckstop „Big Mug“ / Tankstelle „Gas & Gator“ / Dustline-Truckstop am Okee Peak (Büro über der Halle)',
       catchphrase: 'Ich unterschreib nix. Mein Wort ist mein Wort, und mein Wort ist „Nein“.',
     },
     lieutenants: [
@@ -85,8 +85,10 @@ export const DUSTLINE_HAULERS: GangProfile = {
       { name: 'Truckstop „Big Mug“', district: 'northgate', kind: 'CafeTable' },
       { name: 'Tankstelle „Gas & Gator“', district: 'okeefield', kind: 'Bench' },
       { name: 'Schrottplatz „Rust in Peace“', district: 'port_district', kind: 'Wall' },
+      // Zweites Hauptquartier am Fuß des Okee Peak: Truckstop mit Diner, Lkw-Tankstelle und Halle
+      { name: 'Dustline-Truckstop am Okee Peak (2. Hauptquartier)', district: 'okeefield', kind: 'CafeTable' },
     ],
-    patrol: 'Konvois aus zwei, drei Trucks, die langsam und laut hupend durchs Revier rollen.',
+    patrol: 'Konvois aus zwei, drei Trucks, die langsam und laut hupend durchs Revier rollen. Am Okee Peak kontrollieren sie den Holz- und Kiesverkehr: Holztransporter vom Timber Trail und Muldenkipper aus dem Steinbruch fahren nur mit Dustline-Plakette.',
   },
   scenarios: [
     { id: 'hang_out', name: 'Am Truck lehnen', flavor: 'Kaffee aus Thermoskannen, Sprüche über Schreibtischfahrer.', lines: ['Wer braucht ein Büro, wenn er eine Kabine hat?', 'Formular? Hab ich zum Anzünden benutzt.', 'Loretta schnurrt heute wie ein Kätzchen. Ein Kätzchen mit 500 PS.'] },

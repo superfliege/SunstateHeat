@@ -17,6 +17,8 @@ import { AIRPORT_APRON, AIRPORT_CAR_SPOTS, AIRPORT_FENCE, AIRPORT_PARKING, TAXIW
 import { POI, RUNWAYS } from './palmara';
 import { arms, buildRoadGraph, junctionOutline } from './roads';
 import { buildTerrain } from './terrain';
+import { placeFarmBuildings, placeFarmVehicles } from './farms';
+import { placeOkeeFeatures, placeOkeeVehicles } from './okeeFeatures';
 import { buildTestTrack, inTestTrack, placeRamps, TEST_TRACK, TRACK_WORKSHOP } from './features';
 import { Tile } from './tiles';
 import { LotUse, RoadType, WorldMap, type ChunkContent } from './WorldMap';
@@ -30,10 +32,14 @@ export function generateWorld(seed: number): WorldMap {
   buildTerrain(map, seed);
   buildRoadGraph(map, seed);
   buildCity(map, seed);
+  placeFarmBuildings(map);
+  placeOkeeFeatures(map);
   rasterize(map);
   flattenAlongRoads(map);
   buildChunks(map);
   placeSpawns(map, rnd);
+  placeFarmVehicles(map);
+  placeOkeeVehicles(map);
   // Flughafen: keine zufälligen Parker im Zaun, dafür Autos auf dem Terminal-Parkplatz; keine Wildbäume
   map.vehicleSpawns = map.vehicleSpawns.filter((s) => !inAirport(s.x, s.z));
   const carRnd = mulberry32(seed + 77);

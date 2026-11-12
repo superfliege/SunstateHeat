@@ -2,6 +2,7 @@
 // Story-Missionen stehen in shared/story/missions.json; Briefings der Nebenjobs in shared/story/story.json.
 import type { QuestDefinition } from './quests';
 import { STORY_QUESTS, withStoryText } from './story';
+import { NORTH_QUESTS } from './questsNorth';
 
 const BASE_QUESTS: QuestDefinition[] = [
   {
@@ -121,6 +122,6 @@ const BASE_QUESTS: QuestDefinition[] = [
 ];
 
 /** Alle Quests: die Beispielquests (als Nebenjobs der Story-Figuren) und die Story-Missionen (shared/story). */
-export const QUESTS: QuestDefinition[] = withStoryText([...BASE_QUESTS, ...STORY_QUESTS]);
+export const QUESTS: QuestDefinition[] = withStoryText([...BASE_QUESTS, ...NORTH_QUESTS, ...STORY_QUESTS]);
 
 export const QUEST_BY_ID = new Map(QUESTS.map((q) => [q.id, q]));

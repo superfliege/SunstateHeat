@@ -50,9 +50,20 @@ export interface HandlingProfile {
   upright: number;
   /** Nitro-Dauer bei voller Ladung (s). */
   nitroTime: number;
+  /**
+   * Geländegängigkeit 0..1: wie viel des Grip-Verlusts auf losem Untergrund (Gras, Schotter, Geröll,
+   * Acker) das Fahrzeug ausgleicht (Stollenreifen, Allrad). 0 = Straßenreifen.
+   */
+  offroad: number;
+  /** Motorklang-Charakter (VehicleAudio): Standard, Diesel-Traktor, kleiner Einzylinder, Lkw-Diesel. */
+  engineVoice: number;
 }
 
-export type HandlingClass = 'compact' | 'sedan' | 'sport' | 'muscle' | 'suv' | 'truck' | 'bike' | 'police' | 'boat' | 'airboat' | 'tank';
+/** Motorklang-Charaktere (HandlingProfile.engineVoice). */
+export const EngineVoice = { Car: 0, Tractor: 1, Small: 2, Diesel: 3 } as const;
+
+export type HandlingClass = 'compact' | 'sedan' | 'sport' | 'muscle' | 'suv' | 'truck' | 'bike' | 'police' | 'boat' | 'airboat' | 'tank'
+  | 'tractor' | 'tractor_small' | 'tractor_old' | 'tractor_rig' | 'combine' | 'quad' | 'buggy' | 'mower' | 'dumper' | 'pickup_farm' | 'rv';
 
 export const base = (p: Partial<HandlingProfile> & { name: string }): HandlingProfile => ({
   mass: 1300, length: 4.4, width: 1.85, height: 1.45, wheelbase: 2.65, track: 1.55,
@@ -62,7 +73,7 @@ export const base = (p: Partial<HandlingProfile> & { name: string }): HandlingPr
   brake: 1.0, brakeBias: 0.66,
   gripFront: 1.15, gripRear: 1.15, slipPeakFront: 7, slipPeakRear: 7, slipFalloff: 0.75, handbrakeGrip: 0.35, drift: 0.3,
   steerMax: 34, steerSpeedFalloff: 0.045, steerRate: 4.5,
-  durability: 1, nitroForce: 0, sportExhaust: 0, cylinders: 4, upright: 0, nitroTime: 3.5,
+  durability: 1, nitroForce: 0, sportExhaust: 0, cylinders: 4, upright: 0, nitroTime: 3.5, offroad: 0, engineVoice: 0,
   ...p,
 });
 
@@ -136,6 +147,97 @@ export const HANDLING: Record<HandlingClass, HandlingProfile> = {
     torque: 5200, redline: 2600, idleRpm: 600, gears: 4, topSpeed: 20, launch: 5.0, shiftTime: 0.4, drive: Drive.AWD, brake: 0.9,
     gripFront: 1.3, gripRear: 1.3, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.9, handbrakeGrip: 0.9, drift: 0,
     steerMax: 40, steerSpeedFalloff: 0.04, steerRate: 3, durability: 8, cylinders: 12,
+  }),
+
+  // ---------------------------------------------------------------- Land & Berg (Dry Pine / Okee Peak)
+  // Großer Traktor: schwer, langsam, enormes Drehmoment, kurze Übersetzung -> klettert steile Hänge
+  // und schiebt Autos weg; Stollenreifen halten auf Acker und Schotter
+  tractor: base({
+    name: 'Traktor', mass: 6500, length: 5.0, width: 2.6, height: 3.0, wheelbase: 2.9, track: 2.0, cgHeight: 1.0, cgForward: -0.2, wheelRadius: 0.8,
+    suspFreq: 1.5, suspDamping: 0.6, suspTravel: 0.2, antiRoll: 0.7,
+    torque: 2600, redline: 2300, idleRpm: 700, gears: 4, topSpeed: 11.5, launch: 6.5, shiftTime: 0.35, drive: Drive.AWD, brake: 0.65,
+    gripFront: 1.15, gripRear: 1.3, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.9, handbrakeGrip: 0.7, drift: 0,
+    steerMax: 40, steerSpeedFalloff: 0.02, steerRate: 2.6, durability: 3.5, cylinders: 6, offroad: 0.85, engineVoice: EngineVoice.Tractor,
+  }),
+  // Traktor mit Anbaugerät/Anhänger (Pflug, Güllefass, Heuwagen …): länger, schwerer, träger
+  tractor_rig: base({
+    name: 'Traktor mit Anhänger', mass: 9000, length: 9.6, width: 2.6, height: 3.0, wheelbase: 7.4, track: 2.0, cgHeight: 1.0, cgForward: 0.1, wheelRadius: 0.55,
+    suspFreq: 1.4, suspDamping: 0.6, suspTravel: 0.2, antiRoll: 0.7,
+    torque: 3000, redline: 2300, idleRpm: 700, gears: 4, topSpeed: 9.5, launch: 6.5, shiftTime: 0.35, drive: Drive.AWD, brake: 0.6,
+    gripFront: 1.15, gripRear: 1.3, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.9, handbrakeGrip: 0.8, drift: 0,
+    steerMax: 36, steerSpeedFalloff: 0.02, steerRate: 2.2, durability: 3.5, cylinders: 6, offroad: 0.8, engineVoice: EngineVoice.Tractor,
+  }),
+  // Kleiner Hoftraktor: wendig, gemütlich, kraftvoll für seine Größe
+  tractor_small: base({
+    name: 'Hoftraktor', mass: 2300, length: 3.4, width: 1.75, height: 2.4, wheelbase: 2.0, track: 1.4, cgHeight: 0.8, cgForward: -0.1, wheelRadius: 0.55,
+    suspFreq: 1.6, suspDamping: 0.6, suspTravel: 0.18, antiRoll: 0.6,
+    torque: 760, redline: 2600, idleRpm: 750, gears: 4, topSpeed: 9.5, launch: 6.0, shiftTime: 0.3, drive: Drive.AWD, brake: 0.7,
+    gripFront: 1.15, gripRear: 1.25, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.88, handbrakeGrip: 0.7, drift: 0,
+    steerMax: 44, steerSpeedFalloff: 0.02, steerRate: 3.2, durability: 2.5, cylinders: 3, offroad: 0.8, engineVoice: EngineVoice.Tractor,
+  }),
+  // Oldtimer-Traktor: Heckantrieb, kaum Bremsen, stottert, unzerstörbar
+  tractor_old: base({
+    name: 'Oldtimer-Traktor', mass: 3000, length: 3.7, width: 1.9, height: 2.5, wheelbase: 2.2, track: 1.5, cgHeight: 0.85, cgForward: -0.15, wheelRadius: 0.7,
+    suspFreq: 1.3, suspDamping: 0.4, suspTravel: 0.15, antiRoll: 0.5,
+    torque: 950, redline: 2000, idleRpm: 600, gears: 3, topSpeed: 8.5, launch: 6.0, shiftTime: 0.5, drive: Drive.RWD, brake: 0.45,
+    gripFront: 1.0, gripRear: 1.2, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.85, handbrakeGrip: 0.6, drift: 0.05,
+    steerMax: 38, steerSpeedFalloff: 0.02, steerRate: 2.4, durability: 4, cylinders: 2, offroad: 0.7, engineVoice: EngineVoice.Tractor,
+  }),
+  // Mähdrescher: extrem breit (Schneidwerk), sehr langsam, riesiger Wendekreis
+  combine: base({
+    name: 'Mähdrescher', mass: 15000, length: 9.0, width: 5.6, height: 3.9, wheelbase: 3.9, track: 3.0, cgHeight: 1.3, cgForward: 0.6, wheelRadius: 0.85,
+    suspFreq: 1.3, suspDamping: 0.6, suspTravel: 0.2, antiRoll: 0.85,
+    torque: 4800, redline: 2100, idleRpm: 700, gears: 3, topSpeed: 7, launch: 6.0, shiftTime: 0.5, drive: Drive.AWD, brake: 0.55,
+    gripFront: 1.2, gripRear: 1.1, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.9, handbrakeGrip: 0.9, drift: 0,
+    steerMax: 21, steerSpeedFalloff: 0.01, steerRate: 1.3, durability: 6, cylinders: 6, offroad: 0.75, engineVoice: EngineVoice.Diesel,
+  }),
+  // Quad/ATV: wendig, geländestark, hoher Schwerpunkt auf schmaler Spur -> kippt leicht
+  quad: base({
+    name: 'Quad', mass: 340, length: 2.1, width: 1.2, height: 1.2, wheelbase: 1.3, track: 0.95, cgHeight: 0.66, cgForward: 0, wheelRadius: 0.32,
+    suspFreq: 1.9, suspDamping: 0.45, suspTravel: 0.22, antiRoll: 0.2,
+    torque: 75, redline: 8500, idleRpm: 1300, gears: 5, topSpeed: 23, launch: 3.2, shiftTime: 0.1, drive: Drive.AWD, brake: 1.0,
+    gripFront: 1.2, gripRear: 1.25, slipPeakFront: 8, slipPeakRear: 8, slipFalloff: 0.78, handbrakeGrip: 0.45, drift: 0.35,
+    steerMax: 40, steerSpeedFalloff: 0.04, steerRate: 6, durability: 0.7, cylinders: 1, offroad: 0.9, engineVoice: EngineVoice.Small,
+  }),
+  // Geländebuggy: leicht, lange Federwege, springt gern
+  buggy: base({
+    name: 'Buggy', mass: 720, length: 3.4, width: 1.9, height: 1.5, wheelbase: 2.3, track: 1.6, cgHeight: 0.48, wheelRadius: 0.42,
+    suspFreq: 1.3, suspDamping: 0.45, suspTravel: 0.4, antiRoll: 0.35,
+    torque: 280, redline: 7200, gears: 5, topSpeed: 35, launch: 3.4, shiftTime: 0.12, drive: Drive.RWD, brake: 1.0,
+    gripFront: 1.15, gripRear: 1.12, slipPeakFront: 8, slipPeakRear: 7, slipFalloff: 0.7, handbrakeGrip: 0.3, drift: 0.6,
+    steerMax: 36, steerRate: 5.5, durability: 0.9, cylinders: 4, offroad: 0.75,
+  }),
+  // Aufsitzrasenmäher: Schrittgeschwindigkeit, viel Würde
+  mower: base({
+    name: 'Aufsitzrasenmäher', mass: 260, length: 1.9, width: 1.1, height: 1.1, wheelbase: 1.2, track: 0.85, cgHeight: 0.45, wheelRadius: 0.25,
+    suspFreq: 2.2, suspDamping: 0.6, suspTravel: 0.08, antiRoll: 0.6,
+    torque: 32, redline: 3600, idleRpm: 1500, gears: 3, topSpeed: 6.5, launch: 4.0, shiftTime: 0.2, drive: Drive.RWD, brake: 0.8,
+    gripFront: 1.0, gripRear: 1.1, slipFalloff: 0.85, drift: 0.05, steerMax: 45, steerRate: 4, durability: 0.8, cylinders: 1, offroad: 0.5,
+    engineVoice: EngineVoice.Small,
+  }),
+  // Muldenkipper (Steinbruch): riesig, langsam, unaufhaltsam
+  dumper: base({
+    name: 'Muldenkipper', mass: 22000, length: 9.4, width: 3.8, height: 4.3, wheelbase: 4.6, track: 3.0, cgHeight: 1.6, cgForward: 0.3, wheelRadius: 1.15,
+    suspFreq: 1.2, suspDamping: 0.6, suspTravel: 0.3, antiRoll: 0.85,
+    torque: 7000, redline: 2100, idleRpm: 650, gears: 5, topSpeed: 15, launch: 6.0, shiftTime: 0.45, drive: Drive.AWD, brake: 0.6,
+    gripFront: 1.1, gripRear: 1.15, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.9, handbrakeGrip: 0.8, drift: 0,
+    steerMax: 34, steerSpeedFalloff: 0.03, steerRate: 2, durability: 7, cylinders: 12, offroad: 0.6, engineVoice: EngineVoice.Diesel,
+  }),
+  // Farm-Pick-up: wie SUV, aber älter, weicher und etwas geländegängiger
+  pickup_farm: base({
+    name: 'Farm-Pick-up', mass: 2050, length: 5.0, width: 2.0, height: 1.85, wheelbase: 3.0, track: 1.68, cgHeight: 0.74, wheelRadius: 0.41,
+    suspFreq: 1.2, suspDamping: 0.35, suspTravel: 0.34, antiRoll: 0.45,
+    torque: 400, redline: 5000, gears: 4, topSpeed: 37, launch: 3.8, drive: Drive.AWD, brake: 0.8,
+    gripFront: 1.05, gripRear: 1.0, slipPeakFront: 8, slipPeakRear: 8, slipFalloff: 0.78, handbrakeGrip: 0.4, drift: 0.3,
+    steerMax: 33, steerRate: 3.6, durability: 1.8, cylinders: 8, offroad: 0.4,
+  }),
+  // Wohnmobil: lang, hoch, schaukelt
+  rv: base({
+    name: 'Wohnmobil', mass: 5600, length: 8.0, width: 2.5, height: 3.4, wheelbase: 4.6, track: 2.05, cgHeight: 1.2, cgForward: 0.2, wheelRadius: 0.48,
+    suspFreq: 1.1, suspDamping: 0.45, suspTravel: 0.25, antiRoll: 0.55,
+    torque: 900, redline: 3800, idleRpm: 650, gears: 5, topSpeed: 29, launch: 4.5, shiftTime: 0.35, drive: Drive.RWD, brake: 0.7,
+    gripFront: 1.0, gripRear: 1.0, slipPeakFront: 9, slipPeakRear: 9, slipFalloff: 0.85, handbrakeGrip: 0.6, drift: 0.05,
+    steerMax: 36, steerSpeedFalloff: 0.05, steerRate: 2.6, durability: 2, cylinders: 8, engineVoice: EngineVoice.Diesel,
   }),
 };
 
@@ -211,6 +313,11 @@ export function surfaceGrip(tile: number): { grip: number; roll: number; dust: n
     case Tile.SAND: case Tile.DESERT: return { grip: 0.6, roll: 0.07, dust: 1 };
     case Tile.BADLANDS: return { grip: 0.7, roll: 0.04, dust: 1 };
     case Tile.SWAMP: return { grip: 0.5, roll: 0.12, dust: 0 }; // Schlamm
+    case Tile.GRAVEL: return { grip: 0.66, roll: 0.035, dust: 1 }; // Bergschotter
+    case Tile.SCREE: return { grip: 0.42, roll: 0.07, dust: 1 }; // Geröll: Autos rutschen den Hang hinunter
+    case Tile.CLIFF: return { grip: 0.28, roll: 0.05, dust: 0.6 }; // Fels: kaum Halt
+    case Tile.CROP: return { grip: 0.55, roll: 0.08, dust: 0.8 }; // weicher Ackerboden
+    case Tile.PASTURE: return { grip: 0.7, roll: 0.045, dust: 0.3 };
     default: return { grip: 0.7, roll: 0.04, dust: 0.3 };
   }
 }
@@ -245,7 +352,33 @@ export const CAR_VARIANTS: VehicleVariant[] = [
   { cls: 'truck', model: 'ck-firetruck', name: 'Engine 7', weight: 0.25 },
   { cls: 'sedan', model: 'ck-taxi', name: 'Sunshine Cab', weight: 1.5 },
   { cls: 'sport', model: 'ck-race', name: 'Ocean Drive Racer', weight: 0.3 },
+  // ---------------------------------------------------------------- Land & Berg (Indizes ab 23)
+  // Gewicht 0: nicht im Stadt-Zufallspool – Land-Verkehr und Höfe wählen sie gezielt (npc/countryside.ts)
+  { cls: 'tractor_small', model: 'farm_tractor_small', name: 'Dirt Buddy', weight: 0 },
+  { cls: 'tractor', model: 'farm_tractor_big', name: 'Field King 400', weight: 0 },
+  { cls: 'tractor_old', model: 'farm_tractor_old', name: 'Rusty Ol\' Red', weight: 0 },
+  { cls: 'tractor_rig', model: 'farm_tractor_hay', name: 'Heuwagen', weight: 0 },
+  { cls: 'tractor_rig', model: 'farm_tractor_cattle', name: 'Viehanhänger', weight: 0 },
+  { cls: 'tractor_rig', model: 'farm_tractor_slurry', name: 'Güllefass', weight: 0 },
+  { cls: 'tractor_rig', model: 'farm_tractor_plow', name: 'Pflug', weight: 0 },
+  { cls: 'tractor_rig', model: 'farm_tractor_crates', name: 'Orangenkisten-Anhänger', weight: 0 },
+  { cls: 'combine', model: 'farm_combine', name: 'Harvest Titan', weight: 0 },
+  { cls: 'pickup_farm', model: 'farm_pickup_rusty', name: 'Rusty Ranch Pick-up', weight: 0 },
+  { cls: 'pickup_farm', model: 'farm_pickup_hay', name: 'Hay Hauler', weight: 0 },
+  { cls: 'quad', model: 'farm_quad', name: 'Mule ATV', weight: 0 },
+  { cls: 'buggy', model: 'farm_buggy', name: 'Ridge Runner Buggy', weight: 0 },
+  { cls: 'truck', model: 'farm_milk_tanker', name: 'Milchtanklaster', weight: 0 },
+  { cls: 'truck', model: 'farm_cattle_truck', name: 'Viehtransporter', weight: 0 },
+  { cls: 'truck', model: 'farm_log_truck', name: 'Holztransporter', weight: 0 },
+  { cls: 'dumper', model: 'farm_dump_truck', name: 'Muldenkipper', weight: 0 },
+  { cls: 'mower', model: 'farm_mower', name: 'Lawn Boss', weight: 0 },
+  { cls: 'rv', model: 'farm_rv', name: 'Wanderlust RV', weight: 0 },
+  { cls: 'pickup_farm', model: 'farm_pickup_ranger', name: 'County Ranger', weight: 0 },
+  { cls: 'police', model: 'farm_pickup_sheriff', name: 'County Sheriff', weight: 0 },
+  { cls: 'truck', model: 'farm_semi', name: 'Dustline Rig', weight: 0 },
 ];
+/** Index einer Variante nach Name (-1 = unbekannt). */
+export function variantByName(name: string): number { return CAR_VARIANTS.findIndex((v) => v.name === name); }
 export const BIKE_VARIANT = 100;
 export const BOAT_VARIANT = 101;
 export const AIRBOAT_VARIANT = 102;

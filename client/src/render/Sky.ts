@@ -56,7 +56,7 @@ export class Sky {
       side: THREE.BackSide,
       depthWrite: false,
       fog: false,
-      uniforms: { uH: { value: this.horizon }, uM: { value: this.mid }, uT: { value: this.top }, uNight: U.uNight },
+      uniforms: { uH: { value: this.horizon }, uM: { value: this.mid }, uT: { value: this.top }, uNight: U.uNight, uStars: { value: 1 } },
       vertexShader: /* glsl */ `
         varying vec3 vDir;
         void main() {
@@ -65,7 +65,7 @@ export class Sky {
           gl_Position.z = gl_Position.w; // immer ganz hinten
         }`,
       fragmentShader: /* glsl */ `
-        uniform vec3 uH; uniform vec3 uM; uniform vec3 uT; uniform float uNight;
+        uniform vec3 uH; uniform vec3 uM; uniform vec3 uT; uniform float uNight; uniform float uStars;
         varying vec3 vDir;
         void main() {
           float y = max(vDir.y, 0.0);
@@ -73,8 +73,8 @@ export class Sky {
           float t = floor(y * 10.0) / 10.0;
           vec3 c = t < 0.35 ? mix(uH, uM, t / 0.35) : mix(uM, uT, (t - 0.35) / 0.65);
           vec2 g = floor(vDir.xz / max(vDir.y, 0.05) * 60.0);
-          float star = step(0.997, fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453)) * step(0.2, y);
-          c += vec3(star) * uNight * 0.8;
+          float star = step(1.0 - 0.003 * uStars, fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453)) * step(0.2, y);
+          c += vec3(star) * uNight * (0.6 + 0.2 * uStars);
           gl_FragColor = vec4(c, 1.0);
           #include <colorspace_fragment>
         }`,
@@ -108,6 +108,7 @@ export class Sky {
   }
 
   /** Zielstimmung (Zone/Viertel des Spielers); wird über einige Sekunden überblendet. */
+  private starsNow = 1;
   setMood(id: MoodId) { this.moodTarget = id; }
 
   update(day: number, focus: THREE.Vector3, dt = 0.016) {
@@ -118,6 +119,9 @@ export class Sky {
     lerpN('fogTint'); lerpN('fogRange'); lerpN('morningFog'); lerpN('saturation'); lerpN('warmth'); lerpN('exposure'); lerpN('neon');
     m.fog = ca.setHex(m.fog).lerp(cb.setHex(tgt.fog), k).getHex();
 
+    this.starsNow += ((tgt.stars ?? 1) - this.starsNow) * k;
+    this.domeMat.uniforms.uStars.value = this.starsNow;
+    m.golden = (m.golden ?? 0) + ((tgt.golden ?? 0) - (m.golden ?? 0)) * k;
     let i = 0;
     while (i < SKY_KEYS.length - 2 && SKY_KEYS[i + 1].t <= day) i++;
     const a = SKY_KEYS[i], b = SKY_KEYS[i + 1];
@@ -129,6 +133,9 @@ export class Sky {
     mixHex(a.ambSky, b.ambSky, t, this.ambient.color);
     mixHex(a.ambGround, b.ambGround, t, this.ambient.groundColor);
     this.sun.intensity = a.sunI + (b.sunI - a.sunI) * t;
+    // Goldene Stunde (Land): Sonnenlicht wärmer und kräftiger bei Auf-/Untergang
+    const goldenT = Math.max(0, 1 - Math.abs(day - 0.74) / 0.07, 1 - Math.abs(day - 0.27) / 0.05) * (m.golden ?? 0);
+    if (goldenT > 0) { this.sun.color.lerp(ca.setRGB(1.0, 0.72, 0.38), goldenT * 0.45); this.sun.intensity *= 1 + goldenT * 0.25; }
     this.ambient.intensity = a.ambI + (b.ambI - a.ambI) * t;
     const elev = THREE.MathUtils.degToRad(a.elev + (b.elev - a.elev) * t);
 

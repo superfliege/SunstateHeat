@@ -93,7 +93,8 @@ form.addEventListener('submit', async (e) => {
     const game = new Game(net, welcome.id, sfx, welcome.dev);
     game.start();
     // Dev: Spielzustand in der Konsole/für Mess-Skripte erreichbar
-    if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV) (globalThis as { __game?: Game }).__game = game;
+    // (auch im Build mit ?shot=1 – Screenshot-/Mess-Skripte gegen `vite preview`)
+    if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV || new URLSearchParams(location.search).has('shot')) (globalThis as { __game?: Game }).__game = game;
   } catch (err) {
     delete status.dataset.busy;
     const m = (err as Error).message;

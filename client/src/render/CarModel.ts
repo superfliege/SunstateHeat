@@ -19,6 +19,7 @@ import { Part, PART_COUNT } from '../../../shared/src/sim/damage';
 import { getModel, type ModelName } from './assets';
 import { computeOutlineNormals } from './materials/toon';
 import { palmaraize } from './palette';
+import { buildFarmVehicle } from './FarmVehicleModels';
 
 // ------------------------------------------------------------------ Farben
 const DARK = 0x1c1c22, CHASSIS = 0x15151a, GLASS = 0x2a4a66, CHROME = 0xc9ccd6, PLASTIC = 0x2a2a30;
@@ -140,7 +141,7 @@ const templates = new Map<string, CarTemplate>();
 /** Modell-Name je Variante (Polizei-Klasse bekommt das Polizei-Modell). */
 function modelKey(variant: number): string {
   const info = variantInfo(variant);
-  if (info.cls === 'police') return 'police';
+  if (info.cls === 'police' && !info.model.startsWith('farm_')) return 'police';
   return info.model;
 }
 
@@ -156,6 +157,8 @@ function buildTemplate(variant: number, colorIdx: number): CarTemplate {
   const p = profileFor(info.cls);
   if (info.cls === 'bike') return buildBike(p, VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length]);
   if (info.cls === 'tank') return buildTank(p);
+  // Land- und Bergfahrzeuge (FarmVehicleModels.ts)
+  if (info.model.startsWith('farm_')) { const t = buildFarmVehicle(p, info.model, VEHICLE_COLORS[colorIdx % VEHICLE_COLORS.length]); if (t) return t; }
   // Kenney Car Kit (Polizei nutzt das Kit-Polizeiauto, falls geladen)
   const key = modelKey(variant);
   const kitName = (key === 'police' ? 'ck-police' : key) as ModelName;

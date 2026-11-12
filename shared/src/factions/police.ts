@@ -35,6 +35,25 @@ export const POLICE: PoliceProfile = {
     mangrove: { kind: 'rivalry', value: -40, note: 'Jede Razzia im Sumpf endet mit nassen Stiefeln und leeren Händen.' },
     dustline: { kind: 'rivalry', value: -20, note: 'Die Trucker funken jede Radarfalle durch.' },
   },
+  county: {
+    name: 'Okee County Sheriff’s Office',
+    sheriff: {
+      id: 'county_sheriff', name: 'Sheriff Buford „Buck“ Tanner', role: 'County Sheriff (Dry Pine, Okeefield, Okee Peak)',
+      personality: 'Langsam im Reden, unglaublich hartnäckig im Fahren. Kennt jede Kuh beim Namen und jeden Feldweg auswendig.',
+      quirk: 'Ruft Verdächtige über das Megafon mit vollem Namen und Grüßen an die Mutter.',
+      look: 'Cremefarbener Pick-up mit Stern an der Tür, Stetson, Spiegelbrille, Zahnstocher.',
+      haunt: 'Diner am Dustline-Truckstop (Kaffee schwarz, Kuchen doppelt)', catchphrase: 'Hier draußen gibt’s nur eine Straße. Und ich steh drauf.',
+    },
+    deputies: [
+      {
+        id: 'county_deputy_lou', name: 'Deputy Lou-Ann Pruitt', role: 'Hilfssheriff',
+        personality: 'Ehrgeizig, sammelt Strafzettel wie andere Leute Briefmarken.', quirk: 'Leiht sich für Straßensperren die Traktoren der Farmer.',
+        look: 'Viel zu großer Hut, Notizblock mit Kuh-Aufkleber.', haunt: 'Pinecrest Parkway', catchphrase: 'Der Traktor gehört Walt. Der Ärger gehört Ihnen.',
+      },
+    ],
+    tactics: ['Weniger Streifen als in der Stadt, aber sie geben deutlich später auf', 'Verfolgung mit Pick-ups', 'Straßensperren aus quergestellten Traktoren', 'Farmer rufen bei Schäden direkt den Sheriff'],
+    sampleLines: ['Langsam, Partner. Hier draußen hat jeder Zeit. Außer Ihnen.', 'Die Kühe haben Sie gesehen. Die Kühe reden.', 'Das war Walts Zaun. Walt ist mein Cousin.'],
+  },
   sampleLines: [
     'Bitte zurücktreten, das ist ein Tatort. Oder eine Möwe. Wir prüfen das noch.',
     'Führerschein, Fahrzeugschein und eine gute Ausrede, bitte.',

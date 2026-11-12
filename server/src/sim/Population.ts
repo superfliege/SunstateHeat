@@ -4,7 +4,7 @@
 // (Smart-Object-Aktion oder freies Szenario). Fern (> POP_RADIUS) existieren keine verwalteten NPCs.
 import { ARCH_INDEX, archetypeOf } from '../../../shared/src/npc/archetypes';
 import {
-  DAY_PART_NAMES, MAX_PEDS_PER_PLAYER, POP_RADIUS, dayPartOf, hasPopTable, pickArchetype, popTable,
+  DAY_PART_NAMES, MAX_PEDS_PER_PLAYER, POP_RADIUS, dayPartOf, hasPopTable, pickArchetype, popTable, weekdayAt,
   type DayPart, type PopTable, type Weather,
 } from '../../../shared/src/npc/population';
 import {
@@ -44,6 +44,8 @@ export class Population {
   /** Erzwungene Tageszeit/Wetter (Debug), sonst aus der Spielzeit. */
   forcePart: DayPart | null = null;
   weather: Weather = 'clear';
+  /** Sonntag (Kirchgänger in den Okeefield-Orten). */
+  get sunday() { return weekdayAt(Date.now()) === 0; }
   constructor(private map: WorldMap, private peds: Pedestrians, private brain: NpcBrain, private day: () => number, private anchors: () => { x: number; z: number }[]) {
     this.objects = generateSmartObjects(map);
     this.walkways = peds.walkways.filter((w) => hasPopTable(w.district));
@@ -62,7 +64,7 @@ export class Population {
 
     // Verwaltete NPCs außerhalb aller Umkreise entfernen
     let managed = 0;
-    const tableAt = (p: Ped) => popTable(this.districtOf(p), part, this.weather);
+    const tableAt = (p: Ped) => popTable(this.districtOf(p), part, this.weather, this.sunday);
     for (const p of this.peds.peds.values()) {
       if (!p.pop) continue;
       managed++;
@@ -118,7 +120,7 @@ export class Population {
   private targetAround(pl: { x: number; z: number }, part: DayPart): number {
     let sum = 0;
     for (const w of this.walkways) {
-      const t = popTable(w.district, part, this.weather);
+      const t = popTable(w.district, part, this.weather, this.sunday);
       if (!t) continue;
       for (let i = 1; i < w.pts.length; i++) {
         const a = w.pts[i - 1], b = w.pts[i];
@@ -138,9 +140,11 @@ export class Population {
       const d2 = dist2(q[0], q[1], pl.x, pl.z);
       if (d2 > (POP_RADIUS - 6) ** 2 || d2 < MIN_SPAWN_DIST ** 2) continue;
       if (nearest2(players, q[0], q[1]) < MIN_SPAWN_DIST ** 2) continue;
-      const table = popTable(w.district, part, this.weather);
+      const table = popTable(w.district, part, this.weather, this.sunday);
       if (!table) continue;
       const arch = ARCH_INDEX[pickArchetype(table, Math.random())];
+      // Tiere erscheinen nur an ihren Weideplätzen (nie auf dem Bankett der Straße)
+      if (archetypeOf(arch).animal) { const n = this.spawnScenario(pl, w, q, arch, part, table); if (n > 0) return n; continue; }
       if (Math.random() < table.scenarioShare) {
         const n = this.spawnScenario(pl, w, q, arch, part, table);
         if (n > 0) return n;
@@ -174,6 +178,7 @@ export class Population {
     for (const o of this.objects) {
       const d2 = dist2(o.x, o.z, pl.x, pl.z);
       if (d2 > (POP_RADIUS - 6) ** 2 || d2 < (MIN_SPAWN_DIST - 10) ** 2) continue;
+      if (o.species && o.species !== archetypeOf(arch).id) continue;
       for (const wh of sc.where!) {
         if (wh.kind !== o.kind) continue;
         for (const slot of wh.slots) if (this.brain.isFree(o.id, slot)) cands.push({ o, slot });

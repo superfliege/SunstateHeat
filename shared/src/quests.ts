@@ -13,9 +13,10 @@ export type QuestAction =
   /**
    * Fahrzeug bereitstellen und unter `tag` merken. kind: car | bike | boat | airboat.
    * model: Modellname aus CAR_VARIANTS (statt variant), pose: 'road' = in Fahrtrichtung auf die nächste Straße,
-   * 'across' = quer über die Straße (Straßensperre), ahead: Versatz entlang der Straße (m), traffic: ein NPC fährt es (Konvoi), color: Lackfarbe.
+   * 'across' = quer über die Straße (Straßensperre), ahead: Versatz entlang der Straße (m), traffic: ein NPC fährt es (Konvoi), color: Lackfarbe,
+   * chase: ein NPC verfolgt damit den nächsten Teilnehmer (rammt, drängelt).
    */
-  | { do: 'spawnVehicle'; tag: string; kind: 'car' | 'bike' | 'boat' | 'airboat'; variant?: number; model?: string; at: LocRef; water?: boolean; perPlayer?: boolean; pose?: 'road' | 'across'; traffic?: boolean; color?: number; ahead?: number }
+  | { do: 'spawnVehicle'; tag: string; kind: 'car' | 'bike' | 'boat' | 'airboat'; variant?: number; model?: string; at: LocRef; water?: boolean; perPlayer?: boolean; pose?: 'road' | 'across'; traffic?: boolean; color?: number; ahead?: number; chase?: boolean }
   /** Gegner (Gang-NPCs) erzeugen, die die Teilnehmer angreifen. hp: Lebenspunkte je Gegner (Standard 50). */
   | { do: 'spawnEnemies'; tag: string; gang: GangId; count: number; at: LocRef; radius?: number; target?: 'players' | string; hp?: number }
   /** NPC, der geschützt werden muss (bleibt stehen). */
@@ -45,7 +46,12 @@ export type Objective =
   /** Entscheidung an einem Ort (zu Fuß, F): Optionen stehen in shared/story/story.json unter choices[id]. */
   | { type: 'choice'; at: LocRef; id: string; radius?: number; text?: string }
   /** Markiertes Fahrzeug zerstören (Wrack). */
-  | { type: 'destroy'; tag: string; text?: string };
+  | { type: 'destroy'; tag: string; text?: string }
+  /**
+   * Herde treiben: `count` Rinder erscheinen bei `from` und fliehen vor Fahrzeugen der Teilnehmer
+   * (halten als Herde zusammen). Erfüllt, wenn 80 % im Radius um `at` stehen.
+   */
+  | { type: 'herd'; tag: string; from: LocRef; at: LocRef; count: number; radius?: number; text?: string };
 
 export interface QuestStage {
   id: string;

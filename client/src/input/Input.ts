@@ -63,6 +63,8 @@ export class Input {
   }
 
   clear() { this.keys.clear(); }
+  /** Taste gedrückt? (Fernrohr-Schwenk u. Ä.) */
+  isDown(code: string) { return this.keys.has(code); }
 
   private down(...codes: string[]) { return codes.some((c) => this.keys.has(c)); }
 

@@ -29,7 +29,7 @@ export function treeVariants(type: number): PlantVariant[] {
   let v = cache.get(key);
   if (v) return v;
   const cat: VegCategory | null = type === TreeType.Palm ? 'palm' : type === TreeType.Pine ? 'pine'
-    : type === TreeType.Mangrove || type === TreeType.Cypress ? 'twisted' : null;
+    : type === TreeType.Mangrove || type === TreeType.Cypress ? 'twisted' : type === TreeType.Oak ? 'broadleaf' : null;
   v = cat ? fromQuaternius(key, cat, true) : [];
   if (!v.length) v = procedural(key, treeGeometry(type), true, true);
   cache.set(key, v);
@@ -44,7 +44,7 @@ export function coverVariants(kind: CoverKind): PlantVariant[] {
   const cat: Partial<Record<CoverKind, VegCategory>> = {
     grass: 'grass', bush: 'bush', rock: 'rock', reed: 'reed', fern: 'fern', flower: 'flower', lily: 'lily', cactus: 'cactus',
   };
-  const big = kind === 'bush' || kind === 'rock' || kind === 'cactus';
+  const big = kind === 'bush' || kind === 'rock' || kind === 'cactus' || kind === 'hay' || kind === 'haySquare' || kind === 'fenceWood' || kind === 'fenceWire' || kind === 'crate';
   v = cat[kind] ? fromQuaternius(key, cat[kind]!, big) : [];
   if (!v.length) v = procedural(key, coverGeometry(kind), big, big);
   cache.set(key, v);

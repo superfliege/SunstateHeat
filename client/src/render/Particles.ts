@@ -13,6 +13,7 @@ interface Gull { cx: number; cz: number; r: number; a: number; speed: number; y:
 interface Leaf { x: number; y: number; z: number; vy: number; spin: number; phase: number; life: number }
 interface Fly { x: number; y: number; z: number; phase: number; ok: boolean }
 
+const tmpC = new THREE.Color();
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3(), tmpE = new THREE.Euler();
 
 export class Particles {
@@ -34,7 +35,8 @@ export class Particles {
       0, 0, 0.25, 0, 0, -0.25, 0.9, 0.15, -0.1,
     ], 3));
     gull.computeVertexNormals();
-    this.gullMesh = new THREE.InstancedMesh(gull, new THREE.MeshBasicMaterial({ color: 0xf7f0e4, side: THREE.DoubleSide }), GULLS);
+    this.gullMesh = new THREE.InstancedMesh(gull, new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }), GULLS);
+    for (let i = 0; i < GULLS; i++) this.gullMesh.setColorAt(i, new THREE.Color(0xf7f0e4));
     this.leafMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.22, 0.14), new THREE.MeshBasicMaterial({ color: 0x8fcc72, side: THREE.DoubleSide }), LEAVES);
     const leafColors = [0x8fcc72, 0x52b85a, 0xb8c46a, 0xffb36b];
     for (let i = 0; i < LEAVES; i++) this.leafMesh.setColorAt(i, new THREE.Color(leafColors[i % leafColors.length]));
@@ -67,7 +69,12 @@ export class Particles {
         const [x, z] = this.near(focus.x, focus.z);
         const tile = this.map.tileAt(x, z);
         const coast = tile === Tile.SAND || tile === Tile.WATER || tile === Tile.DOCK;
-        Object.assign(g, { cx: x, cz: z, r: 6 + this.rnd() * 14, a: this.rnd() * 6, speed: (0.25 + this.rnd() * 0.3) * (this.rnd() < 0.5 ? 1 : -1), y: coast && day > 0.2 ? 12 + this.rnd() * 10 : -100, flap: this.rnd() * 6 });
+        // Greifvögel kreisen hoch über dem Okee Peak (dunkel, langsam, große Kreise)
+        const hy = this.map.terrainHeight(x, z);
+        const hawk = !coast && this.map.zoneAt(x, z) === Zone.Highlands && hy > 30;
+        Object.assign(g, { cx: x, cz: z, r: hawk ? 18 + this.rnd() * 20 : 6 + this.rnd() * 14, a: this.rnd() * 6, speed: (hawk ? 0.12 : 0.25 + this.rnd() * 0.3) * (this.rnd() < 0.5 ? 1 : -1), y: day > 0.2 ? (hawk ? hy + 28 + this.rnd() * 20 : coast ? 12 + this.rnd() * 10 : -100) : -100, flap: this.rnd() * 6 });
+        this.gullMesh.setColorAt(i, tmpC.setHex(hawk ? 0x5a3a24 : 0xf7f0e4));
+        if (this.gullMesh.instanceColor) this.gullMesh.instanceColor.needsUpdate = true;
       }
       g.a += g.speed * dt;
       const x = g.cx + Math.cos(g.a) * g.r, z = g.cz + Math.sin(g.a) * g.r;
@@ -87,8 +94,12 @@ export class Particles {
       if (l.life <= 0 || l.y < this.map.surfaceY(l.x, l.z)) {
         const [x, z] = this.near(focus.x, focus.z);
         const tile = this.map.tileAt(x, z), zone = this.map.zoneAt(x, z);
-        const green = (tile === Tile.GRASS || tile === Tile.PLAZA || tile === Tile.FARM) && zone !== Zone.CoralKeys;
-        Object.assign(l, { x, z, y: green ? 4 + this.rnd() * 6 : -100, vy: 0.6 + this.rnd() * 0.6, spin: this.rnd() * 6, phase: this.rnd() * 6, life: 6 + this.rnd() * 8 });
+        const green = (tile === Tile.GRASS || tile === Tile.PLAZA || tile === Tile.FARM || tile === Tile.PASTURE || tile === Tile.CROP || tile === Tile.FIELD) && zone !== Zone.CoralKeys;
+        // Norden: Heu-Flusen und Pollen (gold/weiß) statt Blätter
+        const north = zone === Zone.DryPine || zone === Zone.CaneRidge || zone === Zone.Highlands;
+        this.leafMesh.setColorAt(i, tmpC.setHex(north ? (i % 3 ? 0xe8d08a : 0xfff4c8) : [0x8fcc72, 0x52b85a, 0xb8c46a, 0xffb36b][i % 4]));
+        if (this.leafMesh.instanceColor) this.leafMesh.instanceColor.needsUpdate = true;
+        Object.assign(l, { x, z, y: green ? (north ? 0.6 + this.rnd() * 3 : 4 + this.rnd() * 6) : -100, vy: 0.6 + this.rnd() * 0.6, spin: this.rnd() * 6, phase: this.rnd() * 6, life: 6 + this.rnd() * 8 });
       }
       l.y -= l.vy * dt;
       l.x += Math.sin(t * 1.3 + l.phase) * dt * 0.8 * U.uWind.value;
@@ -109,7 +120,10 @@ export class Particles {
       if (Math.hypot(f.x - focus.x, f.z - focus.z) > RANGE * 1.3 || !f.ok) {
         const [x, z] = this.near(focus.x, focus.z);
         const tile = this.map.tileAt(x, z);
-        f.ok = this.map.zoneAt(x, z) === Zone.GatorFlats || tile === Tile.SWAMP;
+        // Sumpf, und abends an Feldrändern im Norden
+        const zn = this.map.zoneAt(x, z);
+        f.ok = zn === Zone.GatorFlats || tile === Tile.SWAMP
+          || ((zn === Zone.DryPine || zn === Zone.CaneRidge || zn === Zone.Highlands) && (tile === Tile.PASTURE || tile === Tile.CROP || tile === Tile.FIELD || tile === Tile.FARM || tile === Tile.GRASS));
         f.x = x; f.z = z; f.y = Math.max(this.map.surfaceY(x, z), -0.3) + 0.5 + this.rnd() * 2.5;
       }
       const blink = Math.sin(t * 2.3 + f.phase * 7) > 0.2 ? 1 : 0;

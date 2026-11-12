@@ -28,10 +28,12 @@ const landSurface = (t: number): number => {
   switch (t) {
     case Tile.ROAD: case Tile.BRIDGE: case Tile.PLAZA: case Tile.SIDEWALK: case Tile.DOCK:
       return 1;
-    case Tile.GRASS: case Tile.DIRT: case Tile.FARM:
+    case Tile.GRASS: case Tile.DIRT: case Tile.FARM: case Tile.GRAVEL: case Tile.PASTURE:
       return 0.6;
-    case Tile.DESERT: case Tile.BADLANDS: case Tile.FIELD:
+    case Tile.DESERT: case Tile.BADLANDS: case Tile.FIELD: case Tile.CROP: case Tile.SCREE:
       return 0.5;
+    case Tile.CLIFF:
+      return 0.3;
     case Tile.SAND:
       return 0.45;
     case Tile.SWAMP:

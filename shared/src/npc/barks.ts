@@ -111,7 +111,34 @@ export const ACT_BARK: Record<number, BarkSit> = {
 };
 
 /** Variantenliste für Situation + Archetyp (Archetyp-Sprüche zuerst, dann allgemeine). */
+/** Tierlaute statt Sprüchen (jede Situation). */
+const ANIMAL_SOUNDS: Record<string, string[]> = {
+  cow: ['Muh.', 'MUUUH!', 'Muh?', '…Muh.'], dairy_cow: ['Muuuh.', 'Muh!', '*kaut*'], horse: ['Wiiiehhh!', 'Pfrrr.', '*schnaubt*'],
+  chicken: ['Gack!', 'GAGAGAGACK!', 'Pok pok.'], goat: ['Mäh.', 'MÄÄÄH!', '*kaut auf einem Plakat*'], dog: ['Wuff!', 'WUFF WUFF!', '*wedelt*'],
+  deer: ['*hebt den Kopf*', '*springt*'], turkey: ['Kollerkoller!', 'Gobble!'],
+};
+/** Kurze Land-Sprüche (Begrüßen, Leerlauf) der Archetypen im Norden. */
+const COUNTRY: Partial<Record<BarkSit, Lines>> = {
+  greet: {
+    rancher: ['Howdy!', 'Schöner Tag für Kühe.', 'Na, verirrt aus der Stadt?'], farmhand: ['Moin. Nicht auf die Melonen treten.'],
+    trucker: ['Zehn-vier, Partner.'], hiker: ['Noch 900 Höhenmeter! Woo!'], ranger: ['Bitte auf den Wegen bleiben.'],
+    townsfolk: ['Du bist nicht von hier, oder?', 'Grüß deine Mutter!'], churchgoer: ['Gesegneten Sonntag!'],
+  },
+  near_miss: {
+    rancher: ['Langsam, das hier ist keine Rennstrecke!', 'Meine Kühe fahren vorsichtiger!'], farmhand: ['Die Stadt ist DA lang!'],
+    quarry_worker: ['Hier wird gesprengt, nicht gerast!'], camper: ['Ey! Die Marshmallows!'],
+  },
+  idle: {
+    rancher: ['Regen wär schön.', 'Der Zaun hält. Hoffentlich.'], milker: ['Bessie gibt heute extra viel.'], lumberjack: ['Holz hacken ist Meditation.'],
+    camper: ['Hört ihr das? …War bestimmt nur ein Waschbär.'], climber: ['Kein Seil, kein Problem. Doch, Seil.'],
+  },
+};
+
 export function barkLines(sit: number, arch: number): string[] {
+  const a = arch >= 0 ? archetypeOf(arch) : null;
+  if (a?.animal) return ANIMAL_SOUNDS[a.animal] ?? ['…'];
+  const c = a ? COUNTRY[BARK_SITS[sit]]?.[a.id] : undefined;
+  if (c?.length) return c;
   const t = BARKS[BARK_SITS[sit]];
   if (!t) return [];
   const own = arch >= 0 ? t[archetypeOf(arch).id] ?? [] : [];
