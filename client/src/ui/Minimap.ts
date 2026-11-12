@@ -6,6 +6,9 @@ import { Tile } from '../../../shared/src/world/tiles';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { groundColor } from '../render/WorldView';
 
+/** Navigationsroute (GPS): Polylinie in Weltmetern vom Spieler zum Ziel und Restlänge. */
+export interface MapRoute { pts: [number, number][]; dist: number }
+
 export interface MapDot {
   x: number; z: number; color: string; size: number; ring?: boolean;
   /** Tooltip auf der großen Karte: erste Zeile = Titel, danach Beschreibung. */
@@ -66,7 +69,7 @@ export class Minimap {
   get bigVisible() { return !this.bigEl.classList.contains('hidden'); }
   toggleBig() { this.bigEl.classList.toggle('hidden'); this.hover = null; }
 
-  draw(px: number, pz: number, pa: number, zoomOut: boolean, dots: MapDot[]) {
+  draw(px: number, pz: number, pa: number, zoomOut: boolean, dots: MapDot[], route: MapRoute | null = null) {
     const ctx = this.ctx;
     const W = ctx.canvas.width;
     const scale = zoomOut ? 0.32 : 0.5; // Pixel pro Meter
@@ -80,6 +83,7 @@ export class Minimap {
     ctx.restore();
 
     const toScreen = (x: number, z: number) => ({ sx: W / 2 + (x - px) * scale, sy: W / 2 + (z - pz) * scale });
+    if (route) this.routeLine(ctx, route.pts.map(([x, z]) => [W / 2 + (x - px) * scale, W / 2 + (z - pz) * scale]), 4);
     for (const d of dots) {
       let { sx, sy } = toScreen(d.x, d.z);
       const out = sx < 6 || sy < 6 || sx > W - 6 || sy > W - 6;
@@ -90,8 +94,41 @@ export class Minimap {
       this.dot(ctx, sx, sy, d);
     }
     this.arrow(ctx, W / 2, W / 2, pa);
+    if (route) this.routeDistance(ctx, W, route.dist);
 
-    if (this.bigVisible) this.drawBig(px, pz, pa, dots);
+    if (this.bigVisible) this.drawBig(px, pz, pa, dots, route);
+  }
+
+  /** GPS-Linie: dunkle Kontur, darüber hellblau (wie eine Navi-Route). */
+  private routeLine(ctx: CanvasRenderingContext2D, pts: number[][], width: number) {
+    if (pts.length < 2) return;
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.strokeStyle = '#0b2a52';
+    ctx.lineWidth = width + 3;
+    ctx.stroke();
+    ctx.strokeStyle = '#3ab4ff';
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Restentfernung unten auf der Minimap. */
+  private routeDistance(ctx: CanvasRenderingContext2D, W: number, dist: number) {
+    const text = dist >= 1000 ? `📍 ${(dist / 1000).toFixed(1).replace('.', ',')} km` : `📍 ${Math.max(10, Math.round(dist / 10) * 10)} m`;
+    ctx.save();
+    ctx.font = 'bold 14px Trebuchet MS, sans-serif';
+    ctx.textAlign = 'center';
+    const w = ctx.measureText(text).width + 16;
+    ctx.fillStyle = 'rgba(11, 42, 82, 0.85)';
+    ctx.beginPath(); ctx.roundRect(W / 2 - w / 2, W - 26, w, 20, 8); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(text, W / 2, W - 11);
+    ctx.restore();
   }
 
   private dot(ctx: CanvasRenderingContext2D, sx: number, sy: number, d: MapDot) {
@@ -122,7 +159,7 @@ export class Minimap {
     ctx.restore();
   }
 
-  private drawBig(px: number, pz: number, pa: number, dots: MapDot[]) {
+  private drawBig(px: number, pz: number, pa: number, dots: MapDot[], route: MapRoute | null) {
     const ctx = this.bigCtx;
     const W = ctx.canvas.width;
     const s = W / WORLD_SIZE;
@@ -143,6 +180,7 @@ export class Minimap {
     label('PORT CORALIA', 1300, 730);
     label('GATOR FLATS', 900, 1420);
     label('CORAL KEYS', 900, 1990);
+    if (route) this.routeLine(ctx, route.pts.map(([x, z]) => [x * s, z * s]), 4);
     for (const d of dots) if (!d.icon) this.dot(ctx, d.x * s, d.z * s, { ...d, size: d.size + 1 });
     for (const d of dots) if (d.icon) this.iconDot(ctx, d.x * s, d.z * s, d); // Symbole obenauf
     this.arrow(ctx, px * s, pz * s, pa);

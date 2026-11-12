@@ -53,13 +53,14 @@ import { AudioDebug } from '../ui/AudioDebug';
 import { DebugOverlay } from '../ui/DebugOverlay';
 import { DriveHud } from '../ui/DriveHud';
 import { Hud } from '../ui/Hud';
-import { Minimap, playerDotColor, type MapDot } from '../ui/Minimap';
+import { Minimap, playerDotColor, type MapDot, type MapRoute } from '../ui/Minimap';
 import { MINIGAMES } from '../../../shared/src/minigames';
 import { applyTune, TuningPanel } from '../ui/TuningPanel';
 import { EntityViews, type PlayerState, type VehicleViewState } from './EntityViews';
 import { StoryDirector } from './StoryDirector';
 import { StoryUi } from '../ui/StoryUi';
 import { charOf } from '../../../shared/src/story';
+import { roadRoute } from '../../../shared/src/story/places';
 
 const SEND_INTERVAL_MS = 33; // ~30 Eingabe-Pakete pro Sekunde
 const MINIMAP_INTERVAL = 1 / 15;
@@ -156,6 +157,8 @@ export class Game {
   private storyBlock = false;
   /** Laufender Koop-Auftrag in der Nähe, dem man beitreten kann (Titel). */
   private joinOffer: string | null = null;
+  /** Navi-Route zum aktuellen Ziel (Straßennetz), wird gedrosselt neu berechnet. */
+  private nav: { tx: number; tz: number; pts: [number, number][]; t: number } | null = null;
 
   constructor(private net: Network, private myId: number, private sfx: Sfx, dev = false) {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -1163,7 +1166,49 @@ export class Game {
         }
       }
     }
-    this.minimap.draw(me.x, me.z, me.a, this.predictor.inVehicle, dots);
+    this.minimap.draw(me.x, me.z, me.a, this.predictor.inVehicle, dots, this.navRoute(me.x, me.z));
+  }
+
+  /** Navi-Ziel: Auftragsziel (Ziel > Checkpoint > Fahrzeug > Schützling > Sammelobjekt > Gegner), sonst die nächste Story-Figur. */
+  private navTarget(x: number, z: number): { x: number; z: number } | null {
+    const ts = this.questState?.targets ?? [];
+    for (const kind of [1, 2, 7, 6, 4, 3, 5]) {
+      let best: { x: number; z: number } | null = null, bd = Infinity;
+      for (const t of ts) {
+        if (t[3] !== kind) continue;
+        const d = (t[0] - x) ** 2 + (t[1] - z) ** 2;
+        if (d < bd) { bd = d; best = { x: t[0], z: t[1] }; }
+        if (kind === 2) break; // Checkpoints: der erste ist der nächste
+      }
+      if (best) return best;
+    }
+    return this.questState ? null : this.storyDir.goalPoint();
+  }
+
+  /**
+   * Route wie bei einem Navi: kürzester Weg über das Straßennetz vom Spieler zum Ziel. Neu berechnet bei
+   * neuem Ziel, beim Verlassen der Route und sonst höchstens alle 2 s; dazwischen nur vorne gekürzt.
+   * Im Boot/Airboat und kurz vor dem Ziel keine Route.
+   */
+  private navRoute(x: number, z: number): MapRoute | null {
+    const target = this.navTarget(x, z);
+    const sim = this.predictor.sim;
+    if (!target || (this.predictor.inVehicle && sim && isWaterVehicle(sim.kind)) || Math.hypot(target.x - x, target.z - z) < 30) { this.nav = null; return null; }
+    let n = this.nav;
+    // Nächster Routenpunkt in den ersten Abschnitten (Fortschritt + Abweichung)
+    let near = 0, nd = Infinity;
+    if (n) for (let i = 0; i < Math.min(n.pts.length, 40); i++) { const d = Math.hypot(n.pts[i][0] - x, n.pts[i][1] - z); if (d < nd) { nd = d; near = i; } }
+    const stale = !n || Math.hypot(n.tx - target.x, n.tz - target.z) > 6 || nd > 28 || this.clock - n.t > 2;
+    if (stale) {
+      const pts = roadRoute(this.map, { x, z }, target) as [number, number][];
+      pts.push([target.x, target.z]);
+      n = this.nav = { tx: target.x, tz: target.z, pts, t: this.clock };
+      near = 0;
+    }
+    const pts: [number, number][] = [[x, z], ...n!.pts.slice(near + 1)];
+    let dist = 0;
+    for (let i = 1; i < pts.length; i++) dist += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    return { pts, dist };
   }
 
   // ------------------------------------------------------------------ Debug: Fahrzeug-Tab
