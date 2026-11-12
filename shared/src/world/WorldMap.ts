@@ -21,6 +21,7 @@ export const BuildingStyle = {
   Barn: 8,
   Stilt: 9, // Stelzenhütte in Gator Flats
   Store: 10, // begehbarer Laden (Hohlgebäude mit Tür, shops.ts)
+  Airport: 11, // Flughafengebäude und -zaun (Optik nach tag, AirportView)
 } as const;
 
 /** Gedrehtes Rechteck: [Mitte x, Mitte z, halbe Breite, halbe Tiefe, cos rot, sin rot]. */
@@ -33,6 +34,8 @@ export interface BuildingDef {
   rot: number;
   color: number;
   style: number;
+  /** Unterart für Sondergebäude (Flughafen: terminal, tower, hangar, hangar-wall, fire, fence). */
+  tag?: string;
 }
 
 export const TreeType = { Palm: 0, Pine: 1, Orange: 2, Mangrove: 3, Cypress: 4 } as const;
@@ -125,6 +128,8 @@ export class WorldMap {
   buildings: BuildingDef[] = [];
   trees: TreeDef[] = [];
   runways: Runway[] = [];
+  /** Haupteingang des Flughafens: Lücke im Zaun mit Schranke (Mitte, Drehung, Breite). */
+  airportGate: { x: number; z: number; rot: number; w: number } | null = null;
   docks: Poly[] = [];
   vehicleSpawns: VehicleSpawn[] = [];
   /** Rampen/Sprungschanzen (features.ts). */

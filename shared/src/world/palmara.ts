@@ -141,7 +141,8 @@ export const ROADS: RoadDef[] = [
   { name: 'Spit Road', type: RoadType.Side, palms: true, pts: [[1592, 764], [1540, 640], [1508, 480], [1476, 356], [1404, 330]] },
   { name: 'Causeway Road', type: RoadType.Main, rural: 10,
     pts: [[1210, 1300], [1186, 1380], [1146, 1436], [1100, 1470]] },
-  { name: 'Airport Road', type: RoadType.Main, pts: [[1150, 1092], [1110, 1150], [1060, 1196]] },
+  // Zufahrt zum Terminal-Parkplatz: östlich um das Ende der Nordbahn herum (nicht mehr über die Bahn)
+  { name: 'Airport Road', type: RoadType.Main, pts: [[1150, 1092], [1124, 1132], [1150, 1160], [1152, 1204]] },
   { name: 'Villa Drive', type: RoadType.Side, pts: [[1420, 1330], [1386, 1376], [1320, 1420]] },
   // Inland
   { name: 'Highway 9', type: RoadType.Highway, rural: 18,
@@ -186,12 +187,10 @@ export const ROUNDABOUTS: [number, number, number][] = [
 
 /** Landebahnen: Mitte, Länge, Breite, Richtung (Grad, 90 = Ost-West). */
 export const RUNWAYS: [number, number, number, number, number][] = [
-  [1020, 1168, 260, 20, 92], [1020, 1316, 260, 20, 88], // Port Coralia International
-  [596, 884, 136, 14, 96], // Flugfeld Port Sabal
+  [1012, 1168, 245, 20, 92], [1020, 1316, 260, 20, 88], // Port Coralia International (09L/27R, 09R/27L)
+  [609, 882.6, 162, 16, 96], // Flugfeld Port Sabal (Gradys alte Landebahn im Outback)
   [606, 1852, 130, 14, 90], // Flugfeld Sunset Key
 ];
-/** Vorfeld des Flughafens (Platz) und Terminal. */
-export const AIRPORT_APRON: Poly = [[940, 1196], [1110, 1196], [1110, 1290], [940, 1290]];
 
 /** Besondere Orte. */
 export const POI = {

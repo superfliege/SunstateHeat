@@ -13,7 +13,12 @@ export const Btn = {
   BRAKE: 2, // Leertaste: Handbremse
   UNFLIP: 4, // E im überschlagenen Fahrzeug: aufrichten
   HORN: 8, // H: Hupe
+  STRAFE_L: 16, // Q: Helikopter seitwärts links
+  STRAFE_R: 32, // R: Helikopter seitwärts rechts
+  /** Vom Server/der Prediction gesetzt: ein Pilot sitzt drin (Triebwerk/Rotor laufen). Nicht vom Client. */
+  PILOT: 64,
 } as const;
+// Luftfahrzeuge: SPRINT (Shift) = Steigen, BRAKE (Leertaste) = Sinken bzw. Radbremse am Boden
 
 /**
  * Ein Eingabe-Kommando = ein fester Simulationsschritt (SIM_DT).
@@ -72,7 +77,7 @@ export type PedTuple = [number, number, number, number, number, number, number, 
 /** Verschobenes Prop: [id, x, y, z, qx, qy, qz, qw, flags (1 ruht, 2 Wasserfontäne)] */
 export type PropTuple = [number, number, number, number, number, number, number, number, number];
 
-export const VehFlag = { BRAKE: 1, REVERSE: 2, HANDBRAKE: 4, BOOST: 8, HORN: 16 } as const;
+export const VehFlag = { BRAKE: 1, REVERSE: 2, HANDBRAKE: 4, BOOST: 8, HORN: 16, AIR: 32, STALL: 64 } as const;
 /** Fahrer-ID eines Polizeiwagens in den Fahrzeug-Stammdaten. */
 export const DRIVER_COP_ID = -3;
 
@@ -166,7 +171,7 @@ export interface SnapshotMsg {
   day: number; // Tageszeit 0..1 (0 = Mitternacht, 0.5 = Mittag)
   ack: number; // letzte verarbeitete Eingabe-Sequenz DIESES Clients
   /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt], Fahrzeug (packCar) oder null, Geld. */
-  me?: { pawn: number[]; veh: number[] | null; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
+  me?: { pawn: number[]; veh: number[] | null; /** Mitfahrer in Luftfahrzeug (ID) */ ride?: number; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
   players: PlayerTuple[];
   /** Geänderte Fahrzeuge / Stammdaten / verschwundene IDs */
   v?: VehicleTuple[];

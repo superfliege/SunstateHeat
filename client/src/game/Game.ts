@@ -14,7 +14,20 @@ import { PROP_INFO, PropType } from '../../../shared/src/world/features';
 import type { PropHit } from '../../../shared/src/sim/props';
 import { driftMultiplier } from '../../../shared/src/sim/stunts';
 import { profileOf } from '../../../shared/src/sim/vehicle';
-import { VEHICLE_DEFS, VehicleKind, isWaterVehicle, type VehicleKindId } from '../../../shared/src/sim/vehicleDefs';
+import { VEHICLE_DEFS, VehicleKind, isAircraft, isWaterVehicle, type VehicleKindId } from '../../../shared/src/sim/vehicleDefs';
+import { AIR_SETTINGS, aircraftDef, airGround, airLevel, isAircraftVariant } from '../../../shared/src/sim/aircraft';
+import type { HandlingClass } from '../../../shared/src/sim/handling';
+
+/**
+ * Klangklasse je Variante. Luftfahrzeuge nutzen bis zu eigenen Aufnahmen vorhandene Motor-Sets:
+ * Propeller/leichte Rotoren = Airboat-Propeller, Pelikan = tiefer Lkw, Marlin = Sport mit Turbo-Pfeifen.
+ */
+function soundClass(variant: number): HandlingClass {
+  if (!isAircraftVariant(variant)) return variantInfo(variant).cls;
+  const id = aircraftDef(variant).id;
+  return id === 'marlin' ? 'sport' : id === 'pelikan' ? 'truck' : 'airboat';
+}
+import { AIR_FUEL } from '../../../shared/src/world/airport';
 import { generateWorld } from '../../../shared/src/world/mapgen';
 import { Tile } from '../../../shared/src/world/tiles';
 import { generateVegetation } from '../../../shared/src/world/vegetation';
@@ -28,7 +41,8 @@ import { Predictor, type Obstacle } from '../net/Prediction';
 import { CameraRig } from '../render/CameraRig';
 import { FeaturesView } from '../render/FeaturesView';
 import { U } from '../render/materials/toon';
-import { vehicleMat } from '../render/models';
+import { toonVC, vehicleMat } from '../render/models';
+import { AirportView } from '../render/AirportView';
 import { moodFor } from '../render/palette';
 import { Particles } from '../render/Particles';
 import { Tracers } from '../render/Tracers';
@@ -120,6 +134,10 @@ export class Game {
   private minimapTimer = 0;
   private day = 0.35;
   private buttons = 0;
+  /** Flughafen: Schranke, Neon, Gepäckwagen, Deko-Flugzeug */
+  private airport: AirportView;
+  /** Mitfahrer in einem Luftfahrzeug (Fahrzeug-ID, -1 = nein) */
+  private ride = -1;
   private post: PostFX;
   private particles: Particles;
   private gfx: GfxSettings = loadGfx();
@@ -195,7 +213,8 @@ export class Game {
       if (b) { this.input.clear(); this.input.fire = false; }
     };
     this.particles = new Particles(this.map);
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group);
+    this.airport = new AirportView(this.map, vehicleMat, toonVC);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.applyGfx();
@@ -454,7 +473,7 @@ export class Game {
     if (snap.af) { this.map.floors = snap.af.map(unpackFloor); this.arenas.set(this.map.floors); }
     this.predictor.reconcile(snap, this.myId, SIM_DT);
     this.day = snap.day;
-    if (snap.me) { this.joinOffer = snap.me.join ?? null; this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.wanted = snap.me.stats.wanted; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
+    if (snap.me) { this.ride = snap.me.ride ?? -1; this.joinOffer = snap.me.join ?? null; this.money = snap.me.money; this.drive.money(this.money); this.hud.setStats(snap.me.stats); this.questState = snap.me.quest ?? null; this.wanted = snap.me.stats.wanted; this.panels.update(snap.me.stats, snap.me.money, this.questState); this.questMarkers.set(this.questState); this.weaponId = snap.me.stats.weapon as WeaponId; }
   }
 
   /** Lautstärke + Stereo-Position eines Weltpunkts relativ zur Kamera */
@@ -684,6 +703,7 @@ export class Game {
       if (this.questState?.freeze && this.predictor.inVehicle) { s.ax = 0; s.ay = 0; buttons = Btn.BRAKE; }
       else if (this.questState?.freeze && this.questState.mg) { s.ax = 0; s.ay = 0; buttons = 0; } // Minispiel zu Fuß: Countdown
       if (this.unflipFrames > 0) { buttons |= Btn.UNFLIP; this.unflipFrames--; }
+      if (this.ride >= 0) { s.ax = 0; s.ay = 0; buttons = 0; } // Mitfahrer: nur E zum Aussteigen
       // Catch the Taxi: unendlich Nitro (Server setzt dasselbe)
       if (this.questState?.hunt === 'taxi' && this.predictor.sim) { const sim = this.predictor.sim; sim.prof = taxiProfile(sim.prof); sim.car.nitro = 1; }
       this.predictor.step(s.ax, s.ay, buttons, SIM_DT);
@@ -700,11 +720,13 @@ export class Game {
     this.predictor.decay(rawDt);
     this.updateFire(rawDt);
     this.touch.setVehicle(this.predictor.inVehicle);
+    this.touch.setAir(isAircraft(this.predictor.sim?.kind ?? -1));
 
     // 2) Entitäten darstellen
     const frame = this.buffer.frame();
     const latest = this.buffer.latest;
     this.views.night = this.sky.night;
+    this.views.sunDir.copy(this.sky.sun.position).sub(this.sky.sun.target.position).normalize();
     this.sfx.car?.begin();
     this.views.beginFrame(dt);
     const me = this.predictor.view();
@@ -719,11 +741,25 @@ export class Game {
 
     // 3) Kamera, Licht, UI
     const ownCar = this.predictor.sim?.car ?? null;
-    const myY = ownCar ? me.y - this.predictor.sim!.prof.cgHeight : this.map.surfaceY(me.x, me.z);
+    let myY = ownCar ? me.y - this.predictor.sim!.prof.cgHeight : this.map.surfaceY(me.x, me.z);
+    // Luftfahrzeug (selbst oder als Mitfahrer): Kamera folgt, zoomt mit der Höhe heraus
+    const rideState = this.ride >= 0 ? vehicleStates.get(this.ride) : undefined;
+    if (rideState) { me.x = rideState.x; me.z = rideState.z; me.y = rideState.y; }
+    const airKind = rideState ? rideState.kind : this.predictor.sim?.kind ?? -1;
+    let alt = 0;
+    if (isAircraft(airKind)) {
+      const variant = rideState ? rideState.variant : this.predictor.sim!.variant;
+      const g = airGround(this.map, me.x, me.z, me.y, aircraftDef(variant).type === 'heli').y;
+      alt = Math.max(0, me.y - g);
+      myY = g + alt * 0.8; // Fokus leicht unter dem Luftfahrzeug: es erscheint mit der Höhe größer
+    }
+    this.rig.altitude = alt;
+    this.airport.update(dt, this.sky.night, this.buffer.serverNow, vehicleStates.values(), this.rig.target);
+    this.sky.fogScale = 1 + Math.min(alt, AIR_SETTINGS.ceiling) / 90;
     // Minispiel-Zuschauer (ausgeschieden/wartend, zu Fuß): Kamera auf die Arena
     const spec = this.predictor.inVehicle ? undefined : this.questState?.mg?.spectate;
     if (spec) this.rig.update(spec[0], this.map.surfaceY(spec[0], spec[1]), spec[1], 0, 0, 0, true, dt);
-    else this.rig.update(me.x, myY, me.z, me.a, ownCar?.vx ?? 0, ownCar?.vz ?? 0, this.predictor.inVehicle, dt, ownCar?.boost ? ASSISTS.nitroFov : 0);
+    else this.rig.update(me.x, myY, me.z, me.a, ownCar?.vx ?? rideState?.vx ?? 0, ownCar?.vz ?? rideState?.vz ?? 0, this.predictor.inVehicle || !!rideState, dt, ownCar?.boost ? ASSISTS.nitroFov : 0);
     U.uTime.value += dt;
     U.uFocus.value.set(me.x, myY + 1, me.z);
     this.sky.setMood(moodFor(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.style ?? null));
@@ -855,7 +891,7 @@ export class Game {
         if (c.rev) flags |= VehFlag.REVERSE;
         if (c.boost) flags |= VehFlag.BOOST;
         if (this.buttons & Btn.HORN) flags |= VehFlag.HORN;
-        s = { id, kind, variant, color, driver, x: me.x, y: me.y, z: me.z, q: this.predictor.viewQuat(vehQuat(id)), vx: c.vx, vz: c.vz, steer: c.steer, flags, comp: c.comp, spin: c.spin, tires: rec.dmg.tires };
+        s = { id, kind, variant, color, driver, x: me.x, y: me.y, z: me.z, q: this.predictor.viewQuat(vehQuat(id)), vx: c.vx, vz: c.vz, steer: c.steer, flags, comp: c.comp, spin: c.spin, tires: rec.dmg.tires, rpm: c.rpm };
         rpm = c.rpm;
       } else {
         const va = a.vehicles.get(id) ?? vb;
@@ -863,7 +899,7 @@ export class Game {
         const prof = profileOf(variant);
         if (!isWaterVehicle(kind)) r.y = Math.max(r.y, groundHeight(this.map, r.x, r.z) + prof.cgHeight * 0.5);
         tmpE.set(r.pitch, r.yaw, r.roll, 'YXZ');
-        s = { id, kind, variant, color, driver, x: r.x, y: r.y, z: r.z, q: vehQuat(id).setFromEuler(tmpE), vx: r.vx, vz: r.vz, steer: r.steer, flags: r.flags, tires: rec.dmg.tires };
+        s = { id, kind, variant, color, driver, x: r.x, y: r.y, z: r.z, q: vehQuat(id).setFromEuler(tmpE), vx: r.vx, vz: r.vz, steer: r.steer, flags: r.flags, tires: rec.dmg.tires, rpm: r.rpm };
         rpm = r.rpm;
       }
       const isNew = !this.views.hasVehicle(id);
@@ -877,10 +913,10 @@ export class Game {
         const own = id === myVehicle;
         const pos = { x: s.x, y: s.y, z: s.z };
         // Nur Spieler hupen (NPC-/Verkehrs-Hupen sind aus)
-        if (s.flags & VehFlag.HORN && driver >= 0) car.horn(id, variantInfo(variant).cls, own ? null : pos);
+        if (s.flags & VehFlag.HORN && driver >= 0) car.horn(id, soundClass(variant), own ? null : pos);
         if (rec.dmg.burn > 0 && !own) car.fire(id, pos, 1, dt);
         // Sirene: Streifenwagen bei Einsatzfahrt oder solange nach mir gefahndet wird
-        if (driver === DRIVER_COP_ID && variant !== TANK_VARIANT && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
+        if (driver === DRIVER_COP_ID && variant !== TANK_VARIANT && !isAircraft(kind) && !rec.dmg.wreck && (Math.hypot(s.vx, s.vz) > 13 || (this.wanted > 0 && Math.hypot(s.x - focus.x, s.z - focus.z) < 220))) car.siren(id, pos, s.vx, s.vz);
       }
       if (id !== myVehicle && driver !== -1 && !rec.dmg.wreck) engines.push({ id, d: Math.hypot(s.x - focus.x, s.z - focus.z), s, rpm });
     }
@@ -891,7 +927,7 @@ export class Game {
       const prof = profileOf(e.s.variant);
       const fwd = tmpV.set(0, 0, 1).applyQuaternion(e.s.q);
       this.sfx.car.remote(e.id, {
-        cls: variantInfo(e.s.variant).cls, pos: { x: e.s.x, y: e.s.y, z: e.s.z }, vx: e.s.vx, vz: e.s.vz, fwdX: fwd.x, fwdZ: fwd.z,
+        cls: soundClass(e.s.variant), pos: { x: e.s.x, y: e.s.y, z: e.s.z }, vx: e.s.vx, vz: e.s.vz, fwdX: fwd.x, fwdZ: fwd.z,
         rpm: Math.max(prof.idleRpm, e.rpm), idle: prof.idleRpm, redline: prof.redline, boost: (e.s.flags & VehFlag.BOOST) !== 0, water: isWaterVehicle(e.s.kind),
       }, dt);
     }
@@ -901,7 +937,7 @@ export class Game {
       const pa = a.players.get(pb[0]) ?? pb;
       const pw = this.predictor.pawn;
       const st: PlayerState = isMe
-        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0 }
+        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0 }
         : {
             id: pb[0], name: pb[1], x: lerp(pa[2], pb[2], t), z: lerp(pa[3], pb[3], t),
             a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
@@ -961,6 +997,7 @@ export class Game {
       }
       return;
     }
+    if (view.air) { this.aircraftFx(s, rec, view.air, dt); return; }
     const tpl = view.car?.tpl;
     if (!tpl) return;
     const ownCar = own ? this.predictor.sim?.car : null;
@@ -1010,6 +1047,43 @@ export class Game {
   }
 
   /** Motor, Reifen, Untergrund, Schaben, Nitro, Schaden, Gamepad-Vibration des eigenen Fahrzeugs */
+  /** Luftfahrzeug: Abwind (Staub/Blätter) bei geringer Höhe, Schadensrauch, Triebwerks-Hitze. */
+  private aircraftFx(s: VehicleViewState, rec: VehRec, air: NonNullable<ReturnType<EntityViews['vehicleView']>>['air'] & object, dt: number) {
+    const d = aircraftDef(s.variant);
+    const rpm = (s.rpm ?? 0) / 6000;
+    const g = airGround(this.map, s.x, s.z, s.y, d.type === 'heli');
+    const alt = s.y - g.y;
+    if (d.type === 'heli' && rpm > 0.5 && alt < 14) {
+      // Abwind: Staub (auf Sand/Erde), Gras/Blätter (grün), Gischt auf dem Wasser
+      const k = rpm * (1 - alt / 14) * (d.span / 9);
+      const n = Math.random() < k * dt * 40 ? 2 : 0;
+      for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2, r = d.span * (0.35 + Math.random() * 0.4);
+        const x = s.x + Math.cos(ang) * r, z = s.z + Math.sin(ang) * r;
+        const t = this.map.tileAt(x, z);
+        const out = 5 + rpm * 6;
+        if (t === Tile.WATER || t === Tile.SWAMP) this.fx.splash(x, -0.1, z, Math.cos(ang) * out, 1.2, Math.sin(ang) * out, 1);
+        else this.fx.dust(x, g.y + 0.2, z, 1, t === Tile.GRASS || t === Tile.FARM ? 0x6fa84a : t === Tile.SAND || t === Tile.DESERT ? 0xe8d6a0 : 0xb8b0a0, Math.cos(ang) * out, Math.sin(ang) * out);
+      }
+    }
+    if (d.type === 'plane' && alt < 1 && Math.hypot(s.vx, s.vz) > 12 && rpm > 0.5 && Math.random() < dt * 8) {
+      const back = tmpV2.set(0, 0, -d.length * 0.5).applyQuaternion(s.q);
+      const t = this.map.tileAt(s.x + back.x, s.z + back.z);
+      if (t !== Tile.ROAD && t !== Tile.PLAZA) this.fx.dust(s.x + back.x, g.y + 0.2, s.z + back.z, 1, 0xd8c8a0, -s.vx * 0.2, -s.vz * 0.2);
+    }
+    // Schaden: Rauch am Triebwerk/Rotor
+    const stage = rec.dmg.wreck ? 2 : smokeStage(rec.dmg.hp);
+    if (stage > 0 && Math.random() < dt * (stage * 10)) {
+      const p = this.views.worldPoint(s.id, tmpV2.set(0, d.height * 0.75, d.type === 'heli' ? 0 : d.length * 0.3), tmpV3);
+      if (p) this.fx.damageSmoke(p.x, p.y, p.z, stage, s.vx, s.vz);
+    }
+    for (const e of air.exhaust) {
+      if (rpm < 0.5 || Math.random() > dt * 10) continue;
+      const p = this.views.worldPoint(s.id, tmpV2.copy(e), tmpV3);
+      if (p) this.fx.tireSmoke(p.x, p.y, p.z, 0.15, -s.vx * 0.3, -s.vz * 0.3);
+    }
+  }
+
   private ownCarAudio(dt: number) {
     const car = this.sfx.car;
     const sim = this.predictor.sim;
@@ -1023,7 +1097,7 @@ export class Game {
       let loose = 0;
       for (let i = 0; i < PART_COUNT; i++) if (partState(d, i) === 1) loose++;
       this.backfired = car.ownCar({
-        cls: variantInfo(sim.variant).cls, rpm: c.rpm, idle: p.idleRpm, redline: p.redline,
+        cls: soundClass(sim.variant), rpm: c.rpm, idle: p.idleRpm, redline: p.redline,
         load: c.engLoad, thr: c.thr, brk: c.brk, shifts: c.shifts, boost: c.boost, speed: Math.hypot(c.vx, c.vz),
         slip: c.slip, surf: c.surf, comp: c.comp, air: c.air, water, wet: this.isWet(c.x, c.z), scrape: this.scrapeLevel,
         smoke: d.wreck ? 0 : smokeStage(d.hp), engineDmg: d.zones[Zone5.ENGINE], power: enginePower(d, c.t), loose,
@@ -1040,8 +1114,8 @@ export class Game {
     let best: VehicleViewState | null = null;
     let bestD = Infinity;
     for (const v of vehicles.values()) {
-      if (v.driver >= 0 || this.recs.get(v.id)?.dmg.wreck) continue;
-      const reach = ENTER_RADIUS + profileOf(v.variant).length / 2.4;
+      if ((v.driver >= 0 && !isAircraft(v.kind)) || this.recs.get(v.id)?.dmg.wreck) continue;
+      const reach = ENTER_RADIUS + (isAircraft(v.kind) ? aircraftDef(v.variant).radius * 0.8 : profileOf(v.variant).length / 2.4);
       const d = Math.hypot(v.x - x, v.z - z);
       if (d < reach && d < bestD) { best = v; bestD = d; }
     }
@@ -1073,10 +1147,15 @@ export class Game {
     const mine = latest?.players.find((p) => p[0] === this.myId);
     this.hud.setQuestState(this.questState);
     const sim = this.predictor.sim;
-    this.tuning?.setClass(sim ? variantInfo(sim.variant).cls : null);
+    this.tuning?.setClass(sim && !sim.car.fly ? variantInfo(sim.variant).cls : null);
     if (sim) {
       const c = sim.car;
-      this.drive.set({ speed: c.s, gear: c.gear, rpm: c.rpm, redline: sim.prof.redline, nitro: c.nitro, hasNitro: sim.prof.nitroForce > 0, hp: sim.dmg.hp, burning: sim.dmg.burn > 0 });
+      const f = c.fly;
+      const air = f ? {
+        alt: Math.max(0, c.y - airGround(this.map, c.x, c.z, c.y, aircraftDef(sim.variant).type === 'heli').y), vs: f.ground ? 0 : c.vy,
+        level: airLevel(c), fuel: AIR_SETTINGS.fuelEnabled ? f.fuel : null, stall: f.stall === 1,
+      } : undefined;
+      this.drive.set({ speed: f ? Math.hypot(c.vx, c.vz) : c.s, gear: c.gear, rpm: c.rpm, redline: f ? 7500 : sim.prof.redline, nitro: c.nitro, hasNitro: !f && sim.prof.nitroForce > 0, hp: sim.dmg.hp, burning: sim.dmg.burn > 0, air });
       const st = this.predictor.stunts;
       this.drive.drift(st.driftT > 0.3 ? st.driftPts : null, driftMultiplier(st));
     } else { this.drive.set(null); this.drive.drift(null, 1); }
@@ -1085,6 +1164,16 @@ export class Game {
     if (this.joinOffer) { this.hud.setHint(`<b>F</b> Bei „${this.joinOffer}“ mitmachen`); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
+    if (this.ride >= 0) { this.hud.setHint('Mitfahrer · <b>E</b> Aussteigen (nach der Landung)'); return; }
+    if (this.predictor.inVehicle && sim && sim.car.fly) {
+      const f = sim.car.fly, d = aircraftDef(sim.variant);
+      const fuelNear = Math.hypot(sim.car.x - AIR_FUEL.x, sim.car.z - AIR_FUEL.z) < AIR_FUEL.r;
+      if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>E</b> Aussteigen');
+      else if (fuelNear && f.ground && AIR_SETTINGS.fuelEnabled && f.fuel < 0.999) this.hud.setHint(`Tankstelle: stehen bleiben zum Tanken (${Math.round(f.fuel * 100)} %)`);
+      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>E</b> Aussteigen (am Boden)');
+      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>E</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken');
+      return;
+    }
     if (this.predictor.inVehicle && sim) {
       const c = sim.car;
       const ws = this.map.workshops.find((w) => Math.hypot(w.x - c.x, w.z - c.z) < w.r);
@@ -1098,8 +1187,9 @@ export class Game {
     } else {
       const v = this.nearestEnterable(vehicles, me.x, me.z);
       if (v) {
-        const verb = v.driver === -2 ? 'Übernehmen' : 'Einsteigen';
-        const name = v.kind === VehicleKind.Car || v.kind === VehicleKind.Bike ? variantInfo(v.variant).name : VEHICLE_DEFS[v.kind as VehicleKindId].name;
+        const air = isAircraft(v.kind) ? aircraftDef(v.variant) : null;
+        const verb = v.driver === -2 ? 'Übernehmen' : air ? (v.driver >= 0 ? 'Mitfliegen' : 'Einsteigen') : 'Einsteigen';
+        const name = air ? `${air.name}, ${air.seats} Sitze` : v.kind === VehicleKind.Car || v.kind === VehicleKind.Bike ? variantInfo(v.variant).name : VEHICLE_DEFS[v.kind as VehicleKindId].name;
         const shop = this.shopNearMe();
         this.hud.setHint(`<b>E</b> ${verb} (${name})${shop ? ` · <b>F</b> Mit ${shop.keeper.name} sprechen` : ''}`);
       } else {

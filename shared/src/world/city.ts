@@ -6,6 +6,7 @@ import {
   bbox, centroid, distToSegment, insetPolygon, orientedRect, pointAt, pointInPolygon, polygonArea, simplify, splitPolygon,
   type Poly, type Vec2,
 } from './geometry';
+import { AIRPORT_BUILDINGS, AIRPORT_FENCE, inAirport } from './airport';
 import { DISTRICTS, POI } from './palmara';
 import { Tile } from './tiles';
 import { BuildingStyle, LotUse, RoadType, Zone, type BuildingDef, type Lot, type RoadEdge, type WorldMap } from './WorldMap';
@@ -457,8 +458,63 @@ function gasStations(map: WorldMap) {
 }
 
 function airport(map: WorldMap) {
-  map.buildings.push({ x: 1020, z: 1270, w: 96, d: 22, h: 12, rot: Math.PI, color: 0xeeeeea, style: BuildingStyle.Midrise });
-  map.buildings.push({ x: 1130, z: 1240, w: 12, d: 12, h: 26, rot: Math.PI, color: 0xc9d6df, style: BuildingStyle.Tower });
-  map.buildings.push({ x: 960, z: 1222, w: 34, d: 22, h: 9, rot: Math.PI / 2, color: 0xb8c4d6, style: BuildingStyle.Warehouse });
+  // Fremdbebauung innerhalb des Zauns entfernen (Grundstücke an der Zufahrt o. Ä.)
+  const remap = new Map<number, number>();
+  const kept: BuildingDef[] = [];
+  map.buildings.forEach((b, i) => { if (!inAirport(b.x, b.z)) { remap.set(i, kept.length); kept.push(b); } });
+  map.buildings = kept;
+  for (const l of map.lots) {
+    if (l.building >= 0) l.building = remap.get(l.building) ?? -1;
+    const c = centroid(l.poly);
+    if (inAirport(c[0], c[1]) && l.use === LotUse.Building) l.use = LotUse.Vacant;
+  }
+  for (const b of AIRPORT_BUILDINGS) map.buildings.push({ x: b.x, z: b.z, w: b.w, d: b.d, h: b.h, rot: b.rot, color: b.color, style: BuildingStyle.Airport, tag: b.tag });
+  airportFence(map);
+  // Flugfeld Port Sabal: alter Hangar (Story-Versteck)
   map.buildings.push({ x: 560, z: 860, w: 34, d: 20, h: 7, rot: 0, color: 0xa8a8b0, style: BuildingStyle.Warehouse });
+}
+
+/** Zaun in 8-m-Stücken; über Wasser und auf Straßen entfällt er. Die Lücke an der Airport Road wird der Haupteingang. */
+function airportFence(map: WorldMap) {
+  const { x0, z0, x1, z1, height } = AIRPORT_FENCE;
+  const sides: [Vec2, Vec2][] = [[[x0, z0], [x1, z0]], [[x1, z0], [x1, z1]], [[x1, z1], [x0, z1]], [[x0, z1], [x0, z0]]];
+  const gate: Vec2[] = [];
+  let gateRot = 0;
+  const onRoad = (x: number, z: number): RoadEdge | null => {
+    for (const e of map.edges) {
+      const r = e.width / 2 + e.sidewalk + 1.5;
+      for (let i = 0; i + 1 < e.pts.length; i++) {
+        const a = e.pts[i], b = e.pts[i + 1];
+        if (Math.min(a[0], b[0]) - r > x || Math.max(a[0], b[0]) + r < x || Math.min(a[1], b[1]) - r > z || Math.max(a[1], b[1]) + r < z) continue;
+        if (distToSegment(x, z, a[0], a[1], b[0], b[1]).d < r) return e;
+      }
+    }
+    return null;
+  };
+  for (const [a, b] of sides) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const n = Math.ceil(len / 8), ux = (b[0] - a[0]) / len, uz = (b[1] - a[1]) / len;
+    const rot = Math.abs(uz) > 0.5 ? Math.PI / 2 : 0;
+    for (let k = 0; k < n; k++) {
+      const s0 = (k * len) / n, s1 = ((k + 1) * len) / n;
+      const pts: Vec2[] = [0, 0.5, 1].map((t): Vec2 => [a[0] + ux * (s0 + (s1 - s0) * t), a[1] + uz * (s0 + (s1 - s0) * t)]);
+      if (pts.some((p) => map.groundAt(p[0], p[1]) === Tile.WATER || map.groundAt(p[0], p[1]) === Tile.SWAMP)) continue;
+      const road = pts.map((p) => onRoad(p[0], p[1])).find((e) => e);
+      if (road) { if (road.name === 'Airport Road') { gate.push(pts[1]); gateRot = rot; } continue; }
+      const m = pts[1];
+      // rot 0: Breite entlang x; rot π/2: Breite entlang z (lokale x-Achse = (0, -1))
+      map.buildings.push({ x: m[0], z: m[1], w: s1 - s0, d: 2, h: height, rot, color: 0x9aa3ab, style: BuildingStyle.Airport, tag: 'fence' });
+    }
+  }
+  // Schranke dort, wo die Airport Road den Zaun schneidet (Breite = Fahrbahn + Gehwege)
+  const road = map.edges.find((e) => e.name === 'Airport Road' && gate.length > 0 && e.pts.some((p, i) => i > 0 && (p[1] - z0) * (e.pts[i - 1][1] - z0) <= 0));
+  if (road) {
+    for (let i = 1; i < road.pts.length; i++) {
+      const p = road.pts[i - 1], q = road.pts[i];
+      if ((p[1] - z0) * (q[1] - z0) > 0) continue;
+      const t = (z0 - p[1]) / (q[1] - p[1] || 1);
+      map.airportGate = { x: p[0] + (q[0] - p[0]) * t, z: z0, rot: gateRot, w: road.width + road.sidewalk * 2 };
+      break;
+    }
+  }
 }

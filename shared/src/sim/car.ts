@@ -15,6 +15,7 @@ import { isWet, obstaclesNear, rampAt, type Obstacle } from '../world/features';
 import { Tile } from '../world/tiles';
 import { boxesNear, exactCell, type Box } from '../world/collision';
 import type { WorldMap } from '../world/WorldMap';
+import { packFly, unpackFly, type FlyState } from './flystate';
 import { enginePower, steerPull, type CarDamage } from './damage';
 import { ASSISTS, derive, Drive, GRAVITY, handlingVersion, surfaceGrip, torqueCurve, type Derived, type HandlingProfile } from './handling';
 
@@ -62,6 +63,8 @@ export interface CarState {
   spin: number[];
   /** Kräfte für das Debug-Overlay (Welt, N): je Rad [Fx, Fy(Feder), Fz] … */
   dbg: number[];
+  /** Nur Luftfahrzeuge: Flugzustand (aircraft.ts). */
+  fly?: FlyState;
 }
 
 export function createCar(): CarState {
@@ -904,12 +907,14 @@ export function packCar(c: CarState): number[] {
     r4(c.vx), r4(c.vy), r4(c.vz), r4(c.wx), r4(c.wy), r4(c.wz),
     r4(c.steer), Math.round(c.rpm), c.gear, r4(c.shift), r4(c.t), r4(c.air), r4(c.flip), r4(c.nitro),
     r4(c.comp[0]), r4(c.comp[1]), r4(c.comp[2]), r4(c.comp[3]), r4(c.sleep),
+    ...(c.fly ? packFly(c.fly) : []),
   ];
 }
 export function unpackCar(a: number[], c: CarState) {
   [c.x, c.y, c.z, c.qx, c.qy, c.qz, c.qw, c.vx, c.vy, c.vz, c.wx, c.wy, c.wz, c.steer, c.rpm, c.gear, c.shift, c.t, c.air, c.flip, c.nitro] = a;
   for (let i = 0; i < 4; i++) c.comp[i] = a[21 + i];
   c.sleep = a[25] ?? 0;
+  if (c.fly && a.length > 26) unpackFly(a, 26, c.fly);
   syncDerived(c);
 }
 export function copyCar(src: CarState, dst: CarState) {

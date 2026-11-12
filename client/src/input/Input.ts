@@ -77,6 +77,9 @@ export class Input {
     if (this.down('ShiftLeft', 'ShiftRight')) buttons |= Btn.SPRINT;
     if (this.down('Space')) buttons |= Btn.BRAKE;
     if (this.down('KeyH')) buttons |= Btn.HORN;
+    // Helikopter: seitwärts (Q links, R rechts)
+    if (this.down('KeyQ')) buttons |= Btn.STRAFE_L;
+    if (this.down('KeyR')) buttons |= Btn.STRAFE_R;
 
     const pad = navigator.getGamepads?.()[0];
     if (pad) {
@@ -91,6 +94,13 @@ export class Input {
       if (pad.buttons[1]?.pressed) buttons |= Btn.SPRINT; // B
       if (pad.buttons[2]?.pressed) buttons |= Btn.BRAKE; // X
       if (pad.buttons[3]?.pressed) buttons |= Btn.HORN; // Y
+      if (inVehicle) {
+        // Luftfahrzeuge: RB = steigen, LB = sinken, rechter Stick seitwärts (Helikopter)
+        if (pad.buttons[5]?.pressed) buttons |= Btn.SPRINT;
+        if (pad.buttons[4]?.pressed) buttons |= Btn.BRAKE;
+        const rx = pad.axes[2] ?? 0;
+        if (rx < -0.5) buttons |= Btn.STRAFE_L; else if (rx > 0.5) buttons |= Btn.STRAFE_R;
+      }
       const useDown = !!pad.buttons[0]?.pressed; // A
       if (useDown && !this.padUseWasDown) this.usePressed = true;
       this.padUseWasDown = useDown;

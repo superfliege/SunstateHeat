@@ -15,7 +15,8 @@
     "textures": "tsx scripts/process-textures.ts",
     "audio": "tsx scripts/process-audio.ts",
     "test": "tsx scripts/validate-content.ts",
-    "story-test": "tsx scripts/story-smoke.ts"
+    "story-test": "tsx scripts/story-smoke.ts",
+    "air-test": "tsx scripts/air-smoke.ts && tsx scripts/air-room-smoke.ts"
   },
   "dependencies": {
     "three": "0.170.0",

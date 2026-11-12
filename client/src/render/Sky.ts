@@ -18,6 +18,8 @@ export class Sky {
   readonly sun = new THREE.DirectionalLight(0xffffff, 1);
   readonly ambient = new THREE.HemisphereLight(0xffffff, 0x404060, 1);
   readonly fog = new THREE.Fog(0x8ff2e0, 140, 420);
+  /** Sichtweite-Faktor (Luftfahrzeuge in großer Höhe sehen weiter) */
+  fogScale = 1;
   readonly horizon = new THREE.Color();
   readonly mid = new THREE.Color();
   readonly top = new THREE.Color();
@@ -127,8 +129,8 @@ export class Sky {
     // Dunst: Horizontfarbe + Zonenfarbe; Morgennebel (Gator Flats) zwischen ca. 5 und 9 Uhr
     this.fog.color.copy(this.horizon).lerp(ca.setHex(m.fog), m.fogTint * (1 - this.night * 0.6));
     const morning = Math.max(0, 1 - Math.abs(day - 0.29) / 0.07) * m.morningFog;
-    this.fog.near = 140 * m.fogRange * (1 - morning * 0.85);
-    this.fog.far = 420 * m.fogRange * (1 - morning * 0.6);
+    this.fog.near = 140 * m.fogRange * (1 - morning * 0.85) * this.fogScale;
+    this.fog.far = 420 * m.fogRange * (1 - morning * 0.6) * this.fogScale;
     if (morning > 0.01) this.fog.color.lerp(ca.setHex(0xe8eee0), morning * 0.7);
 
     // Grobe Gesamthelligkeit für unbeleuchtete Materialien

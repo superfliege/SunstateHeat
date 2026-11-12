@@ -9,7 +9,7 @@
 // bekommt den Impuls – die anderen bewegt der Server). Effekte werden sofort ausgelöst.
 import * as THREE from 'three';
 import { r2 } from '../../../shared/src/math';
-import type { InputCmd, SnapshotMsg } from '../../../shared/src/protocol';
+import { Btn, type InputCmd, type SnapshotMsg } from '../../../shared/src/protocol';
 import { clearStepOut, collideCars, newStepOut, unpackCar, type CarCollision, type CarState, type Impact, type StepOut } from '../../../shared/src/sim/car';
 import type { CarDamage } from '../../../shared/src/sim/damage';
 import type { HandlingProfile } from '../../../shared/src/sim/handling';
@@ -18,7 +18,7 @@ import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, type PropHit } from '../../../shared/src/sim/props';
 import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent, type StuntTracker } from '../../../shared/src/sim/stunts';
 import { createSimVehicle, stepSimVehicle, type SimVehicle } from '../../../shared/src/sim/vehicle';
-import { isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
+import { isAircraft, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 
 const MAX_PENDING = 240;
@@ -111,6 +111,12 @@ export class Predictor {
     if (!this.inVehicle || !sim) { stepPawn(this.map, this.pawn, ax, ay, buttons, dt, undefined, this.footBodies(), true); return; }
     const out = this.out;
     clearStepOut(out);
+    if (isAircraft(sim.kind)) {
+      // Luftfahrzeug: Pilot sitzt drin (wie auf dem Server), keine Props/Stunts
+      stepSimVehicle(this.map, sim, ax, ay, (buttons & ~Btn.PILOT) | Btn.PILOT, dt, out);
+      if (!replay && out.impact.dv > 0) this.hooks.onImpact(out.impact, out.scrape);
+      return;
+    }
     stepSimVehicle(this.map, sim, ax, ay, buttons, dt, out);
     const water = isWaterVehicle(sim.kind);
     if (!water) {

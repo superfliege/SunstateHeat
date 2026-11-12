@@ -13,7 +13,7 @@ import { Tile } from './tiles';
 import { BuildingStyle, type WorldMap } from './WorldMap';
 
 /** Gedrehtes Rechteck: Mitte, halbe Ausdehnung, lokale x-Achse = (c, -s), lokale z-Achse = (s, c). */
-export interface Box { x: number; z: number; hw: number; hd: number; c: number; s: number; r: number }
+export interface Box { x: number; z: number; hw: number; hd: number; c: number; s: number; r: number; /** Dachhöhe über Meer (Luftfahrzeuge), fehlt bei Fahrzeugkörpern */ top?: number }
 
 const BUCKET = 16; // m je Rasterfeld der Suchstruktur
 const BN = Math.ceil((GRID_SIZE * CELL) / BUCKET);
@@ -37,7 +37,7 @@ function build(map: WorldMap): Index {
     });
     // Gebäude, das später (Tankstellen-Umbau) aus dem Raster genommen wurde: ignorieren
     if (!cells.length || solid < cells.length * 0.8) continue;
-    const box: Box = { x: b.x, z: b.z, hw: b.w / 2, hd: b.d / 2, c: Math.cos(b.rot), s: Math.sin(b.rot), r: Math.hypot(b.w, b.d) / 2 };
+    const box: Box = { x: b.x, z: b.z, hw: b.w / 2, hd: b.d / 2, c: Math.cos(b.rot), s: Math.sin(b.rot), r: Math.hypot(b.w, b.d) / 2, top: Math.max(0, map.terrainHeight(b.x, b.z)) + b.h };
     const id = boxes.push(box) - 1;
     for (const i of cells) if (map.tiles[i] === Tile.BUILDING && !map.storeTiles.has(i)) exact[i] = 1;
     const x0 = Math.max(0, Math.floor((b.x - box.r) / BUCKET)), x1 = Math.min(BN - 1, Math.floor((b.x + box.r) / BUCKET));

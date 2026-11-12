@@ -36,9 +36,10 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 | Taste | Aktion |
 |---|---|
 | WASD / Pfeiltasten | Laufen bzw. Gas, Bremse/Rückwärts (S) und Lenken; in der Luft: W/S neigen, A/D drehen |
-| Shift | Sprinten, im Auto Nitro (Sport- und Muscle-Cars) |
+| Shift | Sprinten, im Auto Nitro (Sport- und Muscle-Cars); im Luftfahrzeug **Steigen** (Flugzeug: ab Abhebegeschwindigkeit abheben) |
 | E | Ein- und aussteigen (auch NPC-Autos übernehmen); nach 3 s auf dem Dach: aufrichten |
-| Leertaste | Handbremse (blockiert die Hinterräder -> Drift) |
+| Leertaste | Handbremse (blockiert die Hinterräder -> Drift); im Luftfahrzeug **Sinken** bzw. Radbremse am Boden |
+| Q / R | Helikopter: seitwärts links / rechts |
 | H | Hupe |
 | Enter | Chat öffnen und senden (Esc bricht ab) |
 | M | Große Karte |
@@ -47,9 +48,9 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 | F7 | Bildschirmwackeln an/aus |
 | F8 | Grafikqualität: hoch / mittel (ohne Echtzeitschatten) / niedrig (ohne Schatten, Umrisslinien, Bloom) |
 | F9 | Retro-Modus: Render-Scale 0,6 mit harter Pixel-Hochskalierung (auch per `?retro=1`) |
-| Gamepad | Linker Stick, RT/LT = Gas/Rückwärts, A = Einsteigen, B = Sprint/Nitro, X = Handbremse, Y = Hupe; Vibration nach Schlupf und Aufprall |
+| Gamepad | Linker Stick, RT/LT = Gas/Rückwärts, A = Einsteigen, B = Sprint/Nitro, X = Handbremse, Y = Hupe; Vibration nach Schlupf und Aufprall; Luftfahrzeuge: RB/LB = Steigen/Sinken, rechter Stick = seitwärts |
 
-**Dev-Chatbefehle** (nur `npm run dev`): `/test` (ins Testgelände), `/laden <sunmart|gas|ammo|paint>` (reihum vor die Läden), `/auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad>`, `/rennen <1-3>` (zum Renntelefon), `/taxi` (zum Catch-the-Taxi-Telefon), `/reparieren`, `/feuer`, `/zeit <0-24>`, `/pop <morgen|mittag|nachmittag|abend|nacht|auto>` (Population Table erzwingen), `/wetter <klar|regen|hitze>`, `/ort <x> <z>`, `/tp <viertel>`, `/fahndung <0-3>`.
+**Dev-Chatbefehle** (nur `npm run dev`): `/test` (ins Testgelände), `/laden <sunmart|gas|ammo|paint>` (reihum vor die Läden), `/auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|motorrad>`, `/rennen <1-3>` (zum Renntelefon), `/taxi` (zum Catch-the-Taxi-Telefon), `/reparieren`, `/feuer`, `/zeit <0-24>`, `/pop <morgen|mittag|nachmittag|abend|nacht|auto>` (Population Table erzwingen), `/wetter <klar|regen|hitze>`, `/ort <x> <z>`, `/tp <viertel|flughafen>`, `/fahndung <0-4>`, `/flug <sunbird|marlin|kolibri|pelikan>` (Luftfahrzeug neben dir, du sitzt am Steuer), `/tanken`, `/flotte` (Flughafen-Flotte zurücksetzen), `/hoehe` (Höhe, Stufe, Tempo, Tank).
 
 **NPC-Lasttest:** `npx tsx scripts/npc-bench.ts [Sekunden] [morning|noon|afternoon|evening|night]` – 16 Spieler im Ocean Strip, misst Tick-Zeit, Bandbreite und zählt Szenarien/Ausgänge/Reaktionen/Barks (`PROF=1` zeigt die langsamsten Aufrufe).
 
@@ -237,3 +238,34 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
 - **Mini-Lebenszyklus** (`shared/src/npc/intents.ts`, `server/src/sim/NpcBrain.ts`): Absichtsketten aus 2–4 Schritten je Archetyp/Tageszeit, Bedürfnisse (Hunger, Langeweile, Müdigkeit, Ziel) als Utility, Wege über das Gehweg-Netz, Abgang durch Türen, zum Bus oder im geparkten Auto (das dann losfährt und außer Sicht zurückparkt).
 - **Wahrnehmung & Reaktionen** (`shared/src/npc/reactions.ts`, `server/src/sim/Perception.ts`): Ereignisse mit Radius/Stärke (Hupe, Unfall, Schuss, Explosion, Schlägerei, Sirene, Sprint, Anrempeln, Auto auf dem Gehweg, Autodiebstahl); Reaktionen nach Mut: hinschauen, ausweichen, erschrecken, schimpfen, filmen, Polizei rufen (Zeugen-Meldung hängt am NPC – wird er vorher ausgeknockt, kommt sie nicht an), flüchten, Gruppenpanik, ducken, eingreifen; bei Fahndung zeigen Passanten auf den Spieler. Kurzzeitgedächtnis 60 s. Blickkontakt rechnet der Client.
 - **Barks** (`shared/src/npc/barks.ts`): satirische Sprüche je Situation und Archetyp als DS-Sprechblasen; Abklingzeit pro NPC, max. 3 gleichzeitig je 30 m, Client zeigt höchstens 4.
+
+### Flughafen & Luftfahrzeuge
+- **Port Coralia International** (`shared/src/world/airport.ts`, Bahnen in `palmara.ts`): Nordbahn 09L/27R (245 m) und
+  Südbahn 09R/27L (260 m) mit Mittellinie, Schwellen, Bahnnummern, Rand-/Schwellen-/Anflugbefeuerung (nachts leuchtend),
+  Rollwege A1–A3, B1–B3 und W (gelbe Markierungen, Haltelinien, blaue Randfeuer), Vorfeld mit Parkpositionen P1–P4,
+  Terminal (Glasfassade, Neon-Schriftzug, Palmen, warmes Licht), Tower mit Drehfeuer, zwei Hangars (Hangar 1 offen,
+  Hangar 2 mit Dach-Helipad), Feuerwache, Tankstelle für Luftfahrzeuge, Helipad am Terminal, Zaun mit Schranke.
+  Die Airport Road führt östlich um die Nordbahn zum Terminal-Parkplatz – NPC-Verkehr fährt nicht über die Bahnen
+  (Autos dürfen aber drauf). Optik: `client/src/render/AirportBuilder.ts` (statisch), `AirportView.ts` (Schranke,
+  Gepäckwagen, Deko-Zubringer, der alle ~5,5 min landet, parkt und startet – berechnet aus der Serverzeit).
+- **Bahnwarnung:** Wer zu Fuß oder im Auto auf einer Bahn steht, während dort ein Flugzeug startet/landet, bekommt einen Hinweis.
+- **Luftfahrzeuge** (`shared/src/sim/aircraft.json` – alle Balancing-Werte; Physik `shared/src/sim/aircraft.ts`):
+  **Sunbird** (Propeller, 2 Sitze, Vorfeld P1), **Marlin** (Jet, 6 Sitze, nur von Landebahnen, Hangar 1),
+  **Kolibri** (Helikopter, 2 Sitze, Terminal-Helipad), **Pelikan** (Transport-Helikopter, 6 Sitze, Hangar-2-Dach,
+  Lasthaken vorbereitet). Höhenstufen Boden / Tief (Gebäude höher als die Flughöhe sind Hindernisse, Rotorschlag
+  = Schaden) / Hoch (ab 95 m, keine Gebäudekollision); Luftfahrzeuge kollidieren nur auf gleicher Stufe.
+  Flugzeuge: Mindestgeschwindigkeit zum Abheben (Startstrecke in der Config), Strömungsabriss, Landung zu steil/zu
+  schnell = Schaden oder Absturz, Wasser = Absturz. Helikopter: Rotor läuft hoch, Schweben, Drehen auf der Stelle,
+  seitwärts, Landung auf Dächern, Abwind (Staub/Gras/Gischt). Treibstoff (abschaltbar, Tankstelle am Vorfeld kostet Geld).
+  Mitfahrer: E an einem Luftfahrzeug mit Pilot (Sitzplätze laut Config). Aussteigen nur am Boden bzw. knapp darüber.
+  Rangsperre (abschaltbar): Sunbird/Kolibri ab „Fahrer“, Marlin/Pelikan ab „Unternehmer“.
+  Respawn nach Zerstörung (90 s) oder weit weg abgestellt (240 s). Netz: Luftfahrzeuge sind bis 450 m sichtbar,
+  jenseits der normalen Sichtweite seltener aktualisiert. Polizeihubschrauber ab Fahndungsstufe 4.
+- **Testen:** `npm run air-test` (Flugphysik + Server ohne Browser), `/tp flughafen`, `/flug kolibri`,
+  Render-Vorschau `preview.html?x=1040&z=1240&air=1` (alle Modelle, `&alt=40` in der Luft, `&deco=60` Deko-Flugzeug).
+- **Platzhalter / benötigte Assets:** Modelle sind aus Grundformen gebaut (`client/src/render/AircraftModel.ts`).
+  Gebraucht werden: glTF-Modelle Sunbird, Marlin, Kolibri, Pelikan, Polizeihubschrauber, Zubringer (getrennte
+  Rotor-/Propeller-Teile); Sounds als Loops: Rotor-Chop leicht und schwer (Kolibri/Pelikan), Propellermotor (Sunbird),
+  Jet-Triebwerk mit Anlassen/Leerlauf/Vollschub (Marlin), Rotor-Hochlauf und -Auslauf, Strömungsabriss-Warnton,
+  Fahrwerk-Aufsetzen (weich/hart), Reifenquietschen bei der Landung, Absturz-Explosion groß, Tank-Pumpe,
+  Funk-/Tower-Ansagen (optional). Bis dahin nutzen Luftfahrzeuge die vorhandenen Motor-Sets (Airboat-Propeller, Lkw, Sport).

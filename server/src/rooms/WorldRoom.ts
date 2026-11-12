@@ -22,7 +22,11 @@ import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, createPropBody, PROP_RESPAWN, PROP_RESPAWN_RANGE, stepPropBody, type PropBody, type PropHit } from '../../../shared/src/sim/props';
 import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent } from '../../../shared/src/sim/stunts';
 import { createSimVehicle, defaultVariant, stepSimVehicle } from '../../../shared/src/sim/vehicle';
-import { VehicleKind, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
+import { VehicleKind, isAircraft, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
+import { AIR_LEVEL_NAMES, AIR_SETTINGS, AIRCRAFT, aircraftDef, airLevel, canExitAircraft, sameAirLevel } from '../../../shared/src/sim/aircraft';
+import { AIR_FUEL, AIRPORT_NAME } from '../../../shared/src/world/airport';
+import { AirFleet } from '../sim/AirFleet';
+import { PoliceHeli } from '../sim/PoliceHeli';
 import { centroid } from '../../../shared/src/world/geometry';
 import { generateProps, TRACK_SPAWN } from '../../../shared/src/world/features';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
@@ -154,6 +158,25 @@ export class WorldRoom {
       });
     }
     this.peds = new Pedestrians(map, () => this.allocId());
+    this.air = new AirFleet({
+      map, vehicles: this.vehicles, players: this.players,
+      allocId: () => this.allocId(),
+      notice: (p, text, kind) => this.noticeTo(p, text, kind),
+      addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
+      positionOf: (p) => this.positionOf(p),
+      clearOccupants: (v) => this.clearOccupants(v),
+      resend: (v) => { for (const p of this.players.values()) { p.view.dmg.delete(v.id); p.view.veh.delete(v.id); } this.emit(v.sim.car.x, v.sim.car.z, ['repair', v.id], v.id); },
+      peds: this.peds,
+    });
+    this.copter = new PoliceHeli({
+      map, players: this.players, vehicles: this.vehicles,
+      allocId: () => this.allocId(),
+      positionOf: (p) => this.positionOf(p),
+      hurtPlayer: (p, dmg) => this.hurtPlayer(p, dmg),
+      emit: (x, z, ev) => this.emit(x, z, ev as GameEvent),
+      notice: (p, text, kind) => this.noticeTo(p, text, kind),
+      step: (v, ax, ay, buttons) => this.physicsStep(v, ax, ay, buttons, null),
+    });
     const playerPos = () => [...this.players.values()].map((p) => this.positionOf(p));
     this.brain = new NpcBrain({
       map, peds: this.peds, vehicles: this.vehicles,
@@ -177,7 +200,7 @@ export class WorldRoom {
       allocId: () => this.allocId(),
       playerPositions: () => [...this.players.values()].map((p) => this.positionOf(p)),
       pawnPositions: () => [
-        ...[...this.players.values()].filter((p) => p.vehicleId < 0).map((p) => p.pawn),
+        ...[...this.players.values()].filter((p) => p.vehicleId < 0 && p.ride < 0).map((p) => p.pawn),
         ...this.peds.peds.values(),
       ],
       stepPhysics: (v, ax, ay, buttons) => this.physicsStep(v, ax, ay, buttons, null),
@@ -422,9 +445,38 @@ export class WorldRoom {
   get isEmpty() { return this.players.size === 0; }
 
   allocId() { return this.nextId++; }
+  /** Luftfahrzeug-Flotte (Flughafen) */
+  private air!: AirFleet;
+  /** Polizeihubschrauber (hohe Fahndungsstufe) */
+  private copter!: PoliceHeli;
+  /** Zähler für seltenere Updates entfernter Luftfahrzeuge */
+  private snapNo = 0;
+
+  /** Spieler steigt als Mitfahrer aus (Spot = Ausstiegsort, sonst neben dem Fahrzeug). */
+  private leaveRide(p: ServerPlayer, power = 0) {
+    const v = p.ride >= 0 ? this.vehicles.get(p.ride) : undefined;
+    p.ride = -1;
+    if (!v) return;
+    v.riders = (v.riders ?? []).filter((id) => id !== p.id);
+    const c = v.sim.car;
+    const spot = findFootSpot(this.map, c.x + Math.cos(c.a) * 3, c.z - Math.sin(c.a) * 3, 9) ?? { x: c.x, z: c.z };
+    p.pawn = newPawn(spot.x, spot.z, c.a);
+    if (power > 0) knockPawn(p.pawn, c.vx * 0.5 * power, c.vz * 0.5 * power, 4, 1.9);
+  }
+
+  /** Pilot und Mitfahrer verlassen das Luftfahrzeug (Reset/Respawn der Flotte). */
+  private clearOccupants(v: ServerVehicle) {
+    for (const id of [...(v.riders ?? [])]) { const p = this.players.get(id); if (p) this.leaveRide(p); }
+    v.riders = [];
+    if (v.driver >= 0) {
+      const p = this.players.get(v.driver);
+      if (p) { p.vehicleId = -1; p.pawn = newPawn(v.sim.car.x + 3, v.sim.car.z, v.sim.car.a); }
+    }
+    v.driver = DRIVER_NONE; v.buttons = 0;
+  }
 
   positionOf(p: ServerPlayer) {
-    const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
+    const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : p.ride >= 0 ? this.vehicles.get(p.ride) : undefined;
     return v ? { x: v.sim.car.x, z: v.sim.car.z, inVehicle: true } : { x: p.pawn.x, z: p.pawn.z, inVehicle: false };
   }
 
@@ -461,7 +513,7 @@ export class WorldRoom {
     const player: ServerPlayer = {
       id: this.allocId(), name, color, conn,
       pawn: newPawn(start.x, start.z, Math.PI),
-      vehicleId: -1, lastSeq: 0, cmdBudget: CMD_BUDGET_MAX, lastChatAt: 0, profile,
+      vehicleId: -1, ride: -1, airWarnT: 0, lastSeq: 0, cmdBudget: CMD_BUDGET_MAX, lastChatAt: 0, profile,
       view, stunts: newStuntTracker(), repairT: 0, buttons: 0,
       health: profile.health > 0 ? Math.min(profile.health, BALANCE.player.maxHealth) : BALANCE.player.maxHealth,
       armor: Math.min(profile.armor, BALANCE.player.maxArmor),
@@ -492,6 +544,7 @@ export class WorldRoom {
     this.persist(player);
     const v = this.vehicles.get(player.vehicleId);
     if (v) { v.driver = DRIVER_NONE; v.buttons = 0; }
+    if (player.ride >= 0) this.leaveRide(player);
     this.quests.onPlayerLeave(player.id);
     this.races.onPlayerLeave(player.id);
     this.hunt.onPlayerLeave(player.id);
@@ -540,7 +593,7 @@ export class WorldRoom {
     const out = this.bodyTmp;
     let n = 0;
     for (const v of this.nearVehicles(x, z)) {
-      if (isWaterVehicle(v.kind)) continue;
+      if (isWaterVehicle(v.kind) || (isAircraft(v.kind) && airLevel(v.sim.car) > 0)) continue;
       const c = v.sim.car;
       if ((c.x - x) ** 2 + (c.z - z) ** 2 > 12 * 12) continue;
       out[n] = carBody(c.x, c.z, c.a, v.sim.prof.width, v.sim.prof.length, out[n]);
@@ -558,6 +611,7 @@ export class WorldRoom {
       const [seq, ax, ay, buttons] = c;
       if (typeof seq !== 'number' || seq <= p.lastSeq) continue;
       if (!Number.isFinite(ax) || !Number.isFinite(ay) || typeof buttons !== 'number') continue;
+      if (p.ride >= 0) { p.lastSeq = seq; continue; } // Mitfahrer steuern nicht
       if (p.cmdBudget < 1) break; // zu viele Eingaben -> verwerfen
       p.cmdBudget -= 1;
       const cx = clamp(ax, -1, 1), cy = clamp(ay, -1, 1);
@@ -569,7 +623,7 @@ export class WorldRoom {
       if (v && this.hunt.nitro(p.id)) v.sim.car.nitro = 1; // Catch the Taxi: unendlich Nitro
       if (v) {
         v.buttons = buttons;
-        this.physicsStep(v, cx, cy, buttons, p);
+        this.physicsStep(v, cx, cy, isAircraft(v.kind) ? (buttons & ~Btn.PILOT) | Btn.PILOT : buttons & ~Btn.PILOT, p);
       } else stepPawn(this.map, p.pawn, cx, cy, buttons, SIM_DT, undefined, bodies, true);
       p.lastSeq = seq;
     }
@@ -578,7 +632,18 @@ export class WorldRoom {
   /** E-Taste: aussteigen, oder ins nächste freie Fahrzeug einsteigen. */
   private toggleVehicle(p: ServerPlayer) {
     if (p.downT > 0) return;
+    // Mitfahrer: aussteigen (nur am Boden bzw. Helikopter knapp darüber)
+    if (p.ride >= 0) {
+      const rv = this.vehicles.get(p.ride);
+      if (rv && !canExitAircraft(this.map, rv.sim)) { this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return; }
+      this.leaveRide(p);
+      return;
+    }
     const current = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
+    if (current && isAircraft(current.kind) && !canExitAircraft(this.map, current.sim)) {
+      this.noticeTo(p, aircraftDef(current.sim.variant).type === 'heli' ? 'Aussteigen nur knapp über dem Boden – erst runter!' : 'Aussteigen erst, wenn das Flugzeug am Boden steht.', 'bad');
+      return;
+    }
     if (current && (this.races.frozen(p.id) || this.hunt.locked(p.id) || this.mg.locked(p.id))) return; // Startaufstellung / Catch the Taxi / Minispiel: sitzen bleiben
     if (current) {
       const s = current.sim.car;
@@ -610,15 +675,39 @@ export class WorldRoom {
     if (this.mg.locked(p.id)) return; // Minispiel zu Fuß: kein Einsteigen
 
     // Einsteigen: nächstes Fahrzeug, das nicht von einem anderen Spieler gefahren wird
+    // (Luftfahrzeuge mit Pilot: als Mitfahrer, solange Plätze frei sind)
     let best: ServerVehicle | null = null;
     let bestD = Infinity;
     for (const v of this.vehicles.values()) {
-      if (v.driver >= 0 || v.driver === DRIVER_COP || v.sim.dmg.wreck || !this.races.mayEnter(p.id, v) || !this.hunt.mayEnter(p.id, v) || !this.mg.mayEnter(p.id, v)) continue;
-      const reach = ENTER_RADIUS + v.sim.prof.length / 2.4;
+      const air = isAircraft(v.kind);
+      if (air && v.copHeli !== undefined) continue;
+      if ((v.driver >= 0 && !(air && this.air.freeSeats(v) > 0)) || v.driver === DRIVER_COP || v.sim.dmg.wreck || !this.races.mayEnter(p.id, v) || !this.hunt.mayEnter(p.id, v) || !this.mg.mayEnter(p.id, v)) continue;
+      if (air && (v.sim.car.fly?.ground !== 1 && !canExitAircraft(this.map, v.sim))) continue; // fliegt
+      const reach = ENTER_RADIUS + (air ? aircraftDef(v.sim.variant).radius * 0.8 : v.sim.prof.length / 2.4);
       const d = dist2(v.sim.car.x, v.sim.car.z, p.pawn.x, p.pawn.z);
       if (d < reach * reach && d < bestD) { best = v; bestD = d; }
     }
     if (!best) return;
+    if (isAircraft(best.kind)) {
+      const d = aircraftDef(best.sim.variant);
+      const denied = best.driver < 0 ? this.air.pilotDenied(p, best) : 'busy';
+      if (denied) {
+        // Pilotensitz belegt oder Rang zu niedrig: als Mitfahrer, wenn ein Pilot drin sitzt und Platz ist
+        if (best.driver < 0) { this.noticeTo(p, denied, 'bad'); return; }
+        if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, denied === 'busy' ? `${d.name}: Alle ${d.seats} Plätze belegt.` : denied, 'bad'); return; }
+        best.riders = [...(best.riders ?? []), p.id];
+        p.ride = best.id;
+        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). E = aussteigen nach der Landung.`, 'info');
+        return;
+      }
+      best.driver = p.id; best.idleTime = 0; best.sim.car.sleep = 0;
+      p.vehicleId = best.id;
+      p.stunts = newStuntTracker();
+      this.noticeTo(p, d.type === 'heli'
+        ? `${d.name}: Shift = steigen, Leertaste = sinken, A/D = drehen, Q/R = seitwärts. Rotor läuft hoch …`
+        : `${d.name}: W = Schub, Shift = steigen (ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h abheben), Leertaste = sinken/bremsen.${d.runwayOnly ? ' Startet nur von Landebahnen.' : ''}`, 'info');
+      return;
+    }
     if (best.driver === DRIVER_NPC) {
       // Verkehrsauto übernehmen: Fahrer springt raus und rennt weg
       this.traffic.release(best.id);
@@ -685,6 +774,33 @@ export class WorldRoom {
       p.vehicleId = id;
       p.stunts = newStuntTracker();
       say(`${sim.prof.name} bereitgestellt.`);
+    } else if (cmd === 'flug' || cmd === 'fly') {
+      // Luftfahrzeug neben dem Spieler bereitstellen und einsteigen: /flug sunbird|marlin|kolibri|pelikan
+      const id = arg ?? '';
+      const d = AIRCRAFT.find((q) => q.id === id || q.name.toLowerCase() === id);
+      if (!d || d.police) { say('/flug <' + AIRCRAFT.filter((q) => !q.police).map((q) => q.id).join('|') + '>'); return; }
+      const pos = this.positionOf(p);
+      if (current) { current.driver = DRIVER_NONE; current.buttons = 0; p.vehicleId = -1; }
+      if (p.ride >= 0) this.leaveRide(p);
+      const a = current ? current.sim.car.a : p.pawn.a;
+      const off = d.radius + 4;
+      const v = this.air.spawnNear(d.id, pos.x + Math.sin(a) * off, pos.z + Math.cos(a) * off, a);
+      if (!v) return;
+      v.driver = p.id; p.vehicleId = v.id; p.stunts = newStuntTracker();
+      say(`${d.name} bereitgestellt (${d.type === 'heli' ? 'Helikopter' : 'Flugzeug'}, ${d.seats} Sitze). ${d.type === 'heli' ? 'Shift = steigen, Leertaste = sinken, Q/R = seitwärts.' : 'W = Schub, ab ' + Math.round((d.takeoffSpeed ?? 20) * 3.6) + ' km/h mit Shift abheben.'}`);
+    } else if (cmd === 'tanken' || cmd === 'fuel') {
+      const f = current?.sim.car.fly;
+      if (!f) { say('Nur in einem Luftfahrzeug.'); return; }
+      f.fuel = 1; say('Vollgetankt (Dev).');
+    } else if (cmd === 'flotte' || cmd === 'fleet') {
+      // alle Luftfahrzeuge der Flotte zurück auf ihre Startplätze
+      for (const v of this.vehicles.values()) if (v.air) this.air.reset(v);
+      say(`Flotte zurückgesetzt. Tankstelle: ${Math.round(AIR_FUEL.x)}, ${Math.round(AIR_FUEL.z)}.`);
+    } else if (cmd === 'hoehe' || cmd === 'alt') {
+      const v = current ?? (p.ride >= 0 ? this.vehicles.get(p.ride) : undefined);
+      const c = v?.sim.car;
+      if (!c?.fly) { say('Nur in einem Luftfahrzeug.'); return; }
+      say(`Höhe ${c.y.toFixed(1)} m · Stufe ${AIR_LEVEL_NAMES[airLevel(c)]} · ${Math.round(Math.hypot(c.vx, c.vz) * 3.6)} km/h · Tank ${Math.round(c.fly.fuel * 100)} % · Rotor ${Math.round(c.fly.rotor * 100)} %`);
     } else if (cmd === 'waffe' || cmd === 'weapon') {
       const ids = arg === 'alle' || arg === 'all' ? (Object.keys(WEAPONS) as WeaponId[]) : arg && arg in WEAPONS ? [arg as WeaponId] : [];
       if (!ids.length) say('/waffe <' + Object.keys(WEAPONS).join('|') + '|alle>');
@@ -732,8 +848,14 @@ export class WorldRoom {
     } else if (cmd === 'tp') {
       // Zu einem Viertel teleportieren: /tp havana (Teil des Namens), ohne Argument = Liste
       const rest = text.slice(1).toLowerCase().split(/\s+/).slice(1).join(' ');
+      if (rest === 'flughafen' || rest === 'airport') {
+        // Flughafen: auf das Vorfeld (zu Fuß; im Fahrzeug aussteigen)
+        this.teleport(p, 1060, 1242);
+        say(`${AIRPORT_NAME}: Vorfeld. Sunbird P1, Kolibri am Terminal-Helipad, Marlin im Hangar 1, Pelikan auf Hangar 2.`);
+        return;
+      }
       const d = rest ? this.map.districts.find((dd) => dd.name.toLowerCase().includes(rest)) : undefined;
-      if (!d) { say('/tp <' + this.map.districts.map((dd) => dd.name).join('|') + '>'); return; }
+      if (!d) { say('/tp <flughafen|' + this.map.districts.map((dd) => dd.name).join('|') + '>'); return; }
       const [cx, cz] = centroid(d.poly);
       // nächster Punkt auf einer Straße, damit man nicht in einem Gebäude landet
       let bx = cx, bz = cz, bd = Infinity;
@@ -778,7 +900,7 @@ export class WorldRoom {
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel>');
+      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
     }
   }
 
@@ -819,6 +941,7 @@ export class WorldRoom {
     clearStepOut(out);
     const car = v.sim.car;
     stepSimVehicle(this.map, v.sim, ax, ay, buttons, SIM_DT, out);
+    if (isAircraft(v.kind)) { this.aircraftStep(v, out.impact.dv > 0 ? out.impact : null); return; }
     const water = isWaterVehicle(v.kind);
     if (!water) {
       // Props
@@ -840,6 +963,7 @@ export class WorldRoom {
     // Fahrzeuge
     for (const o of this.nearVehicles(car.x, car.z)) {
       if (o === v || isWaterVehicle(o.kind) !== water) continue;
+      if (isAircraft(o.kind) && airLevel(o.sim.car) > 0) continue; // fliegt drüber
       if (v.kinematic && o.kinematic) continue; // kinematischer Verkehr regelt sich selbst
       if (!collideCars(car, v.sim.prof, o.sim.car, o.sim.prof, true, this.col)) continue;
       this.carCrash(v, o, this.col);
@@ -858,6 +982,45 @@ export class WorldRoom {
       }
       checkNearMiss(driver.stunts, car, v.sim.prof.width / 2, others, SIM_DT, this.bonus);
       for (const b of this.bonus) this.payBonus(driver, b);
+    }
+  }
+
+  /** Nach dem Flug-Schritt: Kollision mit anderen Luftfahrzeugen (gleiche Höhenstufe) bzw. Bodenfahrzeugen, Aufprall, Absturz. */
+  private aircraftStep(v: ServerVehicle, impact: Impact | null) {
+    const car = v.sim.car, f = car.fly!;
+    const level = airLevel(car);
+    for (const o of this.nearVehicles(car.x, car.z)) {
+      if (o === v || isWaterVehicle(o.kind)) continue;
+      const other = isAircraft(o.kind);
+      if (other ? !sameAirLevel(car, o.sim.car) : level > 0) continue;
+      if (other && level > 0) {
+        // in der Luft: Kreis gegen Kreis (Spannweite/Rotor)
+        const r = aircraftDef(v.sim.variant).radius + aircraftDef(o.sim.variant).radius;
+        const dx = o.sim.car.x - car.x, dz = o.sim.car.z - car.z, d = Math.hypot(dx, dz);
+        if (d > r * 0.8 || d < 1e-3) continue;
+        const rel = Math.hypot(o.sim.car.vx - car.vx, o.sim.car.vz - car.vz);
+        const push = (r * 0.8 - d) / 2, nx = dx / d, nz = dz / d;
+        car.x -= nx * push; car.z -= nz * push; o.sim.car.x += nx * push; o.sim.car.z += nz * push;
+        this.emit(car.x, car.z, ['crash', v.id, r2(car.x + nx * d / 2), r2(car.y + 1), r2(car.z + nz * d / 2), r2(nx), r2(nz), r2(rel), o.id], v.id);
+        this.damageVehicle(v, rel * 22 + 60); this.damageVehicle(o, rel * 22 + 60);
+        continue;
+      }
+      if (!collideCars(car, v.sim.prof, o.sim.car, o.sim.prof, true, this.col)) continue;
+      this.carCrash(v, o, this.col);
+    }
+    if (impact && impact.dv > 2.5) this.worldImpact(v, impact);
+    if (f.crash && !v.sim.dmg.wreck) {
+      // Absturz: Insassen verletzt/ausgeknockt, Explosion
+      this.explode(v);
+      return;
+    }
+    // Hinweise an den Piloten (Strömungsabriss, Bahnpflicht, Tank leer)
+    if (f.warn && v.driver >= 0) {
+      const p = this.players.get(v.driver);
+      if (p && p.airWarnT <= 0) {
+        this.noticeTo(p, f.warn === 1 ? '⚠ Strömungsabriss! Nase runter, Schub geben.' : f.warn === 2 ? 'Zu holprig: Dieses Flugzeug startet nur von einer Landebahn.' : '⚠ Tank leer! Notlandung – Tankstelle am Flughafen-Vorfeld.', 'bad');
+        p.airWarnT = 4;
+      }
     }
   }
 
@@ -919,7 +1082,7 @@ export class WorldRoom {
     const changes = applyImpact(dmg, v.sim.prof, -l[0], l[2], dv);
     for (const ch of changes) this.emit(car.x, car.z, ['part', v.id, ch.part, ch.state], v.id);
     const s = Math.min(1, Math.max(0.05, (dv - ASSISTS.damageThreshold) / 14 / Math.sqrt(v.sim.prof.durability)));
-    if (v.dents.length < DENT_MAX) {
+    if (v.dents.length < DENT_MAX && !isAircraft(v.kind)) {
       const dent = [r2(l[0]), r2(l[1]), r2(l[2]), r2(d[0]), r2(d[1]), r2(d[2]), r3(s)];
       v.dents.push(dent);
       this.emit(car.x, car.z, ['dent', v.id, ...dent], v.id);
@@ -954,6 +1117,7 @@ export class WorldRoom {
     p.downT = BALANCE.player.reviveWindow;
     const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
     if (v) this.eject(p, v, 0.3);
+    if (p.ride >= 0) this.leaveRide(p);
     p.pawn.rt = Math.max(p.pawn.rt, 1); // liegt am Boden (wird solange gehalten, wie er ausgeknockt ist)
     p.conn.send({ t: 'notice', text: 'Du wurdest ausgeknockt!', kind: 'bad' });
   }
@@ -1090,6 +1254,7 @@ export class WorldRoom {
   private teleport(p: ServerPlayer, x: number, z: number) {
     const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
     if (v) { v.driver = DRIVER_NONE; v.buttons = 0; p.vehicleId = -1; }
+    if (p.ride >= 0) this.leaveRide(p);
     const spot = findFootSpot(this.map, x, z, 8) ?? { x, z };
     p.pawn = newPawn(spot.x, spot.z, Math.PI);
   }
@@ -1137,7 +1302,7 @@ export class WorldRoom {
       if (o.driver >= 0) { const p = this.players.get(o.driver); if (p) this.hurtPlayer(p, 12 * k); }
     }
     for (const p of this.players.values()) {
-      if (p.vehicleId >= 0 || p.downT > 0) continue;
+      if (p.vehicleId >= 0 || p.ride >= 0 || p.downT > 0) continue;
       const dx = p.pawn.x - x, dz = p.pawn.z - z, dist = Math.hypot(dx, dz);
       if (dist >= R) continue;
       const k = 1 - dist / R;
@@ -1532,9 +1697,11 @@ export class WorldRoom {
     this.hitPawns();
     // Fahrer "sitzen" im Fahrzeug: Fußposition mitführen (fürs Aussteigen & die Anzeige)
     for (const p of this.players.values()) {
-      const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
+      const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : p.ride >= 0 ? this.vehicles.get(p.ride) : undefined;
       if (v) { p.pawn.x = v.sim.car.x; p.pawn.z = v.sim.car.z; p.pawn.a = v.sim.car.a; }
+      else if (p.ride >= 0) p.ride = -1;
     }
+    this.air.update(dt);
     this.pop.update(dt);
     this.perception.update(dt);
     if (this.npcDebug.size && (this.npcDebugT -= dt) <= 0) {
@@ -1554,6 +1721,7 @@ export class WorldRoom {
     this.hunt.update(dt);
     this.mg.update(dt);
     this.police.update(dt);
+    this.copter.update(dt, steps, SIM_DT);
     this.updatePullOut(dt);
     this.updateSinking(dt);
     this.quests.update(dt);
@@ -1568,13 +1736,14 @@ export class WorldRoom {
   /** Fahrzeuge gegen Fußgänger/Spieler zu Fuß: schnell = wegschleudern, langsam = wegschieben. */
   private hitPawns() {
     const pawns: { pawn: { x: number; z: number; h: number; rt: number; vx: number; vz: number; vy: number }; ped?: Ped; player?: ServerPlayer }[] = [
-      ...[...this.players.values()].filter((p) => p.vehicleId < 0 && p.downT <= 0).map((p) => ({ pawn: p.pawn, player: p })),
+      ...[...this.players.values()].filter((p) => p.vehicleId < 0 && p.ride < 0 && p.downT <= 0).map((p) => ({ pawn: p.pawn, player: p })),
       ...[...this.peds.peds.values()].map((p) => ({ pawn: p, ped: p })),
     ];
     for (const { pawn, ped, player } of pawns) {
       if (pawn.h > 1.2) continue;
       for (const v of this.nearVehicles(pawn.x, pawn.z)) {
         const c = v.sim.car;
+        if (c.fly && !c.fly.ground) continue; // Luftfahrzeug in der Luft
         const hit = boxCircle(c, v.sim.prof, pawn.x, pawn.z, PAWN_RADIUS);
         if (!hit) continue;
         const speed = Math.hypot(c.vx, c.vz);
@@ -1663,7 +1832,7 @@ export class WorldRoom {
   private separatePawns() {
     type P = { x: number; z: number; rt: number; h: number };
     const items: { p: P; player: boolean }[] = [];
-    for (const pl of this.players.values()) if (pl.vehicleId < 0 && pl.pawn.rt <= 0) items.push({ p: pl.pawn, player: true });
+    for (const pl of this.players.values()) if (pl.vehicleId < 0 && pl.ride < 0 && pl.pawn.rt <= 0) items.push({ p: pl.pawn, player: true });
     // Fußgänger in einer Szene (Bank, Gespräch, Café …) stehen bewusst eng: nicht verschieben
     for (const ped of this.peds.peds.values()) if (ped.rt <= 0 && ped.hp > 0 && !ped.act && !ped.scn) items.push({ p: ped, player: false });
     if (items.length < 2) return;
@@ -1731,6 +1900,20 @@ export class WorldRoom {
     // das Wrack selbst hüpft
     const dv = derive(v.sim.prof);
     applyImpulse(c, dv, c.x + 0.4, c.y - 0.3, c.z + 0.2, 0, v.sim.prof.mass * 6, 0);
+    if (isAircraft(v.kind)) {
+      // Absturz/Explosion eines Luftfahrzeugs: Pilot und Mitfahrer werden herausgeschleudert und ausgeknockt
+      const crashed = c.fly && (c.fly.crash || !c.fly.ground || Math.hypot(c.vx, c.vz) > 6);
+      const occ = [...(v.riders ?? []), ...(v.driver >= 0 ? [v.driver] : [])];
+      for (const id of occ) {
+        const p = this.players.get(id);
+        if (!p) continue;
+        if (p.ride >= 0) this.leaveRide(p, 0.6); else this.eject(p, v, 0.5);
+        if (crashed) { p.invuln = 0; this.hurtPlayer(p, 9999); }
+      }
+      v.riders = [];
+      if (c.fly) c.fly.rotor = 0; // in der Luft: Wrack stürzt ab (stepAircraft)
+      c.vx *= 0.3; c.vz *= 0.3; if (c.fly?.ground) c.vy = 0;
+    }
     if (v.driver >= 0) { const p = this.players.get(v.driver); if (p) this.eject(p, v, 0.5); }
     if (v.driver === DRIVER_NPC) this.npcDriverOut(v, false);
     const R = EXPLOSION_RADIUS;
@@ -1746,7 +1929,7 @@ export class WorldRoom {
       this.hurt(o, oc.x - nx * o.sim.prof.width / 2, oc.y, oc.z - nz * o.sim.prof.width / 2, nx, 0, nz, 12 * k + 4);
     }
     for (const p of this.players.values()) {
-      if (p.vehicleId >= 0) continue;
+      if (p.vehicleId >= 0 || p.ride >= 0) continue;
       const dx = p.pawn.x - c.x, dz = p.pawn.z - c.z, dist = Math.hypot(dx, dz);
       if (dist < R) {
         knockPawn(p.pawn, (dx / (dist || 1)) * 9 * (1 - dist / R), (dz / (dist || 1)) * 9 * (1 - dist / R), 7, 2);
@@ -1791,7 +1974,8 @@ export class WorldRoom {
     const players = [...this.players.values()].map((p) => this.positionOf(p));
     const nobodyNear = (x: number, z: number, r: number) => players.every((p) => dist2(p.x, p.z, x, z) > r * r);
     for (const v of this.vehicles.values()) {
-      if (v.driver !== DRIVER_NONE || v.qrun !== undefined) { v.idleTime = 0; v.orphanT = 0; continue; }
+      if (v.air || v.copHeli !== undefined) continue; // Flotte: AirFleet, Polizeihubschrauber: Police
+      if (v.driver !== DRIVER_NONE || v.qrun !== undefined || (v.riders?.length ?? 0) > 0) { v.idleTime = 0; v.orphanT = 0; continue; }
       const s = v.sim.car;
       // Verwaist (bewegt/beschädigt, ohne Fahrer): nach 3 Minuten weg – auch wenn Spieler in der Gegend sind
       const displaced = !v.home || dist2(s.x, s.z, v.home.x, v.home.z) > 10 * 10 || v.dmgVer > 0;
@@ -1840,7 +2024,9 @@ export class WorldRoom {
     if (c.hb) flags |= VehFlag.HANDBRAKE;
     if (c.boost) flags |= VehFlag.BOOST;
     if (v.buttons & Btn.HORN) flags |= VehFlag.HORN;
-    const [pitch, roll] = c.ground === 15 && v.kinematic ? [0, 0] : pitchRoll(c);
+    if (c.fly && !c.fly.ground) flags |= VehFlag.AIR;
+    if (c.fly?.stall) flags |= VehFlag.STALL;
+    const [pitch, roll] = (c.ground === 15 && v.kinematic) || (c.fly && c.fly.ground && Math.abs(c.fly.bank) < 0.01) ? [0, 0] : pitchRoll(c);
     s = JSON.stringify([v.id, r2(c.x), r2(c.z), r2(c.y), r3(c.a), Math.round(c.vx * 10) / 10, Math.round(c.vz * 10) / 10,
       r2(c.steer), flags, r3(pitch), r3(roll), Math.round(c.vy * 10) / 10, Math.round(c.rpm / 100)]);
     this.tupleCache.set(v.id, s);
@@ -1856,8 +2042,11 @@ export class WorldRoom {
     this.tupleCache.clear();
     this.infoCache.clear();
     if (this.players.size === 0) return;
+    this.snapNo++;
+    const farTick = this.snapNo % Math.max(1, AIR_SETTINGS.farUpdateEvery) === 0;
+    const AIR_R2 = AIR_SETTINGS.airInterest ** 2;
     const players: PlayerTuple[] = [...this.players.values()].map((p) => [
-      p.id, p.name, r2(p.pawn.x), r2(p.pawn.z), r3(p.pawn.a), p.vehicleId, p.color, this.quests.isCarrying(p.id) ? 1 : 0,
+      p.id, p.name, r2(p.pawn.x), r2(p.pawn.z), r3(p.pawn.a), p.vehicleId >= 0 ? p.vehicleId : p.ride, p.color, this.quests.isCarrying(p.id) ? 1 : 0,
       r2(p.pawn.h), p.pawn.rt > 0 ? 1 : 0, p.vehicleId >= 0 || p.downT > 0 ? 0 : Math.max(0, weaponNames.indexOf(p.weapon)),
       p.profile.story?.rank ?? 0,
     ]);
@@ -1884,10 +2073,17 @@ export class WorldRoom {
       const parts: string[] = [];
       // Fahrzeuge
       const v: string[] = [], vi: string[] = [], vg: number[] = [], dmg: string[] = [], dents: string[] = [];
-      for (const veh of this.vehicles.values()) {
+      const seen = (veh: ServerVehicle) => {
         const c = veh.sim.car;
-        if (!near(c.x, c.z) && veh.id !== p.vehicleId) continue;
+        if (near(c.x, c.z) || veh.id === p.vehicleId || veh.id === p.ride) return 2;
+        // Luftfahrzeuge sind weiter sichtbar, jenseits der normalen Sichtweite seltener aktualisiert
+        return isAircraft(veh.kind) && dist2(c.x, c.z, pos.x, pos.z) < AIR_R2 ? 1 : 0;
+      };
+      for (const veh of this.vehicles.values()) {
+        const vis = seen(veh);
+        if (!vis) continue;
         const known = view.veh.has(veh.id);
+        if (vis === 1 && known && !farTick) continue;
         const t = this.vehicleTuple(veh);
         if (view.veh.get(veh.id) !== t) { v.push(t); view.veh.set(veh.id, t); }
         const it = this.infoTuple(veh);
@@ -1900,7 +2096,7 @@ export class WorldRoom {
       }
       for (const id of view.veh.keys()) {
         const veh = this.vehicles.get(id);
-        if (!veh || (!near(veh.sim.car.x, veh.sim.car.z) && veh.id !== p.vehicleId)) {
+        if (!veh || !seen(veh)) {
           vg.push(id); view.veh.delete(id); view.info.delete(id); view.dmg.delete(id);
         }
       }
@@ -1943,7 +2139,7 @@ export class WorldRoom {
       // Eigener Zustand
       const myV = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       const pw = p.pawn;
-      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt)], veh: myV ? packCar(myV.sim.car) : null, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
+      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt)], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
       parts.push(`"me":${JSON.stringify(me)}`);
       p.conn.sendRaw(`{"t":"snap","ack":${p.lastSeq},${common},${parts.join(',')}}`);
     }

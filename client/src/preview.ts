@@ -1,7 +1,8 @@
 // Render-Vorschau ohne Server (nur im Dev-Modus): http://localhost:5173/preview.html
 // Parameter: ?x=..&z=.. (Position, Standard = Spawn), ?day=0.5 (Tageszeit), ?district=Ocean Strip,
 //            ?ragdoll=1 (Passanten werden reihum weggeschleudert – Ragdoll testen),
-//            ?retro=1, ?zoom=1.4 (Kameraabstand-Faktor). Shader-Fehler werden auf der Seite angezeigt.
+//            ?retro=1, ?zoom=1.4 (Kameraabstand-Faktor), ?air=1 (Luftfahrzeug-Vitrine statt Autos, ?alt=30 Flughöhe).
+//            ?deco=<s> (Deko-Flugzeug: Sekunde im Umlauf). Shader-Fehler werden auf der Seite angezeigt.
 import * as THREE from 'three';
 import { MAP_SEED } from '../../shared/src/constants';
 import { centroid } from '../../shared/src/world/geometry';
@@ -21,8 +22,12 @@ import { Sky } from './render/Sky';
 import { WorldView } from './render/WorldView';
 import { PropsView } from './render/PropsView';
 import { FeaturesView } from './render/FeaturesView';
+import { AirportView } from './render/AirportView';
+import { toonVC, vehicleMat } from './render/models';
 import { profileOf } from '../../shared/src/sim/vehicle';
 import { CAR_VARIANTS } from '../../shared/src/sim/handling';
+import { AIRCRAFT } from '../../shared/src/sim/aircraft';
+import { VehicleKind } from '../../shared/src/sim/vehicleDefs';
 import { knockPawn, newPawn, stepPawn } from '../../shared/src/sim/movement';
 
 const log = document.getElementById('log')!;
@@ -75,6 +80,11 @@ async function main() {
   const props = new PropsView(map);
   const features = new FeaturesView(map);
   scene.add(props.group, features.group);
+  const airport = new AirportView(map, vehicleMat, toonVC);
+  scene.add(airport.group);
+  // ?deco=Sekunde im Umlauf des Deko-Flugzeugs (Standard: aktuelle Uhrzeit)
+  const decoT0 = q.get('deco') !== null ? Number(q.get('deco')) * 1000 : null;
+  let simT = 0;
   const dentDemo = [[0.3, 0.1, 2.3, 0, 0, -1, 0.9], [-0.9, 0.2, 0.4, 1, 0, 0, 0.6]];
   let damaged = false;
   const ragdollDemo = q.get('ragdoll') === '1';
@@ -99,7 +109,15 @@ async function main() {
         views.setPed({ id: i, x: x + Math.cos(a) * (4 + i), z: z + Math.sin(a) * (4 + i), a: a + Math.PI / 2, color: i, running: false, h: 0, ragdoll: false, cop: false, gang: false, angry: i === 2 }, dt);
       }
     }
-    lineup.forEach((variant, k) => {
+    if (q.get('air') === '1') {
+      // Luftfahrzeug-Vitrine: alle Typen nebeneinander, Rotoren laufen; ?alt= hebt sie an
+      const alt = Number(q.get('alt') ?? 0);
+      AIRCRAFT.forEach((d, k) => {
+        const vx = x - 36 + k * 18, vz = z - 4;
+        const qq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI + 0.4);
+        views.setVehicle({ id: 300 + k, kind: d.type === 'heli' ? VehicleKind.Heli : VehicleKind.Plane, variant: d.variant, color: 0, driver: -1, x: vx, y: map.surfaceY(vx, vz) + (k % 2 ? alt : alt * 0.4), z: vz, q: qq, vx: 0, vz: 0, steer: 0, flags: 0, rpm: 5000 }, dt);
+      });
+    } else lineup.forEach((variant, k) => {
       const vx = x - 28 + (k % 12) * 5, vz = z - 6 - Math.floor(k / 12) * 9;
       const kind = variant === 100 ? 1 : 0;
       const prof = profileOf(variant);
@@ -112,6 +130,8 @@ async function main() {
       views.setDamage(201, (1 << 0) | (2 << 4) | (1 << 8), 1, 1, 0, false, 0, 0);
     }
     views.endFrame();
+    simT += dt;
+    airport.update(dt, sky.night, decoT0 !== null ? decoT0 + simT * 1000 : Date.now(), [], rig.target);
     rig.update(x, map.surfaceY(x, z), z, 0, 0, 0, zoom > 1, dt);
     U.uTime.value += dt;
     sky.update(day, rig.target, 1);
@@ -121,6 +141,7 @@ async function main() {
     props.setNight(sky.night);
     props.update(dt);
     views.night = sky.night;
+    views.sunDir.copy(sky.sun.position).sub(sky.sun.target.position).normalize();
     views.setFocus(rig.target);
     views.setCamera(rig.camera);
     particles.update(dt, rig.target);
@@ -136,7 +157,7 @@ async function main() {
   (window as unknown as Record<string, unknown>).__dbg = { views, scene, renderer };
   document.body.dataset.done = '1';
   let last = performance.now();
-  const loop = (now: number) => { frame(Math.min(0.1, (now - last) / 1000)); last = now; requestAnimationFrame(loop); };
+  const loop = (now: number) => { frame(Math.max(0, Math.min(0.1, (now - last) / 1000))); last = now; requestAnimationFrame(loop); };
   if (q.get('still') !== '1') requestAnimationFrame(loop);
 }
 
