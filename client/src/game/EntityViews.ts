@@ -544,15 +544,16 @@ export class EntityViews {
     if (seatedOn) {
       const veh = this.vehicles.get(seatedOn.id);
       const tpl = veh?.car?.tpl;
-      const seatY = tpl ? tpl.seatY : vehicleGeometry(seatedOn.kind, seatedOn.color, seatedOn.id).seatY;
-      root.visible = seatY > 0; // Im Auto sieht man den Fahrer nicht
+      // Im Auto (und im Luftfahrzeug) sieht man den Fahrer nicht
+      const seatY = veh?.air || isAircraft(seatedOn.kind) ? 0 : tpl ? tpl.seatY : vehicleGeometry(seatedOn.kind, seatedOn.color, seatedOn.id).seatY;
+      root.visible = seatY > 0;
       if (veh && root.visible) {
         const back = seatedOn.kind === VehicleKind.Airboat ? -0.6 : seatedOn.kind === VehicleKind.Boat ? -0.8 : -0.3;
         tmpPos.set(0, tpl ? -veh.prof.cgHeight + seatY - 0.35 : seatY - veh.prof.cgHeight + 0.15, back).applyMatrix4(veh.root.matrixWorld);
         root.position.copy(tmpPos);
         root.quaternion.copy(veh.root.quaternion);
       }
-      c.anchor.copy(root.visible ? root.position : tmpPos.set(x, this.groundY(x, z), z));
+      c.anchor.copy(root.visible ? root.position : tmpPos.set(x, isAircraft(seatedOn.kind) ? seatedOn.y + 1 : this.groundY(x, z), z));
       c.rag = null;
       c.model.ragdoll?.(null);
       if (!this.showIfOnScreen(c)) dist = OFFSCREEN_DIST;

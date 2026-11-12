@@ -11,6 +11,7 @@ Browser-Multiplayer-Open-World (Three.js-Client, Node/WebSocket-Server, gemeinsa
 ## Struktur
 - `shared/src/` – Code für Client **und** Server: `protocol.ts` (Nachrichten), `constants.ts`, `balance.ts`, `sim/` (Fahrzeugphysik; Handling-Werte in `sim/handling.ts`), `world/` (prozedurale Weltgenerierung, `palmara.ts`, `mapgen.ts`, `roads.ts`, `city.ts`).
 - `shared/src/story/` – Hauptgeschichte, **datengetrieben**: `ranks.json` (Ränge, Look, Garage), `story.json` (Figuren, Intro, Wohnorte, Story-NPCs, Entscheidungen, Missions-Metadaten inkl. Nebenjobs), `missions.json` (Quest-Definitionen der Story), `places.ts` (Story-Orte → `questLocations`), `index.ts` (Typen, Freischaltregeln). Server-Logik: `server/src/quests/Story.ts`, Client: `client/src/game/StoryDirector.ts` (Intro, Figuren) + `client/src/ui/StoryUi.ts` (Dialoge, Rang).
+- Flughafen & Luftfahrzeuge: Layout `shared/src/world/airport.ts` (Bahnen in `palmara.ts` RUNWAYS), Deko-Flugverkehr `world/airTraffic.ts`, Werte `shared/src/sim/aircraft.json`, Physik `sim/aircraft.ts` (FlyState in `sim/flystate.ts`, Varianten ab 110). Server: `server/src/sim/AirFleet.ts` (Flotte, Tanken, Rang, Bahnwarnung, Terminal-Passanten), `sim/PoliceHeli.ts`; Mitfahrer = `ServerPlayer.ride`. Client: `render/AircraftModel.ts`, `render/AirportBuilder.ts` (statisch), `render/AirportView.ts` (beweglich).
 - `server/src/` – `index.ts` (HTTP + WS `/ws`, liefert in Prod `dist/client` aus), `rooms/WorldRoom.ts` (Spiel-Loop, Dev-Befehle), `sim/Traffic.ts`, `quests/` (QuestEngine + `Races.ts` Straßenrennen; Strecken in `shared/src/races.ts`), `services/PlayerStore.ts` (JSON-Dateien in `DATA_DIR`, Standard `data/`).
 - `client/src/` – `game/Game.ts` (Hauptschleife), `render/` (Three.js-Aufbau), `net/Network.ts`, `ui/`, `audio/`, `input/`.
 - `client/src/audio/` – `manifest.ts` (alle Sounds: Bus, Varianten, 3D, Lizenz, prozeduraler Ersatz), `AudioEngine.ts` (Busse, 3D, Hall, Voice-Limit, Ducking), `SoundBank.ts` (Laden/Lazy-Zonen), `procedural.ts` (Synthese), `VehicleAudio.ts`, `Sfx.ts` (Einstieg fürs Spiel). Rohdateien in `assets-src/audio/`, Pipeline `npm run audio` → `client/public/audio/`. F3 → Audio-Tab zeigt Stimmen/Pegel.
@@ -20,7 +21,8 @@ Browser-Multiplayer-Open-World (Three.js-Client, Node/WebSocket-Server, gemeinsa
 - `npm run typecheck` – muss grün sein (CI prüft das)
 - `npm run build` – Client nach `dist/client`
 - `npm run audio` – Audio-Rohdateien verarbeiten (ffmpeg), `-- --scan` sichtet sie
-- `npm test` – Inhaltsprüfung (inkl. Quests/Story-Referenzen) · `npm run story-test` – Story-Rauchtest ohne Browser (~1–2 min)
+- `npm test` – Inhaltsprüfung (inkl. Quests/Story-Referenzen) · `npm run story-test` – Story-Rauchtest ohne Browser (~1–2 min) · `npm run air-test` – Flugphysik + Luftfahrt-Server
 - Prod lokal testen: `NODE_ENV=production node --import tsx server/src/index.ts`
 - Story testen (Dev): `/story info|reset|intro|rang <1-7>|skip|bis <1-13>|tp <figur|wohnort|ort>`
+- Luftfahrt testen (Dev): `/tp flughafen`, `/flug <sunbird|marlin|kolibri|pelikan>`, `/tanken`, `/flotte`, `/hoehe`; Vorschau `preview.html?air=1`
 - Dev-Modus (Chatbefehle `/test`, `/auto` …) ist an, außer `NODE_ENV=production` oder `npm start` (`DEV` in `WorldRoom.ts`).

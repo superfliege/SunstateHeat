@@ -58,7 +58,7 @@ export class DriveHud {
       this.fuelWrap.classList.toggle('hidden', a.fuel === null);
       if (a.fuel !== null) { this.fuelEl.style.width = `${(a.fuel * 100).toFixed(1)}%`; this.fuelEl.className = a.fuel < 0.15 ? 'low' : ''; }
       this.stallEl.classList.toggle('hidden', !a.stall);
-      this.gearEl.textContent = a.level === 0 ? '⬤' : '✈';
+      this.gearEl.textContent = '✈';
     }
   }
 
