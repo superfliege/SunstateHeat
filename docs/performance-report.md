@@ -82,20 +82,21 @@ aller Bäume, Props in 256-m-Regionen und im Schattenpass alles in ±110 m – e
 
 | # | Kostenpunkt (gemessen) | Maßnahme | Status |
 |---|---|---|---|
-| 1 | **Vegetation ohne Culling pro Instanz**: bis 4,4 Mio. Dreiecke/Bild, Palmenmodelle mit 7.212 Dreiecken, jeweils 3× (Farbe, Umrisshülle, Schattenpass); ~2.800 InstancedMeshes (je Chunk × Variante). | `PlantField`: eine InstancedMesh je Variante für die ganze Welt, pro Bild nur Instanzen im Kamera-Frustum oder mit Schatten im Bild, nicht hinter dem Dunst. | ✅ M1 |
+| 1 | **Vegetation ohne Culling pro Instanz**: bis 4,4 Mio. Dreiecke/Bild, Palmenmodelle mit 7.212 Dreiecken, jeweils 3× (Farbe, Umrisshülle, Schattenpass); ~2.800 InstancedMeshes (je Chunk × Variante). | `PlantField`: eine InstancedMesh je Variante für die ganze Welt, pro Bild nur Instanzen im Kamera-Frustum oder mit Schatten im Bild, nicht hinter dem Dunst. Schatten-LOD für schwere Modelle (M8). | ✅ M1, M8 |
 | 2 | **Schattenpass zu groß**: fester Bereich ±110 m (zu Fuß ~2,5× größer als nötig), 2048² PCF-Soft, alle Chunks/Props/Autos darin; ~45 % der Draw Calls, bis 50 % der GPU-Zeit. | Schattenbereich folgt dem sichtbaren Ausschnitt (`shadowExtentFor`: 46–110 m je Kameraabstand, in 8-m-Stufen); Preset *Mittel* 1024² (gleiche oder bessere Texeldichte als vorher). | ✅ M2 |
 | 3 | **Post-Processing-Bandbreite**: 5 Vollbild-Passes in voller Auflösung (Szene, NaN-Wächter, Bloom-Mischung, Farbkorrektur, Ausgabe; HalfFloat) + UnrealBloom (Helligkeitspass + 10 Blur-Passes + Kompositum). Auf integrierten GPUs ist Speicherbandbreite der Engpass. | Eigene Kette: Szene → Bloom (Helligkeitsauszug inkl. NaN-Wächter in halber Auflösung, 5 Mips Dual-Filter) → **ein** Abschluss-Pass (Hochskalieren + Schärfen, Bloom, Farbkorrektur, Vignette, sRGB). Namen/Sprechblasen danach in voller Auflösung (immer scharf). | ✅ M3 |
 | 4 | **Chunks hinter dem Dunst**: Sichtweite fest 450 m, auch wenn der Morgennebel (Gator Flats) bei ~170 m endet. | Chunk-Grenze = min(450 m, Dunst-Ende + Reserve). | ✅ M4 |
 | 5 | **Straßenmöbel je 256-m-Region instanziert**: ganze Regionen in Haupt-, Umriss- und Schattenpass (30–55 Calls). | Gleiches Culling wie Vegetation (`ViewCull`), eine InstancedMesh je Typ. | ✅ M5 |
 | 6 | **Fahrzeuge im Schattenpass**: 17–40 Calls – auch Autos hinter der Kamera warfen Schatten. | `cullVehicleShadows`: nur Autos, deren Schatten ins Bild fallen kann. | ✅ M6 |
-| 7 | **Auflösung**: Render-Auflösung = Bildschirm × min(dpr, 1,5) × 0,9; dynamische Auflösung reagierte erst unter 48 FPS und nur über FPS. | Presets Hoch/Mittel/Niedrig, Pixel-Ratio der Szene in *Mittel* auf 1,0 gedeckelt; Leinwand/HUD/Beschriftungen in voller Auflösung; dynamische Auflösung regelt über die gemessene GPU-Zeit auf ~13 ms (Untergrenze 65 %). | ✅ M7 |
-| 8 | **Shader-Kompilierung beim Spielen**: nach dem Aufwärmen kamen noch Programme dazu (Hänger beim Betreten neuer Zonen). | Pflanzen/Props werden beim Aufwärmen einmal gezeigt (sonst durch das neue Culling unsichtbar → später kompiliert); Dev-Warnung für jedes späte Programm; Zähler `progNew` im Benchmark. | ✅ M8 |
+| 7 | **Auflösung**: Render-Auflösung = Bildschirm × min(dpr, 1,5) × 0,9; dynamische Auflösung reagierte erst unter 48 FPS und nur über FPS. | Presets Hoch/Mittel/Niedrig, Pixel-Ratio der Szene in *Mittel* auf 1,0 gedeckelt; Leinwand/HUD/Beschriftungen in voller Auflösung; dynamische Auflösung regelt über die gemessene GPU-Zeit auf ~13 ms (Untergrenze 65 %). | ✅ mit M3 |
+| 8 | **Shader-Kompilierung beim Spielen**: nach dem Aufwärmen kamen noch Programme dazu (Hänger beim Betreten neuer Zonen). | Pflanzen/Props werden beim Aufwärmen einmal gezeigt (sonst durch das neue Culling unsichtbar → später kompiliert); Dev-Warnung für jedes späte Programm (mit Verursacher); Zähler `progNew` im Benchmark. | ✅ mit M1/M5 |
 | 9 | **Server-Tick 12,5 ms Ø, Spitzen bis 127 ms** (16 Spieler, 450 NPCs, 550 Fahrzeuge): Fußgänger-Ausweichen O(n²), Gefahrenprüfung NPC × alle Fahrzeuge, viele Wegwerf-Objekte je Tick (GC-Spitzen). | Raster für Fußgänger, nur schnelle Fahrzeuge als Gefahr, keine Zwischen-Arrays/Generatoren im heißen Pfad, Fußgänger-Tupel nur bei Bedarf. | ✅ M9 |
-| 10 | **Umrisslinien (Inverted Hull)** verdoppeln die Geometrie: 10–25 % der Dreiecke und Draw Calls. | Gemessen und bewertet (siehe 5.3): Hülle bleibt (Look), ihre Kosten sinken automatisch mit M1/M5 (Hüllen nur für sichtbare Instanzen). | ✅ bewertet |
+| 10 | **Umrisslinien (Inverted Hull)** verdoppeln die Geometrie: 10–25 % der Dreiecke und Draw Calls. | Gemessen und bewertet (siehe 5.5): Hülle bleibt (Look), ihre Kosten sinken automatisch mit M1/M5/M8 (Hüllen nur für sichtbare Instanzen bzw. Gebäudeviertel). | ✅ bewertet |
+| + | Räder aller Fahrzeuge und die Einrichtung aller Läden wurden nie gecullt (je 30–90k Dreiecke); Gebäude ganzer 128-m-Chunks. | Räder nur für sichtbare Fahrzeuge, Einrichtung je Laden, Gebäude in 64-m-Vierteln. | ✅ M7, M8 |
 
 ## 5. Ergebnisse nach den Maßnahmen
 
-### 5.1 Nach M1–M4 (Vegetation, Schatten, Post-Kette, Dunst) — `docs/bench/m1-m4.json`
+### 5.1 Nach M1–M4 (Vegetation, Schatten, Post-Kette + Auflösung/Presets, Dunst) — `docs/bench/m1-m4.json`
 
 | Abschnitt | Draw Calls Ø/max | Dreiecke Ø/max | Programme | GPU (SwiftShader) gesamt |
 |---|---|---|---|---|
@@ -111,9 +112,69 @@ Props, Schatten, Sprechblasen), 303 → 180 Draw Calls, 3,63 Mio. → 0,29 Mio. 
 
 ### 5.2 Nach M5–M6 (Props, Fahrzeugschatten) — `docs/bench/m5-m6.json`
 
-_(wird nachgetragen)_
+| Abschnitt | Draw Calls Ø/max | Dreiecke Ø/max |
+|---|---|---|
+| Ocean Strip | 208 → **170** / 198 | 291k → **204k** / 222k |
+| Downtown | 247 → **160** / 182 | 630k → **464k** / 505k |
+| Port District | 191 → **137** / 178 | 545k → **456k** / 525k |
+| Gator Flats | 181 → **120** / 140 | 328k → **272k** / 301k |
+| Highway | 171 → **128** / 166 | 545k → **333k** / 448k |
 
-### 5.3 Umrisslinien: Inverted Hull vs. Post-Process-Kanten
+Die neue Dreiecks-Aufschlüsselung je Kategorie zeigte zwei weitere Ausreißer:
+- **Räder:** eine globale InstancedMesh mit den Rädern *aller* bekannten Fahrzeuge (auch außerhalb des
+  Bildes) – 30–90k Dreiecke inkl. Schatten und Umriss.
+- **Ladeneinrichtung:** alle Läden der Welt in *einem* Mesh → nie gecullt, in jedem Bild ~39k Dreiecke
+  (Farbe + Umriss + Schatten), auch in Gator Flats und auf dem Highway.
+
+### 5.3 Nach M7 (Räder- und Laden-Culling, Culling-Rand) — `docs/bench/m7.json`
+
+| Abschnitt | Draw Calls Ø/max | Dreiecke Ø/max | neu kompilierte Shader |
+|---|---|---|---|
+| Ocean Strip | 170 → **158** / 178 | 204k → **126k** / 142k | 0 |
+| Downtown | 160 → **138** / 182 | 464k → **307k** / 330k | 0 |
+| Port District | 137 → **132** / 180 | 456k → **317k** / 378k | 1 |
+| Gator Flats | 120 → 134 / 160 | 272k → **226k** / 267k | 1 |
+| Highway | 128 → 149 / 182 | 333k → 522k / 918k | 0 |
+
+Die Autopilot-Fahrt ist nicht bildgenau deterministisch (Bildrate beeinflusst die Strecke), daher
+schwanken Highway/Gator zwischen Läufen. Auf dem Highway dominieren jetzt Palmen: die Modelle haben
+bis zu **7.212 Dreiecke** und erscheinen in Farbe, Umriss *und* Schattenpass (zusammen ~400k).
+
+### 5.4 Nach M8 (Gebäude in 64-m-Vierteln, Schatten-LOD für schwere Pflanzen) — `docs/bench/m8.json`
+
+- Gebäude eines Chunks werden in vier 64-m-Viertel geteilt (Umrissnormalen vorher am Ganzen berechnet,
+  damit an den Schnittkanten keine Linienlücken entstehen) – ein halb sichtbarer Chunk zeichnet nicht
+  mehr alle Gebäude samt Umriss und Schatten.
+- **Vegetations-LOD für den Schatten:** Modelle über 1.500 Dreiecke werfen ihren Schatten über einen
+  vereinfachten Stellvertreter (Vertex-Clustering 0,3 m, nur auf der Render-Ebene `SHADOW_ONLY_LAYER`
+  sichtbar, die nur im Schattenpass aktiv ist). Pflanzenschatten waren schon vorher statisch (kein Wind
+  im Tiefenmaterial) – das sichtbare Modell, sein Umriss und sein Wind bleiben unverändert.
+
+| Abschnitt | Draw Calls Ø/max | Dreiecke Ø/max | neu kompilierte Shader |
+|---|---|---|---|
+| Ocean Strip | 158 → **156** / 193 | 126k → **107k** / 134k | 0 |
+| Downtown | 138 → 191 / 229 | 307k → **216k** / 255k | 1 |
+| Port District | 132 → **142** / 183 | 317k → **208k** / 284k | 0 |
+| Gator Flats | 134 → **121** / 149 | 226k → **170k** / 380k | 1 |
+| Highway | 149 → 157 / 205 | 522k → **323k** / 554k | 0 |
+
+Die Viertel-Teilung kostet in Downtown ~11 Draw Calls (Gebäude, Umriss, Schatten je Viertel), spart dort
+aber ~125k Dreiecke (Gebäude Farbe + Umriss + Schatten 201k → 77k) – bewusst getauscht. Der Rest der
+Draw-Call-Differenz in Downtown ist Streckenvarianz (die Fahrt kam an mehr Läden vorbei).
+
+**Vergleichsbilder an identischer Kameraposition** (Vorschau-Seite, deterministisch, Software-GPU):
+
+| Szene | Vorher | Nachher | Draw Calls | Dreiecke |
+|---|---|---|---|---|
+| Gator Flats, Mittag | `vorher-gator.png` | `nachher-gator-m1-m4.png` | 303 → 180 | 3,63 M → 0,29 M |
+| Collins Causeway (Palmen), Nachmittag | `vorher-palmen.png` | `nachher-palmen.png` | 357 → 210 | 459k → 239k |
+| Downtown, Nacht | `vorher-downtown-nacht.png` | `nachher-downtown-nacht.png` | 286 → 208 | 619k → 337k |
+
+Inhaltlich identisch (alle Bäume, Props, Fahrzeuge, Figuren, Schatten). Unterschiede: Der Bloom ist
+minimal enger (Dual-Filter statt Gauß-Kaskade); die nachts vom Bloom überstrahlte Schimpf-Sprechblase ist
+jetzt lesbar, weil Beschriftungen nach der Nachbearbeitung gezeichnet werden.
+
+### 5.5 Umrisslinien: Inverted Hull vs. Post-Process-Kanten
 
 Gemessen (Ablation nach M1–M4): Hüllen kosten noch 25–40 Draw Calls und ~25 % der Dreiecke, aber
 kaum Pixel (Rückseiten, schmaler Saum). Eine Kantenerkennung als Nachbearbeitung bräuchte einen
@@ -124,14 +185,58 @@ und zeichnen keine Linien an Bordsteinen/Geländestufen. Entscheidung: **Hülle 
 das Culling senken (Hüllen gibt es nur noch für sichtbare Instanzen). Bei Bedarf wäre der nächste
 Schritt, Hüllen ab ~60 m Entfernung wegzulassen (dort sind sie ohnehin < 1 px).
 
-### 5.4 Nicht umgesetzt (bewusst)
+### 5.6 Nicht umgesetzt (bewusst)
 
 - **Impostors/Billboard-LOD für Bäume:** Durch das Culling sind ferne Bäume gar nicht mehr im Bild
   (die feste Kamera sieht nur ~120 m); Impostors brächten erst bei Luftfahrzeugen in großer Höhe etwas.
+  Umgesetzt ist stattdessen die Schatten-LOD; eine sichtbare Mittelstufe für Palmen siehe 5.9.
+- **Ein einzelnes spät kompiliertes Basis-Material** (0–1 je Abschnitt) ließ sich keinem Szenenobjekt
+  zuordnen (vermutlich ein kurzlebiges Effekt-Objekt); einmalig pro Sitzung, die Dev-Warnung meldet es.
 - **Occlusion Culling Downtown:** Bei 56° Neigung verdecken Hochhäuser kaum ganze Blöcke; der sichtbare
   Bereich ist bereits klein. Aufwand ≫ Nutzen.
 - **Gebäude-LOD 3 Stufen / Fahrzeug-LOD:** Alles im Bild ist nah (≤ ~120 m); kein messbarer Gewinn.
   Schadensverformung erzeugt schon heute nur bei beschädigten Autos eigene Geometrie.
+
+### 5.7 Gesamtbilanz Baseline → M8
+
+| Abschnitt | Draw Calls Ø | Dreiecke Ø | GPU-Zeit (SwiftShader, relativ) | davon Schatten |
+|---|---|---|---|---|
+| Ocean Strip | 321 → 156 (−51 %) | 402k → 107k (−73 %) | 531 → 233 ms (−56 %) | 124 → 21 ms |
+| Downtown (Nacht, Regen, Verfolgung) | 331 → 191 (−42 %) | 767k → 216k (−72 %) | 416 → 268 ms (−36 %) | 105 → 25 ms |
+| Port District | 352 → 142 (−60 %) | 1.025k → 208k (−80 %) | 511 → 228 ms (−55 %) | 156 → 26 ms |
+| Gator Flats (Dunst) | 334 → 121 (−64 %) | 4.482k → 170k (−96 %) | 1.208 → 231 ms (−81 %) | 602 → 20 ms |
+| Highway | 388 → 157 (−60 %) | 3.134k → 323k (−90 %) | 982 → 234 ms (−76 %) | 540 → 26 ms |
+
+Draw Calls enthalten 11 Vollbild-Quads der Nachbearbeitung (Bloom-Mips + Abschluss).
+Weitere Werte nach M8: Shader-Programme 53–73 (Baseline 62–83), neu kompiliert während der Fahrt
+0–1 je Abschnitt; GPU-Speicher (Schätzung) 147–161 MB; JS-Heap im Lauf 234–258 MB ohne Wachstum
+(direkt nach dem Weltaufbau kurz ~480 MB, wird vom GC freigegeben); JS-Arbeit je Bild ohne
+Render-Übergabe (Figuren/Animation 1,4–5,8 ms, Netz 2–5 ms, Welt/Culling 0,2–0,7 ms, Rest < 0,6 ms –
+unter SwiftShader-Last gemessen, auf dem Laptop eher weniger).
+
+### 5.8 Stand gegenüber den Zielwerten
+
+| Ziel | Stand | Bewertung |
+|---|---|---|
+| Draw Calls < 150 | Ø 121–191 (inkl. 11 Post-Quads), max 149–229 | Gator/Port erreicht, Ocean/Highway knapp darüber, Downtown 191 – nächster Hebel: Figuren (2 Calls je Figur) und Läden (siehe 5.9) |
+| Dreiecke < 250.000 | Ø 107k–323k, max 134k–554k | Vier von fünf Abschnitten im Mittel erreicht; Highway liegt durch 7.200-Dreiecks-Palmen darüber |
+| GPU-Speicher < 600 MB | ~150–160 MB (Schätzung) | ✅ |
+| JS-Heap < 400 MB ohne Wachstum | 234–258 MB im Lauf, kein Wachstum | ✅ (Spitze direkt nach dem Laden ~480 MB, transient) |
+| Server-Tick < 10 ms (16 Spieler) | Ø 7,9–8,5 ms, p99 ~18 ms | ✅ im Mittel; einzelne Ticks bis ~25 ms (Budget 50 ms) |
+| 60 FPS „Mittel“ 1080p, nie < 45, Spitzen < 33 ms | **hier nicht messbar** (keine GPU) | Auf dem T580 mit `?bench=1` nachmessen; die dynamische Auflösung regelt jetzt auf ~13 ms GPU-Zeit (Untergrenze 65 %) |
+
+### 5.9 Nächste Schritte, falls der T580 die 60 FPS noch nicht hält
+
+1. **Palmen-Modelle:** Die vier Palmen-Varianten haben 2.352–7.212 Dreiecke. Eine sichtbare
+   Mittel-LOD-Stufe (vereinfachtes Modell ab ~50 m, Übergang per Dithering) oder schlankere Modelle
+   würden den Highway unter 250k bringen. Schatten-LOD ist bereits umgesetzt.
+2. **Figuren:** 2 Draw Calls je Figur (Skinned Mesh + Umrisshülle). Die Hülle könnte im selben Draw Call
+   als zweite Geometriegruppe gezeichnet werden, oder entfernte Figuren (> 60 m) per Instancing mit
+   vorgebackenen Animationen (VAT) – größerer Umbau.
+3. **Läden:** Je Laden 5–7 Meshes (Fassade, Umriss, Neon, Schild, Pfosten, Einrichtung, Einrichtungs-
+   Neon) – zusammenführen auf 2–3.
+4. **Fahrzeuge:** Karosserie + Lichter als ein Mesh (Lichter über ein Vertex-Attribut im selben Shader)
+   spart 1 Call je sichtbarem Auto.
 
 ## 6. Server (Ziel: Tick < 10 ms bei 16 Spielern)
 

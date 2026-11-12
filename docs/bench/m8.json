@@ -1,0 +1,937 @@
+{
+  "date": "2026-11-12T16:28:21.083Z",
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "gl": {
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "vendor": "Google Inc. (Google)",
+    "timerQuery": true
+  },
+  "viewport": [
+    640,
+    360
+  ],
+  "dpr": 1,
+  "sections": [
+    {
+      "id": "ocean",
+      "name": "Ocean Strip · Sonnenuntergang",
+      "frames": 180,
+      "seconds": 58,
+      "fps": 3.1,
+      "low1": 0.2,
+      "p50ms": 28.9,
+      "p99ms": 4934.3,
+      "maxMs": 6765.9,
+      "spikes33": 79,
+      "spikes50": 60,
+      "hist": {
+        "<16.7": 30.6,
+        "<20": 9.4,
+        "<25": 6.1,
+        "<33.3": 10,
+        "<50": 10.6,
+        ">50": 33.3
+      },
+      "settleMaxMs": 1855.5,
+      "settleSpikes33": 17,
+      "calls": {
+        "avg": 156,
+        "max": 193
+      },
+      "tris": {
+        "avg": 106602,
+        "max": 133818
+      },
+      "programs": 53,
+      "progNew": 0,
+      "textures": 188,
+      "geometries": 1020,
+      "gpuMemMB": 161,
+      "heapMB": [
+        478.8,
+        233.7
+      ],
+      "cpu": {
+        "sim": 0.782,
+        "net": 3.191,
+        "entities": 4.363,
+        "world": 0.357,
+        "effects": 0.232,
+        "camera": 0.129,
+        "ui": 0.166,
+        "minimap": 0.567,
+        "audio": 0.474,
+        "render": 321.366,
+        "total": 345.777
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "shadow": 20.749,
+        "scene": 180.771,
+        "overlay": 0.368,
+        "bloom": 12.281,
+        "post": 18.616,
+        "total": 232.785
+      },
+      "res": 1,
+      "trisBy": {
+        "shadow:world:solid:mesh": 14.7,
+        "main:entities:hull": 12.9,
+        "main:world:ground:mesh": 12.3,
+        "main:world:flat:mesh": 11.4,
+        "shadow:entities:mesh": 6.5,
+        "main:entities:mesh": 6.2,
+        "main:world:plants:inst": 4.9,
+        "main:smartObjects:mesh": 4.7,
+        "main:smartObjects:hull": 4.4,
+        "main:world:outline:hull": 4.1,
+        "main:entities:skin": 4,
+        "main:entities:inst": 3.1,
+        "shadow:world:plants:inst": 2.9,
+        "shadow:entities:inst": 2.9,
+        "main:vehicleFx:inst": 2.4,
+        "main:props:inst": 1.8,
+        "shadow:props:inst": 1.7,
+        "main:props:hull": 1.7,
+        "main:world:solid:mesh": 1.2,
+        "main:vehicleFx:mesh": 0.8,
+        "main:Mesh:mesh": 0.5,
+        "shadow:features:mesh": 0.2,
+        "main:features:mesh": 0.2,
+        "main:world:neon:mesh": 0.2,
+        "main:features:hull": 0.2,
+        "main:world:decals:mesh": 0.1,
+        "main:particles:inst": 0,
+        "main:particles:mesh": 0,
+        "main:smartObjects:sprite": 0,
+        "main:world:water:mesh": 0,
+        "main:postQuad:mesh": 0,
+        "main:entities:sprite": 0,
+        "main:phones:sprite": 0
+      },
+      "callsBy": {
+        "main:world:plants:inst": 17.5,
+        "main:entities:mesh": 15.3,
+        "shadow:world:solid:mesh": 13.8,
+        "main:world:outline:hull": 13.5,
+        "shadow:world:plants:inst": 11.2,
+        "main:postQuad:mesh": 11,
+        "main:entities:hull": 9.2,
+        "main:props:inst": 7.2,
+        "shadow:entities:mesh": 6.2,
+        "main:world:ground:mesh": 6,
+        "shadow:props:inst": 5.2,
+        "main:world:flat:mesh": 5.2,
+        "main:props:hull": 5.2,
+        "main:world:decals:mesh": 3.5,
+        "main:entities:inst": 3,
+        "main:entities:skin": 2.5,
+        "main:world:solid:mesh": 2.3,
+        "main:smartObjects:mesh": 2,
+        "main:vehicleFx:inst": 2,
+        "main:vehicleFx:mesh": 2,
+        "main:world:neon:mesh": 1.7,
+        "shadow:entities:inst": 1,
+        "shadow:features:mesh": 1,
+        "main:Mesh:mesh": 1,
+        "main:features:mesh": 1,
+        "main:smartObjects:hull": 1,
+        "main:features:hull": 1,
+        "main:particles:inst": 1,
+        "main:particles:mesh": 1,
+        "main:world:water:mesh": 1,
+        "main:entities:sprite": 1,
+        "main:smartObjects:sprite": 0.3,
+        "main:phones:sprite": 0.2
+      },
+      "ablation": {
+        "none": {
+          "gpu": 60.43,
+          "cpu": 92.53,
+          "calls": 159,
+          "tris": 131072
+        },
+        "outlines": {
+          "gpu": 20.66,
+          "cpu": 195.23,
+          "calls": 129,
+          "tris": 103360
+        },
+        "shadows": {
+          "gpu": 16.4,
+          "cpu": 26.42,
+          "calls": 128,
+          "tris": 104979
+        },
+        "bloom": {
+          "gpu": 217.18,
+          "cpu": 1633.4,
+          "calls": 133,
+          "tris": 125005
+        },
+        "water": {
+          "gpu": 189.54,
+          "cpu": 1225.5,
+          "calls": 147,
+          "tris": 124894
+        },
+        "characters": {
+          "gpu": 76.76,
+          "cpu": 175.16,
+          "calls": 83,
+          "tris": 54573
+        },
+        "vegetation": {
+          "gpu": 36.63,
+          "cpu": 112.56,
+          "calls": 133,
+          "tris": 111121
+        },
+        "labels": {
+          "gpu": 218.86,
+          "cpu": 1812.6,
+          "calls": 142,
+          "tris": 111451
+        }
+      }
+    },
+    {
+      "id": "downtown",
+      "name": "Downtown · Nacht, Regen, Verfolgung",
+      "frames": 185,
+      "seconds": 63.7,
+      "fps": 2.9,
+      "low1": 0.1,
+      "p50ms": 33.1,
+      "p99ms": 6729.4,
+      "maxMs": 8017.5,
+      "spikes33": 92,
+      "spikes50": 75,
+      "hist": {
+        "<16.7": 25.4,
+        "<20": 3.2,
+        "<25": 8.1,
+        "<33.3": 13.5,
+        "<50": 9.2,
+        ">50": 40.5
+      },
+      "settleMaxMs": 3649.1,
+      "settleSpikes33": 12,
+      "calls": {
+        "avg": 191,
+        "max": 229
+      },
+      "tris": {
+        "avg": 216023,
+        "max": 254975
+      },
+      "programs": 67,
+      "progNew": 1,
+      "textures": 195,
+      "geometries": 1065,
+      "gpuMemMB": 161.1,
+      "heapMB": [
+        246.6,
+        246
+      ],
+      "cpu": {
+        "sim": 0.586,
+        "net": 5.106,
+        "entities": 5.788,
+        "world": 0.658,
+        "effects": 0.242,
+        "camera": 0.115,
+        "ui": 0.286,
+        "minimap": 0.454,
+        "audio": 0.534,
+        "render": 327.597,
+        "total": 357.915
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "shadow": 25.014,
+        "scene": 210.997,
+        "overlay": 0.323,
+        "bloom": 12.497,
+        "post": 19.396,
+        "total": 268.228
+      },
+      "res": 1,
+      "trisBy": {
+        "shadow:world:solid:mesh": 41.6,
+        "main:world:flat:mesh": 31.1,
+        "main:world:outline:hull": 18.2,
+        "main:entities:hull": 17.8,
+        "main:world:solid:mesh": 16.6,
+        "main:world:ground:mesh": 12.6,
+        "main:world:plants:inst": 9.1,
+        "main:entities:skin": 7.5,
+        "shadow:entities:mesh": 6.7,
+        "main:entities:mesh": 6.2,
+        "main:smartObjects:mesh": 4.7,
+        "main:entities:inst": 4.6,
+        "main:smartObjects:hull": 4.4,
+        "shadow:entities:inst": 4.3,
+        "shadow:stores:mesh": 3.3,
+        "main:stores:mesh": 3.1,
+        "main:stores:hull": 3.1,
+        "main:vehicleFx:inst": 2.4,
+        "main:props:inst": 2.2,
+        "main:props:hull": 2,
+        "shadow:props:inst": 1.9,
+        "shadow:world:plants:inst": 1.5,
+        "main:vehicleFx:mesh": 0.8,
+        "main:story:hull": 0.8,
+        "main:story:skin": 0.8,
+        "main:Mesh:mesh": 0.5,
+        "main:world:decals:mesh": 0.3,
+        "shadow:features:mesh": 0.2,
+        "main:features:mesh": 0.2,
+        "main:features:hull": 0.2,
+        "main:phones:mesh": 0.2,
+        "shadow:props:mesh": 0.1,
+        "main:world:neon:mesh": 0.1,
+        "main:questMarkers:mesh": 0.1,
+        "main:props:mesh": 0,
+        "main:particles:inst": 0,
+        "main:particles:mesh": 0,
+        "main:world:water:mesh": 0,
+        "main:postQuad:mesh": 0,
+        "main:phones:sprite": 0,
+        "main:story:sprite": 0,
+        "main:story:mesh": 0,
+        "main:vehicleFx:hull": 0
+      },
+      "callsBy": {
+        "main:entities:mesh": 14,
+        "main:stores:mesh": 13.5,
+        "main:entities:hull": 12.7,
+        "main:world:plants:inst": 12.5,
+        "shadow:world:solid:mesh": 12.3,
+        "main:postQuad:mesh": 11,
+        "main:world:outline:hull": 10.3,
+        "main:world:flat:mesh": 8.3,
+        "shadow:entities:mesh": 7.7,
+        "main:stores:hull": 7.7,
+        "main:world:ground:mesh": 6.2,
+        "main:world:solid:mesh": 5.8,
+        "main:props:inst": 5.5,
+        "main:world:decals:mesh": 5.5,
+        "main:phones:mesh": 5.2,
+        "main:entities:skin": 4.7,
+        "shadow:world:plants:inst": 4.5,
+        "main:props:hull": 4.2,
+        "shadow:stores:mesh": 4,
+        "shadow:props:inst": 3.5,
+        "main:entities:inst": 3,
+        "main:vehicleFx:mesh": 2.2,
+        "main:smartObjects:mesh": 2,
+        "main:vehicleFx:inst": 2,
+        "main:phones:sprite": 2,
+        "shadow:props:mesh": 1.7,
+        "main:world:neon:mesh": 1.5,
+        "main:questMarkers:mesh": 1.5,
+        "shadow:entities:inst": 1,
+        "shadow:features:mesh": 1,
+        "main:Mesh:mesh": 1,
+        "main:features:mesh": 1,
+        "main:smartObjects:hull": 1,
+        "main:features:hull": 1,
+        "main:particles:inst": 1,
+        "main:particles:mesh": 1,
+        "main:world:water:mesh": 1,
+        "main:story:sprite": 1,
+        "main:story:mesh": 1,
+        "main:props:mesh": 0.7,
+        "main:story:hull": 0.5,
+        "main:story:skin": 0.5,
+        "main:vehicleFx:hull": 0.2
+      },
+      "ablation": {
+        "none": {
+          "gpu": 39.8,
+          "cpu": 44.32,
+          "calls": 171,
+          "tris": 206885
+        },
+        "outlines": {
+          "gpu": 305.37,
+          "cpu": 1536.6,
+          "calls": 160,
+          "tris": 201214
+        },
+        "shadows": {
+          "gpu": 27.47,
+          "cpu": 37.31,
+          "calls": 147,
+          "tris": 160111
+        },
+        "bloom": {
+          "gpu": 191.77,
+          "cpu": 3281.8,
+          "calls": 183,
+          "tris": 246986
+        },
+        "water": {
+          "gpu": 261.71,
+          "cpu": 729.7,
+          "calls": 200,
+          "tris": 256812
+        },
+        "characters": {
+          "gpu": 49.74,
+          "cpu": 92.64,
+          "calls": 137,
+          "tris": 189400
+        },
+        "vegetation": {
+          "gpu": 142.04,
+          "cpu": 168.3,
+          "calls": 204,
+          "tris": 261587
+        },
+        "labels": {
+          "gpu": 97.82,
+          "cpu": 238.82,
+          "calls": 204,
+          "tris": 262358
+        }
+      }
+    },
+    {
+      "id": "port",
+      "name": "Port District · Mittag",
+      "frames": 219,
+      "seconds": 67,
+      "fps": 3.3,
+      "low1": 0.2,
+      "p50ms": 21.8,
+      "p99ms": 5985.2,
+      "maxMs": 7197.7,
+      "spikes33": 85,
+      "spikes50": 69,
+      "hist": {
+        "<16.7": 41.6,
+        "<20": 5.5,
+        "<25": 5.5,
+        "<33.3": 8.7,
+        "<50": 7.3,
+        ">50": 31.5
+      },
+      "settleMaxMs": 2609.1,
+      "settleSpikes33": 2,
+      "calls": {
+        "avg": 142,
+        "max": 183
+      },
+      "tris": {
+        "avg": 207618,
+        "max": 283733
+      },
+      "programs": 70,
+      "progNew": 0,
+      "textures": 200,
+      "geometries": 1079,
+      "gpuMemMB": 158.7,
+      "heapMB": [
+        263.4,
+        249.6
+      ],
+      "cpu": {
+        "sim": 0.427,
+        "net": 2.882,
+        "entities": 3.028,
+        "world": 0.274,
+        "effects": 0.241,
+        "camera": 0.087,
+        "ui": 0.212,
+        "minimap": 0.482,
+        "audio": 0.533,
+        "render": 295.695,
+        "total": 316.998
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "shadow": 26.264,
+        "scene": 172.296,
+        "overlay": 0.061,
+        "bloom": 11.272,
+        "post": 18.265,
+        "total": 228.159
+      },
+      "res": 1,
+      "trisBy": {
+        "shadow:world:solid:mesh": 58.4,
+        "main:world:outline:hull": 22.8,
+        "main:world:solid:mesh": 21.3,
+        "main:world:flat:mesh": 19.7,
+        "main:entities:hull": 17.1,
+        "main:world:ground:mesh": 13.5,
+        "main:entities:skin": 8.9,
+        "main:world:plants:inst": 8.8,
+        "main:entities:mesh": 5.8,
+        "shadow:entities:mesh": 5.3,
+        "main:smartObjects:mesh": 4.7,
+        "main:smartObjects:hull": 4.4,
+        "main:entities:inst": 3.2,
+        "shadow:entities:inst": 3,
+        "main:vehicleFx:inst": 2.4,
+        "main:props:inst": 1.7,
+        "shadow:props:inst": 1.5,
+        "main:props:hull": 1.5,
+        "shadow:world:plants:inst": 1.4,
+        "main:vehicleFx:mesh": 0.8,
+        "main:Mesh:mesh": 0.5,
+        "main:world:decals:mesh": 0.3,
+        "shadow:features:mesh": 0.2,
+        "main:features:mesh": 0.2,
+        "main:features:hull": 0.2,
+        "main:particles:inst": 0.1,
+        "main:world:neon:mesh": 0.1,
+        "main:world:water:mesh": 0,
+        "main:postQuad:mesh": 0,
+        "main:entities:sprite": 0
+      },
+      "callsBy": {
+        "main:entities:mesh": 14.9,
+        "main:world:plants:inst": 13.7,
+        "shadow:world:solid:mesh": 13.4,
+        "main:entities:hull": 13.3,
+        "main:postQuad:mesh": 11,
+        "main:world:outline:hull": 9.7,
+        "shadow:entities:mesh": 6.9,
+        "main:world:ground:mesh": 6.6,
+        "main:world:flat:mesh": 6.3,
+        "main:entities:skin": 5.6,
+        "main:world:solid:mesh": 5.1,
+        "shadow:world:plants:inst": 4.6,
+        "main:world:decals:mesh": 4.6,
+        "main:props:inst": 4,
+        "main:entities:inst": 3,
+        "shadow:props:inst": 2,
+        "main:smartObjects:mesh": 2,
+        "main:props:hull": 2,
+        "main:particles:inst": 2,
+        "main:vehicleFx:inst": 2,
+        "main:vehicleFx:mesh": 2,
+        "shadow:entities:inst": 1,
+        "main:Mesh:mesh": 1,
+        "main:features:mesh": 1,
+        "main:smartObjects:hull": 1,
+        "main:features:hull": 1,
+        "main:world:water:mesh": 1,
+        "shadow:features:mesh": 0.9,
+        "main:entities:sprite": 0.4,
+        "main:world:neon:mesh": 0.1
+      },
+      "ablation": {
+        "none": {
+          "gpu": 155.14,
+          "cpu": 1167.05,
+          "calls": 159,
+          "tris": 268587
+        },
+        "outlines": {
+          "gpu": 279.81,
+          "cpu": 1884,
+          "calls": 141,
+          "tris": 206755
+        },
+        "shadows": {
+          "gpu": 5.51,
+          "cpu": 20.19,
+          "calls": 107,
+          "tris": 162565
+        },
+        "bloom": {
+          "gpu": 295.13,
+          "cpu": 559.5,
+          "calls": 125,
+          "tris": 245642
+        },
+        "water": {
+          "gpu": 13.4,
+          "cpu": 30.16,
+          "calls": 126,
+          "tris": 218148
+        },
+        "characters": {
+          "gpu": 54.12,
+          "cpu": 1004.2,
+          "calls": 167,
+          "tris": 153415
+        },
+        "vegetation": {
+          "gpu": 36.86,
+          "cpu": 312.98,
+          "calls": 170,
+          "tris": 167899
+        },
+        "labels": {
+          "gpu": 61.87,
+          "cpu": 652.73,
+          "calls": 174,
+          "tris": 172847
+        }
+      }
+    },
+    {
+      "id": "gator",
+      "name": "Gator Flats · Morgendunst",
+      "frames": 304,
+      "seconds": 90,
+      "fps": 3.4,
+      "low1": 0.1,
+      "p50ms": 11.9,
+      "p99ms": 5623.9,
+      "maxMs": 9219.4,
+      "spikes33": 80,
+      "spikes50": 64,
+      "hist": {
+        "<16.7": 59.5,
+        "<20": 3,
+        "<25": 3.6,
+        "<33.3": 7.6,
+        "<50": 5.3,
+        ">50": 21.1
+      },
+      "settleMaxMs": 3625.4,
+      "settleSpikes33": 2,
+      "calls": {
+        "avg": 121,
+        "max": 149
+      },
+      "tris": {
+        "avg": 169841,
+        "max": 379922
+      },
+      "programs": 72,
+      "progNew": 1,
+      "textures": 203,
+      "geometries": 1101,
+      "gpuMemMB": 151.6,
+      "heapMB": [
+        258.4,
+        234.5
+      ],
+      "cpu": {
+        "sim": 0.6,
+        "net": 1.998,
+        "entities": 1.438,
+        "world": 0.218,
+        "effects": 0.168,
+        "camera": 0.112,
+        "ui": 0.241,
+        "minimap": 0.325,
+        "audio": 0.435,
+        "render": 273.724,
+        "total": 289.953
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "shadow": 19.758,
+        "scene": 180.01,
+        "overlay": 0.246,
+        "bloom": 12.64,
+        "post": 18.375,
+        "total": 231.03
+      },
+      "res": 1,
+      "trisBy": {
+        "main:world:plants:inst": 40.8,
+        "main:world:outline:hull": 36.5,
+        "main:world:flat:mesh": 21.4,
+        "main:world:ground:mesh": 13.7,
+        "shadow:world:plants:inst": 11.3,
+        "main:entities:hull": 6.3,
+        "shadow:world:solid:mesh": 6.2,
+        "main:smartObjects:mesh": 4.7,
+        "main:smartObjects:hull": 4.4,
+        "main:entities:mesh": 3.2,
+        "shadow:entities:mesh": 2.9,
+        "main:vehicleFx:inst": 2.4,
+        "main:world:solid:mesh": 2.2,
+        "main:entities:inst": 1.8,
+        "main:entities:skin": 1.8,
+        "shadow:entities:inst": 1.7,
+        "main:props:inst": 1.4,
+        "shadow:props:inst": 1.2,
+        "main:props:hull": 1.2,
+        "main:vehicleFx:mesh": 0.8,
+        "main:Mesh:mesh": 0.5,
+        "main:world:neon:mesh": 0.3,
+        "main:world:decals:mesh": 0.2,
+        "main:features:mesh": 0.1,
+        "main:features:hull": 0.1,
+        "main:phones:mesh": 0.1,
+        "main:particles:inst": 0.1,
+        "main:world:water:mesh": 0,
+        "main:postQuad:mesh": 0,
+        "main:phones:sprite": 0
+      },
+      "callsBy": {
+        "main:world:plants:inst": 12.3,
+        "shadow:world:solid:mesh": 11.3,
+        "main:postQuad:mesh": 11,
+        "main:entities:mesh": 9,
+        "main:world:flat:mesh": 8.7,
+        "main:world:outline:hull": 8.4,
+        "main:world:ground:mesh": 6.7,
+        "main:entities:hull": 6.2,
+        "shadow:world:plants:inst": 4.9,
+        "shadow:entities:mesh": 4.1,
+        "main:world:decals:mesh": 4.1,
+        "main:props:inst": 3.8,
+        "main:world:solid:mesh": 3.5,
+        "main:phones:mesh": 3.2,
+        "main:entities:inst": 3,
+        "main:smartObjects:mesh": 2,
+        "main:particles:inst": 2,
+        "main:vehicleFx:inst": 2,
+        "main:vehicleFx:mesh": 2,
+        "shadow:props:inst": 1.8,
+        "main:props:hull": 1.8,
+        "main:phones:sprite": 1.2,
+        "main:entities:skin": 1.1,
+        "shadow:entities:inst": 1,
+        "main:Mesh:mesh": 1,
+        "main:world:neon:mesh": 1,
+        "main:smartObjects:hull": 1,
+        "main:world:water:mesh": 1,
+        "main:features:mesh": 0.8,
+        "main:features:hull": 0.8
+      },
+      "ablation": {
+        "none": {
+          "gpu": 254.64,
+          "cpu": 2791.4,
+          "calls": 128,
+          "tris": 188226
+        },
+        "outlines": {
+          "gpu": 27.1,
+          "cpu": 40.49,
+          "calls": 112,
+          "tris": 130820
+        },
+        "shadows": {
+          "gpu": 15.34,
+          "cpu": 22.35,
+          "calls": 105,
+          "tris": 152404
+        },
+        "bloom": {
+          "gpu": 327.16,
+          "cpu": 3108.9,
+          "calls": 109,
+          "tris": 160325
+        },
+        "water": {
+          "gpu": 123.88,
+          "cpu": 374.05,
+          "calls": 126,
+          "tris": 186448
+        },
+        "characters": {
+          "gpu": 22.35,
+          "cpu": 155.97,
+          "calls": 87,
+          "tris": 151984
+        },
+        "vegetation": {
+          "gpu": 43.44,
+          "cpu": 56.86,
+          "calls": 119,
+          "tris": 183951
+        },
+        "labels": {
+          "gpu": 73.27,
+          "cpu": 194.43,
+          "calls": 121,
+          "tris": 186547
+        }
+      }
+    },
+    {
+      "id": "highway",
+      "name": "Highway nach Okeefield · Nachmittag",
+      "frames": 253,
+      "seconds": 70.4,
+      "fps": 3.6,
+      "low1": 0.1,
+      "p50ms": 15.2,
+      "p99ms": 4740.2,
+      "maxMs": 11742.4,
+      "spikes33": 74,
+      "spikes50": 62,
+      "hist": {
+        "<16.7": 53.4,
+        "<20": 3.2,
+        "<25": 5.1,
+        "<33.3": 9.1,
+        "<50": 4.7,
+        ">50": 24.5
+      },
+      "settleMaxMs": 3435.1,
+      "settleSpikes33": 5,
+      "calls": {
+        "avg": 157,
+        "max": 205
+      },
+      "tris": {
+        "avg": 323341,
+        "max": 553876
+      },
+      "programs": 73,
+      "progNew": 0,
+      "textures": 189,
+      "geometries": 1106,
+      "gpuMemMB": 147.1,
+      "heapMB": [
+        249.6,
+        258.4
+      ],
+      "cpu": {
+        "sim": 0.373,
+        "net": 2.54,
+        "entities": 2.325,
+        "world": 0.555,
+        "effects": 0.233,
+        "camera": 0.069,
+        "ui": 0.137,
+        "minimap": 0.292,
+        "audio": 0.222,
+        "render": 264.4,
+        "total": 282.765
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "shadow": 26.156,
+        "scene": 177.474,
+        "overlay": 0.112,
+        "bloom": 12.213,
+        "post": 18.178,
+        "total": 234.134
+      },
+      "res": 1,
+      "trisBy": {
+        "main:world:outline:hull": 76.6,
+        "main:world:plants:inst": 75.1,
+        "shadow:world:solid:mesh": 38.7,
+        "shadow:world:plants:inst": 26.4,
+        "main:world:flat:mesh": 23.6,
+        "main:world:ground:mesh": 10.5,
+        "main:entities:hull": 10.3,
+        "main:entities:skin": 6.4,
+        "main:world:solid:mesh": 6.3,
+        "main:smartObjects:mesh": 4.7,
+        "main:smartObjects:hull": 4.4,
+        "shadow:entities:mesh": 2.8,
+        "main:entities:mesh": 2.4,
+        "main:vehicleFx:inst": 2.4,
+        "main:entities:inst": 1.7,
+        "shadow:entities:inst": 1.6,
+        "main:props:inst": 1.1,
+        "shadow:props:inst": 1,
+        "main:props:hull": 1,
+        "shadow:stores:mesh": 1,
+        "main:vehicleFx:mesh": 0.8,
+        "main:Mesh:mesh": 0.5,
+        "main:world:neon:mesh": 0.5,
+        "main:world:decals:mesh": 0.3,
+        "shadow:features:mesh": 0.2,
+        "main:features:mesh": 0.2,
+        "main:features:hull": 0.2,
+        "main:particles:inst": 0.1,
+        "main:world:water:mesh": 0,
+        "main:postQuad:mesh": 0,
+        "main:phones:sprite": 0,
+        "main:particles:mesh": 0
+      },
+      "callsBy": {
+        "main:world:plants:inst": 22.6,
+        "shadow:world:solid:mesh": 21.3,
+        "main:world:outline:hull": 19.9,
+        "shadow:world:plants:inst": 15.5,
+        "main:postQuad:mesh": 11,
+        "main:world:flat:mesh": 8.3,
+        "main:entities:hull": 8,
+        "main:entities:mesh": 5.9,
+        "main:world:ground:mesh": 5.1,
+        "main:world:decals:mesh": 5.1,
+        "main:world:solid:mesh": 4.4,
+        "main:entities:skin": 4,
+        "shadow:entities:mesh": 3.6,
+        "main:props:inst": 3.6,
+        "main:entities:inst": 3,
+        "main:smartObjects:mesh": 2,
+        "main:vehicleFx:inst": 2,
+        "main:vehicleFx:mesh": 2,
+        "shadow:props:inst": 1.9,
+        "main:props:hull": 1.9,
+        "main:particles:inst": 1.4,
+        "shadow:stores:mesh": 1.4,
+        "main:world:neon:mesh": 1.1,
+        "shadow:entities:inst": 1,
+        "shadow:features:mesh": 1,
+        "main:Mesh:mesh": 1,
+        "main:features:mesh": 1,
+        "main:smartObjects:hull": 1,
+        "main:features:hull": 1,
+        "main:world:water:mesh": 1,
+        "main:particles:mesh": 0.6,
+        "main:phones:sprite": 0.3
+      },
+      "ablation": {
+        "none": {
+          "gpu": 53.89,
+          "cpu": 72.83,
+          "calls": 137,
+          "tris": 467242
+        },
+        "outlines": {
+          "gpu": 149.3,
+          "cpu": 1873.9,
+          "calls": 107,
+          "tris": 286505
+        },
+        "shadows": {
+          "gpu": 226.2,
+          "cpu": 4051,
+          "calls": 96,
+          "tris": 384706
+        },
+        "bloom": {
+          "gpu": 52.99,
+          "cpu": 68.15,
+          "calls": 125,
+          "tris": 429217
+        },
+        "water": {
+          "gpu": 36.11,
+          "cpu": 64.99,
+          "calls": 127,
+          "tris": 302433
+        },
+        "characters": {
+          "gpu": 366.99,
+          "cpu": 1976.1,
+          "calls": 105,
+          "tris": 239573
+        },
+        "vegetation": {
+          "gpu": 401.64,
+          "cpu": 5910,
+          "calls": 143,
+          "tris": 277304
+        },
+        "labels": {
+          "gpu": 14.35,
+          "cpu": 24.04,
+          "calls": 127,
+          "tris": 253615
+        }
+      }
+    }
+  ]
+}
