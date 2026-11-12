@@ -27,6 +27,7 @@ import { buildWaterInfo, waterMaterial } from './materials/water';
 import { MINIMAP_GROUND, palmaraize } from './palette';
 import type { CoverKind } from './plants';
 import { coverVariants, treeVariants, type PlantVariant } from './Vegetation';
+import { PlantField, type PlantKind } from './PlantField';
 
 /** Bodenfarben je Untergrund (Minimap). */
 export const GROUND_COLORS: Record<number, number> = {
@@ -66,8 +67,6 @@ const RC = WORLD_SIZE / RCHUNK;
 const HGRID = WORLD_SIZE / HEIGHT_STEP + 1;
 /** Chunks weiter weg als das werden ausgeblendet (Dunst endet bei ~420 m). */
 const VIEW_DISTANCE = 450;
-/** Bodendecker (Gras, Blumen …) nur in der Nähe. */
-const COVER_DISTANCE = 230;
 
 const CURB_H = 0.14;
 const WHITE = 0xffffff;
@@ -111,9 +110,9 @@ interface Chunk {
   neon: GeoBuilder;
   lamps: THREE.Matrix4[];
   pools: THREE.Matrix4[];
-  plants: Map<string, PlantEntry>;
 }
-interface PlantEntry { variant: PlantVariant; mats: THREE.Matrix4[]; cover: boolean; mesh?: THREE.InstancedMesh }
+/** Pflanzen einer Variante (weltweit gesammelt, dann in PlantField instanziert). */
+interface PlantEntry { variant: PlantVariant; mats: THREE.Matrix4[]; cover: boolean; kind?: PlantKind }
 /** Baum wackelt nach einem Treffer (gedämpfte Schwingung um den Fuß). */
 interface Wobble { entry: PlantEntry; idx: number; base: THREE.Matrix4; t: number; s: number; ax: THREE.Vector3 }
 
@@ -172,7 +171,9 @@ export class WorldView {
   });
   private chunks: Chunk[] = [];
   private chunkGroups: THREE.Group[] = [];
-  private coverGroups: THREE.Group[] = [];
+  /** Alle Pflanzen (Bäume + Bodendecker), Culling pro Instanz – siehe PlantField. */
+  readonly plants = new PlantField();
+  private plantLists = new Map<string, PlantEntry>();
   private rnd = mulberry32(29);
   private noise = makeValueNoise(4711);
   /** Baum-Index (Vegetation) -> Instanz, fürs Wackeln */
@@ -183,11 +184,12 @@ export class WorldView {
     for (let i = 0; i < RC * RC; i++) {
       this.chunks.push({
         flat: new GeoBuilder(), solid: new GeoBuilder(), decals: new GeoBuilder(), neon: new GeoBuilder(),
-        lamps: [], pools: [], plants: new Map(),
+        lamps: [], pools: [],
       });
     }
     this.waterMaterial = waterMaterial(buildWaterInfo(map));
     const water = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_SIZE * 4, WORLD_SIZE * 4), this.waterMaterial);
+    water.name = 'water';
     water.rotation.x = -Math.PI / 2;
     water.position.set(WORLD_SIZE / 2, WATER_LEVEL, WORLD_SIZE / 2);
     water.renderOrder = 1;
@@ -1204,9 +1206,9 @@ export class WorldView {
     if (!variants.length) return null;
     const h = Math.abs(Math.floor(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453)) % variants.length;
     const v = variants[h];
-    const ch = this.chunkAt(x, z);
-    let entry = ch.plants.get(v.key);
-    if (!entry) ch.plants.set(v.key, (entry = { variant: v, mats: [], cover }));
+    const key = v.key + (cover ? ':c' : '');
+    let entry = this.plantLists.get(key);
+    if (!entry) this.plantLists.set(key, (entry = { variant: v, mats: [], cover }));
     entry.mats.push(m4(x, y, z, rot, s));
     return { entry, idx: entry.mats.length - 1 };
   }
@@ -1282,76 +1284,78 @@ export class WorldView {
       for (let cx = 0; cx < RC; cx++) {
         const ch = this.chunks[cz * RC + cx];
         const grp = new THREE.Group();
-        const cover = new THREE.Group();
         grp.userData.center = new THREE.Vector2((cx + 0.5) * RCHUNK, (cz + 0.5) * RCHUNK);
-        cover.userData.center = grp.userData.center;
-        grp.add(this.buildGround(cx, cz));
+        const ground = this.buildGround(cx, cz);
+        ground.name = 'ground';
+        grp.add(ground);
         if (!ch.flat.empty) {
           const m = new THREE.Mesh(ch.flat.build(), this.surface);
+          m.name = 'flat';
           m.receiveShadow = true;
           grp.add(m);
         }
         if (!ch.solid.empty) {
           const m = new THREE.Mesh(ch.solid.build(), this.solidMat);
+          m.name = 'solid';
           m.castShadow = m.receiveShadow = true;
           addOutline(m, LINE.building, { fade: true });
           grp.add(m);
         }
         if (!ch.decals.empty) {
           const m = new THREE.Mesh(ch.decals.build(), this.decalMat);
+          m.name = 'decals';
           m.receiveShadow = true;
           m.renderOrder = 1;
           grp.add(m);
         }
-        if (!ch.neon.empty) grp.add(new THREE.Mesh(ch.neon.build(), this.neonMat));
+        if (!ch.neon.empty) { const m = new THREE.Mesh(ch.neon.build(), this.neonMat); m.name = 'neon'; grp.add(m); }
         if (ch.lamps.length) {
-          grp.add(instanced(bulb, this.lampMaterial, ch.lamps));
+          const b = instanced(bulb, this.lampMaterial, ch.lamps);
+          b.name = 'lamps';
+          grp.add(b);
           const p = instanced(pool, this.lampPoolMaterial, ch.pools);
+          p.name = 'lampPools';
           p.renderOrder = 2;
           grp.add(p);
         }
-        for (const entry of ch.plants.values()) {
-          const { variant, mats, cover: isCover } = entry;
-          let first: THREE.InstancedMesh | null = null;
-          for (const part of variant.parts) {
-            const mesh = instanced(part.geometry, part.material, mats);
-            if (first) { mesh.instanceMatrix = first.instanceMatrix; } else { first = mesh; entry.mesh = mesh; }
-            mesh.castShadow = variant.shadow;
-            mesh.receiveShadow = true;
-            if (variant.outline) addOutline(mesh, isCover ? LINE.prop : LINE.tree, { wind: true });
-            (isCover ? cover : grp).add(mesh);
-          }
-        }
         this.chunkGroups.push(grp);
         this.group.add(grp);
-        if (cover.children.length) { this.coverGroups.push(cover); this.group.add(cover); }
       }
     }
+    for (const entry of this.plantLists.values()) entry.kind = this.plants.add(entry.variant, entry.cover, entry.mats) ?? undefined;
+    this.group.add(this.plants.group);
     this.chunks = [];
     void this.trees;
   }
 
   /** Entfernte Chunks ausblenden (zusätzlich zum Frustum-Culling der einzelnen Meshes). */
-  update(camX: number, camZ: number) {
+  /**
+   * Entfernte Chunks ausblenden. Grenze: Sichtweite oder Dunst-Ende (Nebel in Gator Flats, Dunst bei
+   * Tag), je nachdem was näher ist – dahinter ist alles vollständig in Dunstfarbe, also unsichtbar.
+   * Reserve: Chunk-Halbdiagonale + Abstand Kamera–Fokus (Dunst zählt ab Kamera, Mittelpunkt ab Fokus).
+   */
+  update(camX: number, camZ: number, fogFar = Infinity) {
+    const limit = Math.min(VIEW_DISTANCE, fogFar + 60) + RCHUNK * 0.71;
     for (const g of this.chunkGroups) {
       const c = g.userData.center as THREE.Vector2;
-      g.visible = Math.hypot(c.x - camX, c.y - camZ) < VIEW_DISTANCE + RCHUNK * 0.71;
+      g.visible = Math.hypot(c.x - camX, c.y - camZ) < limit;
     }
-    for (const g of this.coverGroups) {
-      const c = g.userData.center as THREE.Vector2;
-      g.visible = Math.hypot(c.x - camX, c.y - camZ) < COVER_DISTANCE + RCHUNK * 0.71;
-    }
+  }
+
+  /** Pflanzen-Culling pro Instanz (Kamera, Schattenrichtung je m Höhe oder null, Dunstende). */
+  updatePlants(camera: THREE.PerspectiveCamera, focus: THREE.Vector3, shadowDir: THREE.Vector3 | null, fogFar: number) {
+    this.plants.update(camera, focus, shadowDir, fogFar);
   }
 
 
   /** Baum (Index der Vegetation) nach einem Treffer wackeln lassen; strength 0..1. */
   wobbleTree(index: number, strength: number, dirX = 1, dirZ = 0) {
     const ref = this.treeRefs[index];
-    if (!ref?.entry.mesh) return;
+    if (!ref?.entry.kind) return;
     if (this.wobbles.some((w) => w.entry === ref.entry && w.idx === ref.idx)) return;
     const l = Math.hypot(dirX, dirZ) || 1;
     // Kippachse quer zur Stoßrichtung (lokal: Baum-Matrix enthält Drehung + Skalierung)
-    const base = ref.entry.mats[ref.idx].clone();
+    const base = this.plants.matrix(ref.entry.kind, ref.idx, new THREE.Matrix4());
     const inv = new THREE.Matrix4().extractRotation(base).invert();
     const ax = new THREE.Vector3(dirZ / l, 0, -dirX / l).applyMatrix4(inv).normalize();
     this.wobbles.push({ entry: ref.entry, idx: ref.idx, base, t: 0, s: Math.min(1, 0.3 + strength), ax });
@@ -1362,12 +1366,10 @@ export class WorldView {
     for (let i = this.wobbles.length - 1; i >= 0; i--) {
       const w = this.wobbles[i];
       w.t += dt;
-      const mesh = w.entry.mesh!;
       const done = w.t > 2.6;
       const ang = done ? 0 : w.s * 0.32 * Math.exp(-w.t * 2.2) * Math.sin(w.t * 13);
       const m = done ? w.base : new THREE.Matrix4().makeRotationAxis(w.ax, ang).premultiply(w.base);
-      mesh.setMatrixAt(w.idx, m);
-      mesh.instanceMatrix.needsUpdate = true;
+      this.plants.setMatrix(w.entry.kind!, w.idx, m);
       if (done) this.wobbles.splice(i, 1);
     }
   }

@@ -7,12 +7,19 @@ import { networkInterfaces } from 'node:os';
 import { extname, join, normalize, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { mulberry32 } from '../../shared/src/math';
 import { MAX_NAME_LENGTH, SERVER_PORT, WS_PATH } from '../../shared/src/constants';
 import type { ClientMsg, ServerMsg } from '../../shared/src/protocol';
 import type { Connection, ServerPlayer } from './entities/types';
 import { RoomManager } from './rooms/RoomManager';
 import type { WorldRoom } from './rooms/WorldRoom';
 import { FilePlayerStore } from './services/PlayerStore';
+
+// Benchmark: reproduzierbarer Zufall (NPCs, Verkehr, Ereignisse) – BENCH_SEED=1234 npm run dev:server
+if (process.env.BENCH_SEED) {
+  Math.random = mulberry32(Number(process.env.BENCH_SEED) || 1);
+  console.log(`  Benchmark-Seed ${process.env.BENCH_SEED} (Math.random deterministisch)`);
+}
 
 const CLIENT_DIR = resolve(process.cwd(), 'dist/client');
 const MIME: Record<string, string> = {

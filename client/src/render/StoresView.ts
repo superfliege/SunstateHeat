@@ -6,6 +6,7 @@
 //   - Verkäufer hinter der Theke bzw. Mechaniker an der Werkstatt, die man mit F anspricht.
 // Der feste Teil (Wandsockel bis STORE_CUT_H) liegt in den Chunk-Geometrien von WorldView.
 import * as THREE from 'three';
+import { OVERLAY_LAYER } from './PostFX';
 import { mulberry32 } from '../../../shared/src/math';
 import { SHOP_COLORS, STORE_FURNITURE, STORE_WALLS, storeAt, type ShopDef, type ShopType } from '../../../shared/src/shops';
 import { BuildingStyle, CURB_TOP, type BuildingDef, type WorldMap } from '../../../shared/src/world/WorldMap';
@@ -66,6 +67,7 @@ function bubbleSprite(): THREE.Sprite {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false }));
+  s.layers.set(OVERLAY_LAYER); // Beschriftung: nach der Nachbearbeitung scharf in voller Auflösung
   s.scale.set(0.9, 0.9, 1);
   s.renderOrder = 9;
   return s;
@@ -105,8 +107,10 @@ export class StoresView {
   private light = new THREE.PointLight(0xfff0d0, 0, 7.5, 2);
 
   constructor(private map: WorldMap, private shops: ShopDef[]) {
-    const inner = new GeoBuilder(), innerNeon = new GeoBuilder();
+    // Einrichtung je Laden als eigenes Mesh (vorher: alle Läden der Welt in EINEM Mesh – das wurde
+    // nie gecullt und lag mit Umriss und Schatten in jedem Bild, ~39k Dreiecke)
     for (const shop of shops) {
+      const inner = new GeoBuilder(), innerNeon = new GeoBuilder();
       if (shop.building) {
         const b = map.buildings.find((x) => x.style === BuildingStyle.Store && x.x === shop.x && x.z === shop.z);
         if (!b) continue;
@@ -119,14 +123,14 @@ export class StoresView {
         this.mechanicCorner(inner, shop);
       }
       this.addKeeper(shop);
+      if (!inner.empty) {
+        const m = new THREE.Mesh(inner.build(), this.innerMat);
+        m.castShadow = m.receiveShadow = true;
+        addOutline(m, LINE.prop);
+        this.group.add(m);
+      }
+      if (!innerNeon.empty) this.group.add(new THREE.Mesh(innerNeon.build(), this.neonMat));
     }
-    if (!inner.empty) {
-      const m = new THREE.Mesh(inner.build(), this.innerMat);
-      m.castShadow = m.receiveShadow = true;
-      addOutline(m, LINE.prop);
-      this.group.add(m);
-    }
-    if (!innerNeon.empty) this.group.add(new THREE.Mesh(innerNeon.build(), this.neonMat));
     this.bubble.visible = false;
     this.group.add(this.bubble, this.light);
   }

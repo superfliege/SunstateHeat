@@ -19,6 +19,7 @@ import { CarModel, type DebrisSpawn } from '../render/CarModel';
 import { box, merge, cyl } from '../render/geom';
 import { standaloneTexture } from '../render/materials/atlas';
 import { addOutline, LINE } from '../render/materials/toon';
+import { OVERLAY_LAYER } from '../render/PostFX';
 import { CharacterModel, fanGeometry, lightsMat, toonVC, vehicleGeometry, vehicleMat } from '../render/models';
 import { moodFor } from '../render/palette';
 import { createWeaponMesh } from '../render/weaponModels';
@@ -153,6 +154,7 @@ function makeBarkBubble(text: string): { sprite: THREE.Sprite; w: number; h: num
   // Farbe < Bloom-Schwelle (PostFX 0.92), sonst überstrahlt die weiße Blase nachts den Text
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false, transparent: true, color: 0xd8d8d8, toneMapped: false }));
   sprite.renderOrder = 11;
+  sprite.layers.set(OVERLAY_LAYER); // nach der Nachbearbeitung in voller Auflösung (immer scharf)
   sprite.center.set(0.3, 0); // Zipfel sitzt über dem Kopf
   const k = 1 / 100; // 100 px = 1 m
   return { sprite, w: c.width * k, h: c.height * k };
@@ -182,6 +184,7 @@ function makeLabel(text: string, color: number, bubble = false): THREE.Sprite {
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false }));
   sprite.scale.set(7, 1.75, 1);
   sprite.renderOrder = 10;
+  sprite.layers.set(OVERLAY_LAYER);
   return sprite;
 }
 
@@ -400,7 +403,9 @@ export class EntityViews {
     root.updateMatrixWorld();
     car.update(dt, speed, v.lat, this.night > 0.3, (s.flags & 1) !== 0, (s.flags & 2) !== 0);
 
-    // Räder
+    // Räder (Instanzen nur für Fahrzeuge im Bild oder mit Schatten im Bild; Federung läuft immer weiter).
+    // Vorher lagen ALLE Räder aller bekannten Fahrzeuge in jedem Bild in Farb-, Umriss- und Schattenpass.
+    const wheelsOn = !this.frustumValid || this.inViewOrShadow(root.position, v.prof, 3, false);
     const r = v.prof.wheelRadius, rayLen = v.rest + r;
     for (let i = 0; i < 4; i++) {
       const w = tpl.wheels[i];
@@ -417,7 +422,7 @@ export class EntityViews {
       }
       if (s.spin) v.spin[i] = s.spin[i];
       else v.spin[i] = (v.spin[i] + (speed * (s.flags & 2 ? -1 : 1)) / r * dt) % (Math.PI * 2);
-      if (this.wheelCount >= MAX_WHEELS) continue;
+      if (this.wheelCount >= MAX_WHEELS || !wheelsOn) continue;
       const steer = i < 2 ? s.steer : 0;
       const flat = s.tires && s.tires & (1 << i) ? 0.72 : 1;
       tmpPos.set(w.x, tpl.wheelBaseY + comp - r * (1 - flat), w.z).applyMatrix4(root.matrixWorld);
@@ -597,6 +602,39 @@ export class EntityViews {
     if (!on) root.visible = false;
     root.matrixWorldAutoUpdate = on;
     return on;
+  }
+
+  /**
+   * Schattenpass nur für Fahrzeuge, deren Schatten ins Bild fallen kann: Kugel um das Fahrzeug im
+   * Sichtfeld, oder dieselbe Kugel entlang der Schattenrichtung (Höhe x shadowDir) verschoben.
+   * Vorher warf jedes Fahrzeug im (großen) Schattenbereich einen Schatten – auch hinter der Kamera.
+   * shadowDir = Schattenversatz je Meter Höhe (null = Schatten aus). Nach setCamera() aufrufen.
+   */
+  cullVehicleShadows(shadowDir: THREE.Vector3 | null) {
+    if (!this.frustumValid) return;
+    this.shadowDir = shadowDir ? (this.shadowDir ?? new THREE.Vector3()).copy(shadowDir) : null;
+    for (const v of this.vehicles.values()) {
+      const body = v.car?.body;
+      if (!body) continue;
+      body.castShadow = !shadowDir || this.inViewOrShadow(v.root.position, v.prof, 0.6, false);
+    }
+  }
+  private shadowDir: THREE.Vector3 | null = null;
+
+  /** Fahrzeug (Kugel) im Sichtfeld – oder (shadowOnly = false) sein Schatten? Rand in m. */
+  private inViewOrShadow(p: THREE.Vector3, prof: HandlingProfile, margin: number, viewOnly: boolean) {
+    const r = prof.length * 0.5 + margin;
+    tmpSphere.center.copy(p); tmpSphere.radius = r;
+    if (this.frustum.intersectsSphere(tmpSphere)) return true;
+    const sd = this.shadowDir;
+    if (viewOnly || !sd) return false;
+    const h = prof.height + 0.6;
+    let ox = sd.x * h, oz = sd.z * h;
+    const l = Math.hypot(ox, oz);
+    if (l > 40) { ox *= 40 / l; oz *= 40 / l; }
+    tmpSphere.center.set(p.x + ox, p.y - 0.5, p.z + oz);
+    tmpSphere.radius = r + l * 0.15;
+    return this.frustum.intersectsSphere(tmpSphere);
   }
 
   /** Sichtfeld der Kamera (nach dem Kamera-Update aufrufen; gilt für das nächste Bild). */

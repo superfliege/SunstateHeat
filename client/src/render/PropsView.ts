@@ -1,7 +1,9 @@
 // Zerstörbare Straßenmöbel (Laternen, Hydranten, Bänke, Mülltonnen, Zeitungsautomaten, Kegel,
-// Strandliegen). Intakte Props: instanziert je Typ und 256-m-Region (Culling). Getroffene Props
-// kommen mit Position/Orientierung vom Server und werden als eigene Meshes gezeigt; ihre
-// Instanz wird so lange ausgeblendet. Laternen haben eine Leuchte, die nachts brennt.
+// Strandliegen). Intakte Props: EINE InstancedMesh je Typ für die ganze Welt, gefüllt pro Bild nur
+// mit den Instanzen im Sichtfeld bzw. deren Schatten ins Bild fallen kann (ViewCull, wie Pflanzen).
+// Vorher: je Typ und 256-m-Region – ganze Regionen samt Umriss und Schattenpass.
+// Getroffene Props kommen mit Position/Orientierung vom Server und werden als eigene Meshes gezeigt;
+// ihre Instanz wird so lange ausgeblendet. Laternen haben eine Leuchte, die nachts brennt.
 import * as THREE from 'three';
 import type { PropTuple } from '../../../shared/src/protocol';
 import { generateProps, PropType, type Prop } from '../../../shared/src/world/features';
@@ -11,17 +13,22 @@ import { box, cyl, merge } from './geom';
 import { standaloneTexture } from './materials/atlas';
 import { addOutline, LINE } from './materials/toon';
 import { toonVC } from './models';
+import { cellOf, CULL_CELLS, ViewCull } from './PlantField';
 
-const REGION = 256;
 const LAMP_SCALE = 6.8;
 
 interface TypeGeo { geo: THREE.BufferGeometry; mat: THREE.Material }
-interface Inst { mesh: THREE.InstancedMesh; index: number; bulb?: { mesh: THREE.InstancedMesh; index: number }; matrix: THREE.Matrix4 }
+/** Alle Props eines Typs: Basismatrizen (+ Leuchte/Lichtkegel bei Laternen), Raster, Ausgabe-Meshes. */
+interface TypeInst {
+  ids: number[]; mats: Float32Array; bulbs: Float32Array | null; pools: Float32Array | null;
+  sphere: Float32Array; height: number; cells: Map<number, number[]>;
+  mesh: THREE.InstancedMesh; hull: THREE.InstancedMesh; bulbMesh: THREE.InstancedMesh | null; poolMesh: THREE.InstancedMesh | null;
+}
+interface Inst { t: TypeInst; index: number; matrix: THREE.Matrix4 }
 interface Loose { mesh: THREE.Mesh; target: THREE.Vector3; q: THREE.Quaternion; spray: boolean; first: boolean; confirmed: boolean; age: number }
 
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
-const ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
 /** Kit-Modell skaliert, oder null */
 function kit(name: ModelName, scale: number) {
@@ -39,7 +46,11 @@ export class PropsView {
   private lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0 });
   private poolMat = new THREE.MeshBasicMaterial({ color: 0xffc070, map: standaloneTexture('lamp_pool'), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   private bulbLocal = new THREE.Vector3();
-  private dirty = new Set<THREE.InstancedMesh>();
+  private typeInst: TypeInst[] = [];
+  /** Umgeworfene Props (Instanz ausgeblendet). */
+  private hidden = new Set<number>();
+  private cull = new ViewCull();
+  private dirty = true;
   /** Hydranten mit Fontäne (für die Effekte) */
   readonly sprays: THREE.Vector3[] = [];
 
@@ -103,67 +114,113 @@ export class PropsView {
   }
 
   private buildInstances() {
-    // nach Typ und Region gruppieren
-    const groups = new Map<string, Prop[]>();
+    const byType = new Map<number, Prop[]>();
     for (const p of this.props) {
-      const k = `${p.type}:${Math.floor(p.x / REGION)}:${Math.floor(p.z / REGION)}`;
-      let l = groups.get(k);
-      if (!l) groups.set(k, (l = []));
+      let l = byType.get(p.type);
+      if (!l) byType.set(p.type, (l = []));
       l.push(p);
     }
     const bulbGeo = new THREE.BoxGeometry(0.7, 0.25, 0.7);
     const poolGeo = new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2);
-    for (const list of groups.values()) {
-      const t = this.types[list[0].type];
-      const mesh = new THREE.InstancedMesh(t.geo, t.mat, list.length);
+    for (const [type, list] of byType) {
+      const tg = this.types[type];
+      const n = list.length;
+      tg.geo.computeBoundingBox();
+      const bb = tg.geo.boundingBox!;
+      const lamp = type === PropType.Lamp;
+      const mesh = new THREE.InstancedMesh(tg.geo, tg.mat, n);
       mesh.castShadow = true; mesh.receiveShadow = true;
-      let bulbs: THREE.InstancedMesh | null = null, pools: THREE.InstancedMesh | null = null;
-      if (list[0].type === PropType.Lamp) {
-        bulbs = new THREE.InstancedMesh(bulbGeo, this.lampMat, list.length);
-        pools = new THREE.InstancedMesh(poolGeo, this.poolMat, list.length);
-        pools.renderOrder = 2;
+      mesh.frustumCulled = false; // eigenes Culling pro Instanz
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      mesh.count = 0;
+      const hull = addOutline(mesh, LINE.prop) as THREE.InstancedMesh;
+      hull.frustumCulled = false;
+      this.group.add(mesh);
+      const t: TypeInst = {
+        ids: [], mats: new Float32Array(n * 16), bulbs: lamp ? new Float32Array(n * 16) : null, pools: lamp ? new Float32Array(n * 16) : null,
+        sphere: new Float32Array(n * 4), height: bb.max.y, cells: new Map(), mesh, hull, bulbMesh: null, poolMesh: null,
+      };
+      if (lamp) {
+        t.bulbMesh = new THREE.InstancedMesh(bulbGeo, this.lampMat, n);
+        t.poolMesh = new THREE.InstancedMesh(poolGeo, this.poolMat, n);
+        t.poolMesh.renderOrder = 2;
+        for (const m of [t.bulbMesh, t.poolMesh]) { m.frustumCulled = false; m.count = 0; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.group.add(m); }
       }
+      const r = Math.hypot(Math.max(-bb.min.x, bb.max.x), bb.max.y / 2, Math.max(-bb.min.z, bb.max.z)) + (lamp ? 5 : 0.3); // Laterne: Lichtkegel 10 m
       list.forEach((p, i) => {
         const m = this.matrixOf(p, new THREE.Matrix4());
-        mesh.setMatrixAt(i, m);
-        const inst: Inst = { mesh, index: i, matrix: m };
-        if (bulbs && pools) {
+        m.toArray(t.mats, i * 16);
+        if (t.bulbs && t.pools) {
           tmpP.copy(this.bulbLocal).applyMatrix4(m);
-          bulbs.setMatrixAt(i, tmpM.makeTranslation(tmpP.x, tmpP.y, tmpP.z));
-          pools.setMatrixAt(i, tmpM.makeTranslation(tmpP.x, this.map.surfaceY(tmpP.x, tmpP.z) + 0.08, tmpP.z));
-          inst.bulb = { mesh: bulbs, index: i };
+          tmpM.makeTranslation(tmpP.x, tmpP.y, tmpP.z).toArray(t.bulbs, i * 16);
+          tmpM.makeTranslation(tmpP.x, this.map.surfaceY(tmpP.x, tmpP.z) + 0.08, tmpP.z).toArray(t.pools, i * 16);
         }
-        this.inst.set(p.id, inst);
+        t.sphere.set([p.x, p.y + bb.max.y / 2, p.z, r], i * 4);
+        t.ids.push(p.id);
+        const k = cellOf(p.x, p.z);
+        let c = t.cells.get(k);
+        if (!c) t.cells.set(k, (c = []));
+        c.push(i);
+        this.inst.set(p.id, { t, index: i, matrix: m });
       });
-      mesh.computeBoundingSphere();
-      addOutline(mesh, LINE.prop);
-      this.group.add(mesh);
-      if (bulbs && pools) {
-        bulbs.computeBoundingSphere(); pools.computeBoundingSphere();
-        this.group.add(bulbs, pools);
-        // Lichtkegel teilt sich die Sichtbarkeit mit der Leuchte
-        (bulbs.userData as { pools?: THREE.InstancedMesh }).pools = pools;
+      this.typeInst.push(t);
+    }
+    void CULL_CELLS;
+  }
+
+  /**
+   * Sichtbare Props in die Instanz-Meshes kopieren (nur bei Kamera-/Sonnen-/Dunst-Änderung oder
+   * umgeworfenen Props). shadowDir = Schattenversatz je Meter Höhe oder null.
+   */
+  cullView(camera: THREE.PerspectiveCamera, shadowDir: THREE.Vector3 | null, fogFar: number) {
+    const V = this.cull;
+    if (!V.prepare(camera, shadowDir, fogFar) && !this.dirty) return;
+    this.dirty = false;
+    for (const t of this.typeInst) {
+      const out = t.mesh.instanceMatrix.array as Float32Array;
+      const ob = t.bulbMesh?.instanceMatrix.array as Float32Array | undefined, op = t.poolMesh?.instanceMatrix.array as Float32Array | undefined;
+      let w = 0;
+      for (let cz = V.cz0; cz <= V.cz1; cz++) {
+        for (let cx = V.cx0; cx <= V.cx1; cx++) {
+          const list = t.cells.get(cz * CULL_CELLS + cx);
+          if (!list) continue;
+          for (const i of list) {
+            if (this.hidden.has(t.ids[i])) continue;
+            const o = i * 4;
+            if (!V.test(t.sphere[o], t.sphere[o + 1], t.sphere[o + 2], t.sphere[o + 3], t.height, true)) continue;
+            out.set(t.mats.subarray(i * 16, i * 16 + 16), w * 16);
+            if (ob && op) { ob.set(t.bulbs!.subarray(i * 16, i * 16 + 16), w * 16); op.set(t.pools!.subarray(i * 16, i * 16 + 16), w * 16); }
+            w++;
+          }
+        }
       }
+      for (const m of [t.mesh, t.bulbMesh, t.poolMesh]) {
+        if (!m) continue;
+        m.count = w; m.visible = w > 0;
+        const a = m.instanceMatrix;
+        a.clearUpdateRanges(); a.addUpdateRange(0, Math.max(1, w) * 16); a.needsUpdate = true;
+      }
+      t.hull.count = w;
     }
   }
 
-  private setInstanceVisible(id: number, visible: boolean) {
-    const inst = this.inst.get(id);
-    if (!inst) return;
-    inst.mesh.setMatrixAt(inst.index, visible ? inst.matrix : ZERO);
-    this.dirty.add(inst.mesh);
-    if (inst.bulb) {
-      const pools = (inst.bulb.mesh.userData as { pools?: THREE.InstancedMesh }).pools!;
-      if (visible) {
-        tmpP.copy(this.bulbLocal).applyMatrix4(inst.matrix);
-        inst.bulb.mesh.setMatrixAt(inst.bulb.index, tmpM.makeTranslation(tmpP.x, tmpP.y, tmpP.z));
-        pools.setMatrixAt(inst.bulb.index, tmpM.makeTranslation(tmpP.x, this.map.surfaceY(tmpP.x, tmpP.z) + 0.08, tmpP.z));
-      } else {
-        inst.bulb.mesh.setMatrixAt(inst.bulb.index, ZERO);
-        pools.setMatrixAt(inst.bulb.index, ZERO);
+  /** Shader-Aufwärmen: je Typ eine Instanz zeigen (nächstes cullView() baut neu auf). */
+  warmupInstances() {
+    for (const t of this.typeInst) {
+      for (const [m, src] of [[t.mesh, t.mats], [t.bulbMesh, t.bulbs], [t.poolMesh, t.pools]] as const) {
+        if (!m || !src) continue;
+        (m.instanceMatrix.array as Float32Array).set(src.subarray(0, 16), 0);
+        m.instanceMatrix.needsUpdate = true; m.count = 1; m.visible = true;
       }
-      this.dirty.add(inst.bulb.mesh); this.dirty.add(pools);
+      t.hull.count = 1;
     }
+    this.dirty = true;
+  }
+
+  private setInstanceVisible(id: number, visible: boolean) {
+    if (!this.inst.has(id)) return;
+    if (visible) this.hidden.delete(id); else this.hidden.add(id);
+    this.dirty = true;
   }
 
   /** Prop lokal sofort umwerfen (Vorhersage), bis der Server-Zustand kommt. */
@@ -240,8 +297,6 @@ export class PropsView {
       l.mesh.quaternion.slerp(l.q, k);
       if (l.spray) this.sprays.push(l.mesh.position);
     }
-    for (const m of this.dirty) m.instanceMatrix.needsUpdate = true;
-    this.dirty.clear();
   }
 
   /** Ist das Prop laut letztem Server-Stand verschoben? */

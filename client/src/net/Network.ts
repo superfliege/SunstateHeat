@@ -10,6 +10,8 @@ export interface LoginInfo { name: string; password?: string; guestId?: string }
 export class Network {
   private ws: WebSocket | null = null;
   onMessage: (msg: ServerMsg) => void = () => {};
+  /** Zeit fürs JSON-Decoding der letzten Nachricht (ms, für den Profiler). */
+  parseMs = 0;
   onClose: () => void = () => {};
 
   connect(login: LoginInfo): Promise<WelcomeMsg> {
@@ -24,7 +26,9 @@ export class Network {
       ws.onclose = () => { if (welcomed) this.onClose(); else reject(new Error(failure ?? 'Verbindung abgelehnt')); };
       ws.onmessage = (ev) => {
         let msg: ServerMsg;
+        const t0 = performance.now();
         try { msg = JSON.parse(ev.data as string); } catch { return; }
+        this.parseMs = performance.now() - t0;
         if (!welcomed && msg.t === 'welcome') { welcomed = true; resolve(msg); return; }
         // Anmeldung abgelehnt (falsches Passwort, schon online …): Grund anzeigen, Verbindung beenden
         if (!welcomed && msg.t === 'error') { failure = msg.text; reject(new Error(msg.text)); ws.close(); return; }

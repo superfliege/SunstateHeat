@@ -10,8 +10,16 @@ function mixHex(a: number, b: number, t: number, out: THREE.Color) {
   return out.copy(ca.setHex(a)).lerp(cb.setHex(b), t);
 }
 
-/** Schattenbereich um den Fokus (m) – deckt den sichtbaren Ausschnitt ab. */
-const SHADOW_EXTENT = 110;
+/**
+ * Schattenbereich um den Fokus (m). Passt sich dem sichtbaren Ausschnitt an: Die Kamera (Neigung 56°,
+ * FOV 42°) sieht bei Abstand d einen Bodenstreifen von etwa ±1,0·d quer und −0,4·d … +0,65·d längs –
+ * Halbbreite 1,15·d + Reserve für Gebäudehöhen genügt. Vorher fest 110 m (zu Fuß ~2,5x zu groß:
+ * mehr Schattenwerfer und gröbere Texel). In 8-m-Stufen, damit das Texelraster nicht ständig springt.
+ */
+const SHADOW_MIN = 46, SHADOW_MAX = 110;
+export function shadowExtentFor(cameraDistance: number) {
+  return Math.min(SHADOW_MAX, Math.max(SHADOW_MIN, Math.ceil((cameraDistance * 1.15 + 12) / 8) * 8));
+}
 const sunDir = new THREE.Vector3();
 
 export class Sky {
@@ -20,6 +28,9 @@ export class Sky {
   readonly fog = new THREE.Fog(0x8ff2e0, 140, 420);
   /** Sichtweite-Faktor (Luftfahrzeuge in großer Höhe sehen weiter) */
   fogScale = 1;
+  /** Aktuelle Halbbreite des Schattenbereichs (m). */
+  private extent = SHADOW_MAX;
+  private mapSize = 2048;
   readonly horizon = new THREE.Color();
   readonly mid = new THREE.Color();
   readonly top = new THREE.Color();
@@ -33,7 +44,8 @@ export class Sky {
   private dome: THREE.Mesh;
   private domeMat: THREE.ShaderMaterial;
 
-  constructor(scene: THREE.Scene, shadows: boolean) {
+  constructor(scene: THREE.Scene, shadows: boolean, mapSize = 2048) {
+    this.mapSize = mapSize;
     scene.add(this.sun, this.sun.target, this.ambient);
     scene.fog = this.fog;
     scene.background = this.horizon;
@@ -73,17 +85,26 @@ export class Sky {
     scene.add(this.dome);
   }
 
-  setShadows(on: boolean) {
+  /** Schatten an/aus; mapSize = Auflösung der Schattentextur (Preset). */
+  setShadows(on: boolean, mapSize = this.mapSize) {
     this.sun.castShadow = on;
     const s = this.sun.shadow;
-    s.mapSize.set(2048, 2048);
-    s.camera.left = s.camera.bottom = -SHADOW_EXTENT;
-    s.camera.right = s.camera.top = SHADOW_EXTENT;
+    if (mapSize !== this.mapSize && s.map) { s.map.dispose(); s.map = null; } // neue Größe -> Textur neu anlegen
+    this.mapSize = mapSize;
+    s.mapSize.set(mapSize, mapSize);
+    this.setExtent(this.extent);
     s.camera.near = 1; s.camera.far = 400;
     s.bias = -0.0006;
     s.normalBias = 0.06;
     s.radius = 3; // weiche Kanten (PCFSoft)
-    s.camera.updateProjectionMatrix();
+  }
+
+  /** Halbbreite des Schattenbereichs setzen (siehe shadowExtentFor). */
+  setExtent(e: number) {
+    this.extent = e;
+    const c = this.sun.shadow.camera;
+    c.left = c.bottom = -e; c.right = c.top = e;
+    c.updateProjectionMatrix();
   }
 
   /** Zielstimmung (Zone/Viertel des Spielers); wird über einige Sekunden überblendet. */
@@ -117,7 +138,7 @@ export class Sky {
     const az = height >= -0.05 ? ang : ang + Math.PI;
     const dir = sunDir.set(Math.cos(az) * Math.cos(elev), Math.sin(elev), 0.35 * Math.cos(elev)).normalize();
     // Schattenkamera auf Texelraster einrasten -> kein Flimmern beim Fahren
-    const snap = (SHADOW_EXTENT * 2) / this.sun.shadow.mapSize.x;
+    const snap = (this.extent * 2) / this.sun.shadow.mapSize.x;
     const fx = Math.round(focus.x / snap) * snap, fz = Math.round(focus.z / snap) * snap;
     this.sun.position.set(fx, focus.y, fz).addScaledVector(dir, 180);
     this.sun.target.position.set(fx, focus.y, fz);

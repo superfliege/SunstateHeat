@@ -58,7 +58,7 @@ async function main() {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const ratio = retro ? 0.6 : 1;
-  renderer.setPixelRatio(ratio);
+  renderer.setPixelRatio(1);
   renderer.setSize(innerWidth, innerHeight, false);
   U.uResolution.value.set(innerWidth * ratio, innerHeight * ratio);
 
@@ -70,7 +70,7 @@ async function main() {
   const particles = new Particles(map);
   scene.add(world.group, views.group, particles.group);
   const post = new PostFX(renderer, scene, rig.camera);
-  post.setSize(innerWidth, innerHeight, ratio);
+  post.setSize(innerWidth, innerHeight, 1, ratio, retro);
   report(`Welt gebaut in ${Math.round(performance.now() - t0)} ms`);
 
   const zoom = Number(q.get('zoom') ?? 1);
@@ -136,6 +136,8 @@ async function main() {
     U.uTime.value += dt;
     sky.update(day, rig.target, 1);
     world.update(rig.target.x, rig.target.z);
+    world.updatePlants(rig.camera, rig.target, null, sky.fog.far);
+    props.cullView(rig.camera, null, sky.fog.far);
     world.setNight(sky.night);
     world.setLight(sky.light);
     props.setNight(sky.night);

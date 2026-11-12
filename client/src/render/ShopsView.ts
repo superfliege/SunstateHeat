@@ -1,6 +1,7 @@
 // Markierungen in der Welt (Telefone): farbiger Ring, schwebender Pfeil und Schild mit dem Namen.
 // Läden haben keine Marker mehr, dort spricht man mit dem Verkäufer (StoresView).
 import * as THREE from 'three';
+import { OVERLAY_LAYER } from './PostFX';
 import type { QuestState } from '../../../shared/src/protocol';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 
@@ -19,6 +20,7 @@ export function sign(text: string, color: number): THREE.Sprite {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, fog: false }));
+  s.layers.set(OVERLAY_LAYER); // Beschriftung: nach der Nachbearbeitung scharf in voller Auflösung
   s.scale.set(8, 1.8, 1);
   s.renderOrder = 9;
   return s;

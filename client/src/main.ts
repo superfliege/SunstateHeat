@@ -3,10 +3,15 @@ import { Sfx } from './audio/Sfx';
 import { Game } from './game/Game';
 import { isFullscreen, toggleFullscreen } from './input/TouchControls';
 import { Network } from './net/Network';
+import { Bench } from './perf/Bench';
 import { loadAssets } from './render/assets';
 import { loadTextureOverrides } from './render/materials/atlas';
 import { loadQuaternius } from './render/quaternius';
 import { loadKenneyCharacters } from './render/kenneyCharacters';
+
+// Benchmark (?bench=1): Zufall seeden, automatisch anmelden
+const BENCH = new URLSearchParams(location.search).has('bench');
+if (BENCH) Bench.seedRandom(Number(new URLSearchParams(location.search).get('seed')) || 1234);
 
 const loginEl = document.getElementById('login')!;
 const form = document.getElementById('login-form') as HTMLFormElement;
@@ -95,3 +100,5 @@ form.addEventListener('submit', async (e) => {
     status.textContent = m === 'Server nicht erreichbar' || m === 'Verbindung abgelehnt' ? `${m}. Läuft der Server (npm run dev)?` : m;
   }
 });
+
+if (BENCH) { nameInput.value = 'Bench' + Math.floor(Math.random() * 1000); form.requestSubmit(); }
