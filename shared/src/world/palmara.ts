@@ -121,16 +121,20 @@ export const DISTRICTS: DistrictDef[] = [
  * Hauptstraßen als wenige Kontrollpunkte (Catmull-Rom). rural = Amplitude (m) der
  * Noise-Verformung für geschwungene Landstraßen; palms = Palmen am Straßenrand.
  */
-export interface RoadDef { name: string; type: number; pts: Vec2[]; palms?: boolean; rural?: number }
+export interface RoadDef {
+  name: string; type: number; pts: Vec2[]; palms?: boolean; rural?: number;
+  /** Ende, das bewusst an einem Ziel endet (Flugfeld, Parkplatz, Testgelände) – sonst wird jedes lose Ende angeschlossen. */
+  dest?: 'start' | 'end' | 'both';
+}
 
 export const ROADS: RoadDef[] = [
   // Port Coralia
   { name: 'Ocean Drive', type: RoadType.Main, palms: true,
-    pts: [[1592, 764], [1600, 860], [1598, 962], [1592, 1060], [1580, 1114]] },
+    pts: [[1592, 764], [1600, 860], [1598, 962], [1592, 1060], [1574, 1104], [1540, 1110]] }, // Südspitze: Bogen zurück ins Raster
   { name: 'Collins Causeway', type: RoadType.Main, palms: true,
     pts: [[1428, 848], [1476, 856], [1510, 858], [1540, 854], [1598, 860]] },
   { name: 'Venetian Causeway', type: RoadType.Main,
-    pts: [[1428, 990], [1466, 962], [1490, 944], [1530, 958], [1596, 1010]] },
+    pts: [[1426, 1000], [1466, 962], [1490, 944], [1530, 958], [1596, 1010]] },
   { name: 'Bayshore Boulevard', type: RoadType.Main, palms: true,
     pts: [[1424, 744], [1428, 860], [1426, 1000], [1428, 1140], [1420, 1330]] },
   { name: 'Harbor Bridge', type: RoadType.Main, pts: [[1428, 1176], [1470, 1178], [1530, 1180]] },
@@ -139,29 +143,38 @@ export const ROADS: RoadDef[] = [
   { name: 'Coastline Highway', type: RoadType.Highway, palms: true,
     pts: [[1424, 744], [1416, 620], [1408, 480], [1398, 360], [1372, 262], [1330, 206]] },
   { name: 'Spit Road', type: RoadType.Side, palms: true, pts: [[1592, 764], [1540, 640], [1508, 480], [1476, 356], [1404, 330]] },
+  // Von der Südkante des Port District (Raster schließt dort an) nach Mangrove Bend
   { name: 'Causeway Road', type: RoadType.Main, rural: 10,
-    pts: [[1210, 1300], [1186, 1380], [1146, 1436], [1100, 1470]] },
+    pts: [[1222, 1262], [1210, 1300], [1186, 1370], [1158, 1418]] },
   // Zufahrt zum Terminal-Parkplatz: östlich um das Ende der Nordbahn herum (nicht mehr über die Bahn)
-  { name: 'Airport Road', type: RoadType.Main, pts: [[1150, 1092], [1124, 1132], [1150, 1160], [1152, 1204]] },
+  { name: 'Airport Road', type: RoadType.Main, dest: 'end', pts: [[1150, 1092], [1124, 1132], [1150, 1160], [1152, 1204]] },
   { name: 'Villa Drive', type: RoadType.Side, pts: [[1420, 1330], [1386, 1376], [1320, 1420]] },
   // Inland
+  // Highway 9 endet am Mangrove-Kreisel und trifft dort Causeway Road und Seven Spans Bridge
   { name: 'Highway 9', type: RoadType.Highway, rural: 18,
-    pts: [[880, 1062], [852, 1160], [832, 1280], [880, 1400], [960, 1466], [1000, 1500]] },
+    pts: [[880, 1062], [852, 1160], [832, 1280], [880, 1400], [960, 1466], [1004, 1436], [1070, 1424], [1158, 1418]] },
   { name: 'Seven Spans Bridge', type: RoadType.Highway,
-    pts: [[1120, 1596], [1176, 1650], [1186, 1712], [1112, 1790], [1024, 1852], [928, 1892], [832, 1900], [752, 1866], [676, 1806]] },
-  { name: 'Sabal–Cane Road', type: RoadType.Main, rural: 22, pts: [[780, 620], [880, 604], [994, 640]] },
-  { name: 'Cane Ridge Road', type: RoadType.Main, rural: 8, pts: [[1162, 770], [1210, 790], [1262, 812]] },
-  { name: 'Refinery Road', type: RoadType.Main, pts: [[1164, 690], [1206, 690], [1300, 694], [1398, 690], [1414, 620]] },
+    pts: [[1158, 1418], [1172, 1480], [1172, 1580], [1176, 1650], [1186, 1712], [1112, 1790], [1024, 1852], [928, 1892], [832, 1900], [752, 1866], [676, 1806]] },
+  // Sabal–Cane Road und Refinery Road treffen sich am Ortskreisel von Cane Ridge
+  { name: 'Sabal–Cane Road', type: RoadType.Main, rural: 22, pts: [[780, 620], [880, 604], [994, 640], [1034, 676], [1076, 690]] },
+  { name: 'Cane Ridge Road', type: RoadType.Main, rural: 8, pts: [[1166, 762], [1210, 790], [1262, 812]] },
+  // mündet rechtwinklig in den Coastline Highway (Kreisverkehr)
+  { name: 'Refinery Road', type: RoadType.Main, pts: [[1076, 690], [1120, 690], [1164, 690], [1206, 690], [1300, 694], [1398, 690], [1424, 688]] },
   { name: 'Pinecrest Parkway', type: RoadType.Side, rural: 14,
     pts: [[692, 534], [688, 440], [706, 370], [800, 342], [960, 346], [1074, 372], [1092, 470], [1076, 608]] },
-  { name: 'Northwest Road', type: RoadType.Side, rural: 16, pts: [[688, 440], [580, 430], [500, 440], [470, 480]] },
-  { name: 'Northeast Road', type: RoadType.Dirt, rural: 10, pts: [[1330, 206], [1290, 190], [1240, 210]] },
+  // Schleife durchs Hochland zurück nach Port Sabal (Brücke über den Sabal River)
+  { name: 'Northwest Road', type: RoadType.Side, rural: 16,
+    pts: [[688, 440], [580, 430], [500, 440], [470, 480], [488, 530], [556, 552], [622, 546]] },
+  // Zufahrt zum Testgelände
+  { name: 'Northeast Road', type: RoadType.Dirt, rural: 10, dest: 'end', pts: [[1330, 206], [1290, 190], [1240, 210]] },
   { name: 'Pine Hollow Road', type: RoadType.Side, rural: 20,
-    pts: [[760, 960], [770, 880], [850, 850], [940, 870], [1000, 930], [1010, 1000]] },
+    pts: [[764, 964], [796, 920], [850, 850], [940, 870], [1000, 930], [1010, 1000]] },
   { name: 'Okee Trail', type: RoadType.Dirt, rural: 24, pts: [[880, 604], [900, 720], [880, 850]] },
-  { name: 'Swamp Track', type: RoadType.Dirt, rural: 16, pts: [[960, 1466], [900, 1520], [820, 1500], [760, 1440]] },
-  { name: 'Sunset Airfield Road', type: RoadType.Side, pts: [[600, 1826], [610, 1846]] },
-  { name: 'Sabal Airfield Road', type: RoadType.Side, rural: 6, pts: [[700, 776], [660, 840], [610, 876]] },
+  // Rundweg durch den Sumpf zurück auf den Highway 9
+  { name: 'Swamp Track', type: RoadType.Dirt, rural: 16,
+    pts: [[960, 1466], [900, 1520], [820, 1500], [760, 1440], [790, 1370], [826, 1328]] },
+  { name: 'Sunset Airfield Road', type: RoadType.Side, dest: 'end', pts: [[600, 1826], [610, 1846]] },
+  { name: 'Sabal Airfield Road', type: RoadType.Side, rural: 6, dest: 'end', pts: [[700, 776], [660, 840], [610, 876]] },
 ];
 
 /** Stege (Pier) – über Wasser als Holzdeck, in Gator Flats als Boardwalk. */
@@ -170,7 +183,7 @@ export const PIERS: { name: string; pts: Vec2[] }[] = [
   { name: 'Coralia Pier', pts: [[1428, 1100], [1480, 1104]] },
   { name: 'Hafenkai Nord', pts: [[1546, 1226], [1548, 1262]] },
   { name: 'Hafenkai Süd', pts: [[1504, 1228], [1502, 1262]] },
-  { name: 'Blue Hook Marina', pts: [[1220, 1714], [1256, 1716]] },
+  { name: 'Blue Hook Marina', pts: [[1192, 1714], [1226, 1714], [1256, 1716]] },
   { name: 'Sabal Docks', pts: [[616, 650], [590, 660]] },
   { name: 'Airboat-Anleger', pts: [[1000, 1500], [960, 1530], [930, 1560]] },
   { name: 'Mangrove Boardwalk', pts: [[1060, 1604], [1050, 1640], [1010, 1660]] },
@@ -180,7 +193,10 @@ export const PIERS: { name: string; pts: Vec2[] }[] = [
 /** Kreisverkehre: Kreuzung nahe dieser Punkte (Radius in Metern). */
 export const ROUNDABOUTS: [number, number, number][] = [
   [880, 1062, 18], // Route 41 / Highway 9
-  [1598, 962, 14], // Ocean Drive / Venetian Causeway
+  [1596, 1010, 14], // Ocean Drive / Venetian Causeway
+  [1424, 1061, 16], // Route 41 / Bayshore Boulevard (Stadteinfahrt Downtown)
+  [1420, 689, 16], // Coastline Highway / Refinery Road
+  [1158, 1418, 16], // Mangrove-Kreisel: Highway 9 / Causeway Road / Seven Spans Bridge
   [1076, 690, 14], // Ortsmitte Cane Ridge
   [700, 650, 14], // Ortsmitte Port Sabal
 ];

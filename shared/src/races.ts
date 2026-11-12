@@ -203,14 +203,13 @@ function search(map: WorldMap, start: number, def: RaceDef, rnd: () => number, l
       if (!ok(e)) continue;
       const fwd = e.a === node;
       const other = fwd ? e.b : e.a;
-      if (map.nodes[other].roundabout) continue;
       if (legs.some((l) => l.e === e)) continue;
       const closing = loop && other === start && legs.length >= 3;
       if (seen.has(other) && !closing) continue;
       if (!legs.length && usable(e) < START_LINE + 8) continue; // Platz für die Startaufstellung
       const d0 = dirOf(e, fwd, false);
       const dot = dir ? d0[0] * dir[0] + d0[1] * dir[1] : 1;
-      if (dot < -0.3) continue; // keine Spitzkehren
+      if (dot < -0.3 && !map.nodes[node].roundabout) continue; // keine Spitzkehren (im Kreisverkehr egal)
       cands.push({ e, fwd, other, score: dot * 0.6 + rnd() * 1.0 + (e.type <= RoadType.Main ? 0.2 : 0) });
     }
     cands.sort((a, b) => b.score - a.score);
@@ -257,7 +256,15 @@ function buildTrack(map: WorldMap, def: RaceDef): RaceTrack | null {
   const laps = w.loop ? def.laps : 1;
   const raw: Vec2[] = [];
   // Rundkurs: Runden + eine weitere Runde als Auslauf aneinanderhängen
-  for (let k = 0; k < (w.loop ? laps + 1 : 1); k++) for (const leg of w.legs) raw.push(...drivablePath(leg.e, leg.fwd));
+  for (let k = 0; k < (w.loop ? laps + 1 : 1); k++) {
+    for (const leg of w.legs) {
+      const p = drivablePath(leg.e, leg.fwd);
+      // Kreisverkehr am Übergang: außen herum statt quer über die Mittelinsel
+      const node = map.nodes[leg.fwd ? leg.e.a : leg.e.b];
+      if (node.roundabout && raw.length) raw.push(...roundaboutArc(node, raw[raw.length - 1], p[0]));
+      raw.push(...p);
+    }
+  }
   const { path, cum } = resample(raw, 4);
   const total = cum[cum.length - 1];
   const lapLen = w.loop ? total / (laps + 1) : total;
@@ -280,6 +287,17 @@ function buildTrack(map: WorldMap, def: RaceDef): RaceTrack | null {
   const want = { x: ph.x - Math.cos(ph.a) * off, z: ph.z + Math.sin(ph.a) * off };
   const spot = findFootSpot(map, want.x, want.z, 14) ?? want;
   return { def, path, cum, finish, laps, lapLen, checkpoints, grid, phone: { x: Math.round(spot.x * 10) / 10, z: Math.round(spot.z * 10) / 10 } };
+}
+
+/** Bogen durch den Kreisverkehr (gleicher Drehsinn wie die Verkehrs-KI: abnehmender Winkel in x/z). */
+function roundaboutArc(n: { x: number; z: number; roundabout: number }, from: Vec2, to: Vec2): Vec2[] {
+  const r = n.roundabout * 0.72;
+  const a0 = Math.atan2(from[1] - n.z, from[0] - n.x);
+  let a1 = Math.atan2(to[1] - n.z, to[0] - n.x);
+  while (a1 > a0 - 0.3) a1 -= Math.PI * 2;
+  const out: Vec2[] = [];
+  for (let a = a0 - 0.25; a > a1 + 0.15; a -= 0.3) out.push([n.x + Math.cos(a) * r, n.z + Math.sin(a) * r]);
+  return out;
 }
 
 const cache = new WeakMap<WorldMap, RaceTrack[]>();
