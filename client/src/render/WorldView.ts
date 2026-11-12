@@ -9,12 +9,12 @@ import * as THREE from 'three';
 import { CELL, GRID_SIZE, HEIGHT_STEP, WORLD_SIZE } from '../../../shared/src/constants';
 import { makeValueNoise, mulberry32 } from '../../../shared/src/math';
 import { centroid, orientedRect, pointAt, type Vec2 } from '../../../shared/src/world/geometry';
-import { AIRPORT_APRON } from '../../../shared/src/world/palmara';
 import { arms, type Arm } from '../../../shared/src/world/roads';
 import { Tile, WATER_LEVEL } from '../../../shared/src/world/tiles';
 import {
   BRIDGE_DECK, BuildingStyle, CURB_TOP, LotUse, RoadType, TreeType, Zone, type BuildingDef, type RoadEdge, type RoadNode, type TreeDef, type WorldMap,
 } from '../../../shared/src/world/WorldMap';
+import { buildAirportBuilding, buildAirportGround, type AirportCtx } from './AirportBuilder';
 import { getModel, triangleColors, type BakedModel, type ModelName } from './assets';
 import { GeoBuilder } from './GeoBuilder';
 import { standaloneTexture } from './materials/atlas';
@@ -646,26 +646,10 @@ export class WorldView {
     return out;
   }
 
+  /** Flughafen und Flugfelder (AirportBuilder.ts). */
+  private get airportCtx(): AirportCtx { return { map: this.map, chunk: (x, z) => this.chunkAt(x, z) }; }
   private buildRunways() {
-    const apron = centroid(AIRPORT_APRON);
-    this.chunkAt(apron[0], apron[1]).flat.use('concrete').polygon(AIRPORT_APRON, Math.max(0.05, this.map.terrainHeight(apron[0], apron[1])) + CURB_TOP, WHITE);
-    for (const r of this.map.runways) {
-      const ch = this.chunkAt(r.x, r.z);
-      const y = Math.max(0.05, this.map.terrainHeight(r.x, r.z)) + 0.05;
-      const poly = orientedRect(r.x, r.z, r.wid / 2, r.len / 2, r.rot);
-      ch.flat.use('highway').polygon(poly, y, WHITE);
-      ch.flat.use('paint_white');
-      const fx = Math.sin(r.rot), fz = Math.cos(r.rot), rx = Math.cos(r.rot), rz = -Math.sin(r.rot);
-      for (let d = -r.len / 2 + 22; d < r.len / 2 - 22; d += 12) ch.flat.box(r.x + fx * d, y + 0.01, r.z + fz * d, 0.6, 0.01, 6, r.rot, WHITE);
-      for (const e of [-1, 1]) {
-        for (let k = -3; k <= 3; k++) {
-          if (k === 0) continue;
-          const d = e * (r.len / 2 - 8), q = (k * r.wid) / 8;
-          ch.flat.box(r.x + fx * d + rx * q, y + 0.01, r.z + fz * d + rz * q, 0.9, 0.01, 8, r.rot, WHITE);
-        }
-        for (let k = 0; k < 6; k++) this.decal('decal_tire', r.x + fx * e * (r.len / 2 - 40 - k * 9), y + 0.03, r.z + fz * e * (r.len / 2 - 40 - k * 9), r.rot, 1.4);
-      }
-    }
+    buildAirportGround(this.airportCtx);
   }
 
   // ------------------------------------------------------------------ Gebäude
@@ -674,6 +658,7 @@ export class WorldView {
     const ground = this.map.terrainHeight(b.x, b.z);
     const base = Math.max(0, ground);
     if (b.style === BuildingStyle.Store) { this.buildStore(b, ch, base); return; }
+    if (b.style === BuildingStyle.Airport) { buildAirportBuilding(this.airportCtx, b, base); return; }
     if (b.style === BuildingStyle.Container && this.containerYard(b, ch, base)) return;
     if (this.kitBuilding(b, ch, base)) return;
     const rnd = this.rnd;

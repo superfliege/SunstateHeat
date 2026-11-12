@@ -13,7 +13,8 @@ import { placeShops } from '../shops';
 import {
   centroid, orientedRect, pointAt, polygonArea, rasterizePolygon, rasterizePolyline, type Vec2,
 } from './geometry';
-import { AIRPORT_APRON, POI, RUNWAYS } from './palmara';
+import { AIRPORT_APRON, AIRPORT_CAR_SPOTS, AIRPORT_FENCE, AIRPORT_PARKING, TAXIWAYS, inAirport } from './airport';
+import { POI, RUNWAYS } from './palmara';
 import { arms, buildRoadGraph, junctionOutline } from './roads';
 import { buildTerrain } from './terrain';
 import { buildTestTrack, inTestTrack, placeRamps, TEST_TRACK, TRACK_WORKSHOP } from './features';
@@ -33,7 +34,13 @@ export function generateWorld(seed: number): WorldMap {
   flattenAlongRoads(map);
   buildChunks(map);
   placeSpawns(map, rnd);
+  // Flughafen: keine zufälligen Parker im Zaun, dafür Autos auf dem Terminal-Parkplatz; keine Wildbäume
+  map.vehicleSpawns = map.vehicleSpawns.filter((s) => !inAirport(s.x, s.z));
+  const carRnd = mulberry32(seed + 77);
+  for (const [x, z, a] of AIRPORT_CAR_SPOTS) map.vehicleSpawns.push({ kind: VehicleKind.Car, x, z, a, color: [0xf2f2f2, 0x1c1c22, 0xc0392b, 0x2e86de, 0xb8b8b8][Math.floor(carRnd() * 5)] });
+  map.clearAreas.push([AIRPORT_FENCE.x0, AIRPORT_FENCE.z0, AIRPORT_FENCE.x1, AIRPORT_FENCE.z1]);
   placeRamps(map, seed);
+  map.ramps = map.ramps.filter((r) => !inAirport(r.x, r.z));
   map.vehicleSpawns = map.vehicleSpawns.filter((s) => !inTestTrack(s.x, s.z, 8));
   buildTestTrack(map);
   map.clearAreas.push([TEST_TRACK.x0 - 6, TEST_TRACK.z0 - 6, TEST_TRACK.x0 + TEST_TRACK.w + 6, TEST_TRACK.z0 + TEST_TRACK.d + 6]);
@@ -70,6 +77,8 @@ function rasterize(map: WorldMap) {
     if (l.block >= 0 || l.use === LotUse.Gas) rasterizePolygon(l.poly, CELL, N, setBoth(t));
   }
   rasterizePolygon(AIRPORT_APRON, CELL, N, setBoth(Tile.PLAZA));
+  rasterizePolygon(AIRPORT_PARKING, CELL, N, setBoth(Tile.PLAZA));
+  for (const t of TAXIWAYS) rasterizePolyline(t.pts, () => t.width / 2, CELL, N, setBoth(Tile.ROAD));
   for (const [x, z, len, wid, deg] of RUNWAYS) {
     const rot = (deg * Math.PI) / 180;
     map.runways.push({ x, z, len, wid, rot });

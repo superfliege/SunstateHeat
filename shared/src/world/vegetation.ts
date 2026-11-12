@@ -3,6 +3,7 @@
 // Nur für die Darstellung – der Server braucht keine Bäume.
 import { WORLD_SIZE } from '../constants';
 import { makeValueNoise, mulberry32 } from '../math';
+import { AIRPORT_PALMS } from './airport';
 import { pointAt } from './geometry';
 import { Tile } from './tiles';
 import { LotUse, TreeType, Zone, type TreeDef, type WorldMap } from './WorldMap';
@@ -115,5 +116,7 @@ export function generateVegetation(map: WorldMap, seed: number): TreeDef[] {
       }
     }
   }
+  // Palmen am Flughafen-Terminal (liegen im baumfreien Flughafengelände)
+  for (const [x, z] of AIRPORT_PALMS) trees.push({ x, z, type: TreeType.Palm, s: 1 + rnd() * 0.3, rot: rnd() * Math.PI * 2 });
   return trees;
 }

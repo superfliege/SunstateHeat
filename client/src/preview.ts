@@ -136,7 +136,7 @@ async function main() {
   (window as unknown as Record<string, unknown>).__dbg = { views, scene, renderer };
   document.body.dataset.done = '1';
   let last = performance.now();
-  const loop = (now: number) => { frame(Math.min(0.1, (now - last) / 1000)); last = now; requestAnimationFrame(loop); };
+  const loop = (now: number) => { frame(Math.max(0, Math.min(0.1, (now - last) / 1000))); last = now; requestAnimationFrame(loop); };
   if (q.get('still') !== '1') requestAnimationFrame(loop);
 }
 
