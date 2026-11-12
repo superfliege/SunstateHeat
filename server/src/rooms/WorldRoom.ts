@@ -679,11 +679,12 @@ export class WorldRoom {
       const d = aircraftDef(best.sim.variant);
       const denied = best.driver < 0 ? this.air.pilotDenied(p, best) : 'busy';
       if (denied) {
-        // Pilotensitz belegt oder Rang zu niedrig: als Mitfahrer, wenn Platz ist
+        // Pilotensitz belegt oder Rang zu niedrig: als Mitfahrer, wenn ein Pilot drin sitzt und Platz ist
+        if (best.driver < 0) { this.noticeTo(p, denied, 'bad'); return; }
         if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, denied === 'busy' ? `${d.name}: Alle ${d.seats} Plätze belegt.` : denied, 'bad'); return; }
         best.riders = [...(best.riders ?? []), p.id];
         p.ride = best.id;
-        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${(best.riders.length + (best.driver >= 0 ? 1 : 0))}/${d.seats}). E = aussteigen nach der Landung.${denied !== 'busy' ? ' ' + denied : ''}`, 'info');
+        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). E = aussteigen nach der Landung.`, 'info');
         return;
       }
       best.driver = p.id; best.idleTime = 0; best.sim.car.sleep = 0;
