@@ -294,6 +294,7 @@ export class Pedestrians {
   }
 
   update(dt: number, threats: Threat[]) {
+    this.buildGrid();
     for (const p of this.peds.values()) {
       if (p.cop || p.ext) {
         if (p.rt > 0) { stepPawn(this.map, p, 0, 0, 0, dt); if (p.rt <= 0 && p.hp <= 0) this.peds.delete(p.id); }
@@ -375,10 +376,26 @@ export class Pedestrians {
   }
 
   /** Anderen Fußgängern/Spielern auf dem Weg seitlich ausweichen (Rechtsverkehr bei Gegenverkehr). */
+  // Raster (2 m) der Fußgänger zu Tickbeginn: avoidPeds sucht nur in den 3x3 Nachbarzellen statt
+  // über alle NPCs (vorher O(n²)). Suchradius 1,7 m + Bewegung im Tick < 2 m -> gleiches Ergebnis.
+  private grid = new Map<number, Ped[]>();
+  private gridPool: Ped[][] = [];
+  private buildGrid() {
+    for (const l of this.grid.values()) { l.length = 0; this.gridPool.push(l); }
+    this.grid.clear();
+    for (const q of this.peds.values()) {
+      const k = cellKey(Math.floor(q.x / PED_CELL), Math.floor(q.z / PED_CELL));
+      let l = this.grid.get(k);
+      if (!l) this.grid.set(k, (l = this.gridPool.pop() ?? []));
+      l.push(q);
+    }
+  }
+
   private avoidPeds(p: Ped, mx: number, mz: number): [number, number] | null {
     let best: Ped | null = null, bd = 1.7;
-    for (const q of this.peds.values()) {
-      if (q === p || q.rt > 0) continue;
+    const cx = Math.floor(p.x / PED_CELL), cz = Math.floor(p.z / PED_CELL);
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) for (const q of this.grid.get(cellKey(cx + ox, cz + oz)) ?? NONE) {
+      if (q === p || q.rt > 0 || !this.peds.has(q.id)) continue;
       const rx = q.x - p.x, rz = q.z - p.z;
       const along = rx * mx + rz * mz;
       if (along < 0.1 || along > bd) continue;
@@ -396,6 +413,10 @@ export class Pedestrians {
   /** "Läuft gerade" für die Animation auf dem Client. */
   isRunning(p: Ped) { return p.flee > 0; }
 }
+
+const PED_CELL = 2;
+const NONE: Ped[] = [];
+const cellKey = (cx: number, cz: number) => cz * 8192 + cx;
 
 /** Abstand vom Fußgänger zum Ende des Gehwegs, das am Knoten liegt. */
 function endDist(w: Walkway, node: number, p: Ped) {

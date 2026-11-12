@@ -56,10 +56,10 @@ import { generateShops, shopNear, type ShopDef } from '../../../shared/src/shops
 import { Panels } from '../ui/Panels';
 import { WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { taxiProfile } from '../../../shared/src/taxiHunt';
-import { PostFX, type GfxSettings } from '../render/PostFX';
+import { PostFX, type GfxPreset, type GfxSettings } from '../render/PostFX';
 import { PropsView } from '../render/PropsView';
 import { SmartObjectsView } from '../render/SmartObjectsView';
-import { Sky } from '../render/Sky';
+import { shadowExtentFor, Sky } from '../render/Sky';
 import { VehicleFx } from '../render/VehicleFx';
 import { WorldView } from '../render/WorldView';
 import { Chat } from '../ui/Chat';
@@ -75,6 +75,8 @@ import { StoryDirector } from './StoryDirector';
 import { StoryUi } from '../ui/StoryUi';
 import { charOf } from '../../../shared/src/story';
 import { roadRoute } from '../../../shared/src/story/places';
+import { CallCounter, Profiler } from '../perf/Profiler';
+import { Bench, type BenchHost } from '../perf/Bench';
 
 const SEND_INTERVAL_MS = 33; // ~30 Eingabe-Pakete pro Sekunde
 const MINIMAP_INTERVAL = 1 / 15;
@@ -100,6 +102,7 @@ const tmpQ = new THREE.Quaternion(), tmpE = new THREE.Euler(), tmpV = new THREE.
 const vehQuats = new Map<number, THREE.Quaternion>();
 const vehQuat = (id: number) => { let q = vehQuats.get(id); if (!q) vehQuats.set(id, (q = new THREE.Quaternion())); return q; };
 const UP = new THREE.Vector3(0, 1, 0);
+const tmpV4 = new THREE.Vector3();
 /** Untergrenze der dynamischen Auflösung (Anteil der Zielauflösung). */
 const RES_MIN = 0.65;
 
@@ -177,6 +180,14 @@ export class Game {
   private joinOffer: string | null = null;
   /** Navi-Route zum aktuellen Ziel (Straßennetz), wird gedrosselt neu berechnet. */
   private nav: { tx: number; tz: number; pts: [number, number][]; t: number } | null = null;
+  /** Frame-Profiler (CPU-Abschnitte, GPU-Passes) – siehe perf/Profiler.ts. */
+  readonly prof: Profiler;
+  /** Automatische Benchmark-Route (`?bench=1`). */
+  private bench: Bench | null = null;
+  private shadowExt = 0;
+  private programCount = 0;
+  /** Benchmark mit dynamischer Auflösung (`&dyn=1`), sonst feste Auflösung (vergleichbare Zahlen). */
+  private benchDyn = new URLSearchParams(location.search).get('dyn') === '1';
 
   constructor(private net: Network, private myId: number, private sfx: Sfx, dev = false) {
     const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -188,9 +199,13 @@ export class Game {
     // Statistik über alle Passes eines Bildes sammeln (Schatten, Szene, Bloom …) – sonst zeigt die
     // Anzeige nur den letzten Post-Processing-Pass (1 Draw-Call)
     this.renderer.info.autoReset = false;
+    this.prof = new Profiler(this.renderer.getContext() as WebGL2RenderingContext);
+    // GPU-Timer immer an (wenn verfügbar): steuert die dynamische Auflösung
+    this.prof.gpu.enabled = this.prof.gpu.supported;
+    if (!this.gfx.preset) { this.gfx.preset = detectPreset(this.renderer.getContext()); saveGfx(this.gfx); }
 
     this.rig = new CameraRig(window.innerWidth / window.innerHeight);
-    this.sky = new Sky(this.scene, this.gfx.shadows);
+    this.sky = new Sky(this.scene, this.gfx.shadows, PRESETS[this.preset].shadowMap);
     this.world = new WorldView(this.map, generateVegetation(this.map, MAP_SEED));
     this.views = new EntityViews(this.map);
     this.props = new PropsView(this.map);
@@ -214,9 +229,15 @@ export class Game {
     };
     this.particles = new Particles(this.map);
     this.airport = new AirportView(this.map, vehicleMat, toonVC);
+    // Namen der obersten Gruppen (Draw-Call-Aufschlüsselung im Benchmark)
+    this.world.group.name = 'world'; this.views.group.name = 'entities'; this.particles.group.name = 'particles'; this.props.group.name = 'props';
+    this.features.group.name = 'features'; this.smartObjects.group.name = 'smartObjects'; this.fx.group.name = 'vehicleFx'; this.tracers.group.name = 'tracers';
+    this.stores.group.name = 'stores'; this.phonesView.group.name = 'phones'; this.questMarkers.group.name = 'questMarkers'; this.arenas.group.name = 'arenas';
+    this.storyDir.group.name = 'story'; this.airport.group.name = 'airport';
     this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
+    this.post.attachTimer(this.prof.gpu);
     this.applyGfx();
     window.addEventListener('keydown', (e) => this.onGfxKey(e));
     this.minimap = new Minimap(
@@ -275,9 +296,39 @@ export class Game {
     this.chat.onOpenChange = (open) => { this.input.blocked = open || this.storyBlock; this.touch.setBlocked(open || this.storyBlock); if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
     this.chat.onSend = (text) => this.net.send({ t: 'chat', text });
 
-    net.onMessage = (msg) => this.onMessage(msg);
+    if (new URLSearchParams(location.search).has('bench')) this.bench = new Bench(this.benchHost());
+
+    net.onMessage = (msg) => { const t0 = performance.now(); this.onMessage(msg); this.prof.addNet(performance.now() - t0 + net.parseMs); };
     net.onClose = () => {
       this.hud.toast('Verbindung zum Server verloren. Seite neu laden, um wieder beizutreten.', 'bad');
+    };
+  }
+
+  // ------------------------------------------------------------------ Benchmark
+  private benchHost(): BenchHost {
+    return {
+      map: this.map, prof: this.prof, renderer: this.renderer, scene: this.scene, calls: new CallCounter(this.renderer),
+      command: (text) => this.net.send({ t: 'chat', text }),
+      car: () => {
+        const v = this.predictor.view(), c = this.predictor.sim?.car;
+        return { x: v.x, z: v.z, a: c ? c.a : v.a, speed: c ? Math.hypot(c.vx, c.vz) : 0, inVehicle: this.predictor.inVehicle };
+      },
+      drive: (ax, ay, buttons) => { const t = this.input.touch; t.ax = ax; t.ay = ay; t.buttons = buttons; },
+      feature: (f, on) => {
+        if (f === 'outlines') { this.scene.traverse((o) => { if (o.userData.outline) o.visible = on; }); }
+        else if (f === 'shadows') this.sky.setShadows(on);
+        else if (f === 'bloom') this.post.setBloom(on);
+        else if (f === 'water') this.world.waterMaterial.visible = on;
+        else if (f === 'characters') this.views.group.visible = on;
+        else if (f === 'vegetation') this.world.group.traverse((o) => { if ((o as THREE.InstancedMesh).isInstancedMesh && o.userData.plant) o.visible = on; });
+        else if (f === 'labels') this.scene.traverse((o) => { if ((o as THREE.Sprite).isSprite) o.visible = on; });
+      },
+      resScale: () => (this.gfx.retro ? 1 : this.resScale),
+      // Story-Intro des frischen Bench-Spielers überspringen (sonst feste Tageszeit + gesperrte Steuerung)
+      ready: () => {
+        if (this.storyUi.blocking) window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape' }));
+        return !this.storyBlock && !this.storyUi.busy;
+      },
     };
   }
 
@@ -285,23 +336,32 @@ export class Game {
   /** Auflösung, Retro-Modus (Render-Scale 0,6 + Nearest-Neighbor), Schatten, Bloom. */
   private applyGfx() {
     this.applyResolution();
-    this.sky.setShadows(this.gfx.shadows);
+    this.sky.setShadows(this.gfx.shadows, PRESETS[this.preset].shadowMap);
     this.post.setBloom(this.gfx.bloom);
     // Umrisslinien ein/aus: Hüllen-Meshes ausblenden (spart Draw-Calls)
     this.scene.traverse((o) => { if (o.userData.outline) o.visible = this.gfx.outlines; });
     saveGfx(this.gfx);
   }
 
-  /** Render-Auflösung: Retro fest 0,6, sonst Bildschirm x dynamischer Faktor (siehe updateResolution). */
+  private get preset(): GfxPreset { return this.gfx.preset ?? 'mittel'; }
+
+  /**
+   * Auflösung: Die Leinwand hat immer die volle Geräteauflösung (Abschluss-Pass, Namen und
+   * Sprechblasen bleiben scharf). Die 3D-Szene rendert in Pixel-Ratio (gedeckelt je Preset, auf
+   * Laptops 1,0) x Render-Scale des Presets x dynamischem Faktor; Retro fest 0,6 mit Nearest-Neighbor.
+   */
   private applyResolution() {
     const w = window.innerWidth, h = window.innerHeight;
-    const ratio = this.gfx.retro ? 0.6 : Math.min(window.devicePixelRatio, 1.5) * 0.9 * this.resScale;
-    this.renderer.setPixelRatio(ratio);
+    const P = PRESETS[this.preset];
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const sceneRatio = this.gfx.retro ? 0.6 : Math.min(dpr, P.maxPixelRatio) * P.renderScale * this.resScale;
+    this.renderer.setPixelRatio(dpr);
     this.renderer.setSize(w, h, false);
-    this.post.setSize(w, h, ratio);
+    this.post.setSize(w, h, dpr, sceneRatio / dpr, this.gfx.retro);
     this.rig.resize(w / h);
-    U.uResolution.value.set(Math.round(w * ratio), Math.round(h * ratio));
-    this.fx.setScale(Math.round(h * ratio));
+    const ss = this.post.sceneSize;
+    U.uResolution.value.set(ss.x, ss.y);
+    this.fx.setScale(ss.y);
   }
 
   // ------------------------------------------------------------------ Dynamische Auflösung
@@ -309,32 +369,42 @@ export class Game {
   private resScale = 1;
   private res = { t: 0, frames: 0, cpu: 0, good: 0, hold: 0, lock: 0, raisedAt: -99 };
   /**
-   * Dynamic Resolution Scaling: Ist die Grafikkarte der Engpass (Bildrate unter ~48 FPS, die
-   * JS-Arbeit pro Bild aber klein), wird die Render-Auflösung schrittweise gesenkt (bis 65 %), bei
-   * dauerhaft flüssigen 57+ FPS langsam wieder angehoben. Inhalte bleiben gleich – nur die Pixelzahl
-   * ändert sich. Ein Anheben, das sofort wieder Einbrüche bringt, wird für eine Weile gesperrt.
+   * Dynamic Resolution Scaling (Ziel: 60 FPS). Inhalte bleiben gleich – nur die Pixelzahl der 3D-Szene
+   * ändert sich (Untergrenze 65 %), Beschriftungen und HUD bleiben in voller Auflösung.
+   * Mit GPU-Timer (EXT_disjoint_timer_query): Regelung auf ~13 ms GPU-Zeit je Bild, Pixelzahl
+   * proportional zur gemessenen Zeit (Faktor = Wurzel des Zeitverhältnisses), alle 0,5 s.
+   * Ohne Timer: Bildrate unter 55 FPS bei kleiner JS-Arbeit -> senken, dauerhaft 58+ -> langsam anheben;
+   * ein Anheben, das sofort wieder Einbrüche bringt, wird für eine Weile gesperrt.
    */
   private updateResolution(rawDt: number, cpuMs: number) {
     const r = this.res;
     r.t += rawDt; r.frames++; r.cpu += cpuMs;
     r.hold = Math.max(0, r.hold - rawDt); r.lock = Math.max(0, r.lock - rawDt);
-    if (r.t < 1) return;
+    const gpu = this.prof.gpu;
+    if (r.t < (gpu.supported ? 0.5 : 1)) return;
     const fps = r.frames / r.t, cpu = r.cpu / r.frames;
     r.t = 0; r.frames = 0; r.cpu = 0;
-    if (this.gfx.retro || document.hidden) return;
+    if (this.gfx.retro || document.hidden || (this.bench && !this.benchDyn)) return;
     let next = this.resScale;
+    if (gpu.supported && gpu.emaMs > 0) {
+      const g = gpu.emaMs;
+      if (g > 14.5 && this.resScale > RES_MIN) next = Math.max(RES_MIN, this.resScale * Math.max(0.85, Math.min(0.97, Math.sqrt(13 / g))));
+      else if (g < 10.5 && this.resScale < 1 && r.lock <= 0) next = Math.min(1, this.resScale * Math.min(1.05, Math.sqrt(12 / g)));
+      if (Math.abs(next - this.resScale) > 0.01) { this.resScale = next; this.applyResolution(); }
+      return;
+    }
     const gpuBound = cpu < 0.6 * (1000 / Math.max(1, fps));
-    if (fps < 48 && gpuBound && this.resScale > RES_MIN) {
+    if (fps < 55 && gpuBound && this.resScale > RES_MIN) {
       next = Math.max(RES_MIN, this.resScale - (fps < 35 ? 0.15 : 0.08));
       r.hold = 6; r.good = 0;
       if (this.clock - r.raisedAt < 4) r.lock = 45; // Anheben hat nicht gereicht: länger dabei bleiben
-    } else if (fps > 57) {
+    } else if (fps > 58) {
       if (++r.good >= 4 && r.hold <= 0 && r.lock <= 0 && this.resScale < 1) { next = Math.min(1, this.resScale + 0.05); r.good = 0; r.raisedAt = this.clock; }
     } else r.good = 0;
     if (next !== this.resScale) { this.resScale = next; this.applyResolution(); }
   }
 
-  /** F9 = Retro-Modus, F8 = Qualität durchschalten (alles / ohne Schatten / ohne Schatten+Linien+Bloom). */
+  /** F9 = Retro-Modus, F8 = Qualitätsstufe durchschalten (Hoch / Mittel / Niedrig – Inhalte und Cel-Look bleiben). */
   private onGfxKey(e: KeyboardEvent) {
     if (e.code === 'F9') {
       e.preventDefault();
@@ -343,11 +413,10 @@ export class Game {
       this.applyGfx();
     } else if (e.code === 'F8') {
       e.preventDefault();
-      const level = this.gfx.shadows ? 1 : this.gfx.outlines ? 2 : 0;
-      this.gfx.shadows = level === 0;
-      this.gfx.outlines = level !== 2;
-      this.gfx.bloom = level !== 2;
-      this.hud.toast(['Grafik: hoch', 'Grafik: mittel (ohne Schatten)', 'Grafik: niedrig'][level], 'info');
+      const order: GfxPreset[] = ['hoch', 'mittel', 'niedrig'];
+      this.gfx.preset = order[(order.indexOf(this.preset) + 1) % order.length];
+      applyPreset(this.gfx);
+      this.hud.toast(`Grafik: ${PRESETS[this.preset].label} (F8)`, 'info');
       this.applyGfx();
     } else if (e.code === 'F7') {
       e.preventDefault();
@@ -430,7 +499,7 @@ export class Game {
   }
 
   /** Tageszeit für die Darstellung (Story-Szenen dürfen sie überschreiben, z. B. Sonnenuntergang im Intro). */
-  private viewDay() { return this.storyDir.dayOverride ?? this.day; }
+  private viewDay() { return this.bench ? this.day : this.storyDir.dayOverride ?? this.day; }
 
   private phoneNearMe(): PhoneDef | null {
     const me = this.predictor.view();
@@ -678,9 +747,14 @@ export class Game {
   // ------------------------------------------------------------------ Frame
   private frame(now: number) {
     const rawDt = Math.min(0.1, (now - this.lastTime) / 1000);
+    const frameDtMs = now - this.lastTime;
     this.lastTime = now;
     if (!this.predictor.ready) return; // auf den ersten Snapshot warten
     if (++this.frameNo === 1) this.warmup(); // vor dem ersten Bild: es gibt noch keine echten Entitäten
+    const P = this.prof;
+    P.beginFrame();
+    this.bench?.beforeFrame(Math.min(1, frameDtMs / 1000)); // Benchmark: echte Zeit (rawDt ist auf 0,1 s gedeckelt)
+    P.begin('sim');
     this.clock += rawDt;
     // Hit-Stop: Darstellung kurz einfrieren (Simulation und Netz laufen weiter)
     let dt = rawDt;
@@ -721,8 +795,10 @@ export class Game {
     this.updateFire(rawDt);
     this.touch.setVehicle(this.predictor.inVehicle);
     this.touch.setAir(isAircraft(this.predictor.sim?.kind ?? -1));
+    P.end('sim');
 
     // 2) Entitäten darstellen
+    P.begin('entities');
     const frame = this.buffer.frame();
     const latest = this.buffer.latest;
     this.views.night = this.sky.night;
@@ -738,8 +814,10 @@ export class Game {
     const vehicleStates = frame ? this.drawEntities(frame, dt, me) : new Map<number, VehicleViewState>();
     this.views.endFrame();
     this.sfx.car?.end();
+    P.end('entities');
 
     // 3) Kamera, Licht, UI
+    P.begin('camera');
     const ownCar = this.predictor.sim?.car ?? null;
     let myY = ownCar ? me.y - this.predictor.sim!.prof.cgHeight : this.map.surfaceY(me.x, me.z);
     // Luftfahrzeug (selbst oder als Mitfahrer): Kamera folgt, zoomt mit der Höhe heraus
@@ -763,45 +841,93 @@ export class Game {
     U.uTime.value += dt;
     U.uFocus.value.set(me.x, myY + 1, me.z);
     this.sky.setMood(moodFor(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.style ?? null));
+    // Schattenbereich an den sichtbaren Ausschnitt anpassen (Kameraabstand = 30 / zoom)
+    const ext = shadowExtentFor(30 / this.rig.zoom);
+    if (ext !== this.shadowExt) { this.shadowExt = ext; this.sky.setExtent(ext); }
     this.sky.update(this.viewDay(), this.rig.target, dt);
-    this.world.update(this.rig.target.x, this.rig.target.z);
+    P.end('camera');
+    P.begin('world');
+    this.world.update(this.rig.target.x, this.rig.target.z, this.sky.fog.far);
+    // Schattenrichtung je Meter Objekthöhe (Sonne -> Boden), fürs Pflanzen-Culling
+    const sd = tmpV3.copy(this.sky.sun.position).sub(this.sky.sun.target.position).normalize();
+    const shadowDir = this.gfx.shadows ? tmpV4.set(-sd.x, 0, -sd.z).divideScalar(Math.max(0.15, sd.y)) : null;
+    this.world.updatePlants(this.rig.camera, this.rig.target, shadowDir, this.sky.fog.far);
+    this.props.cullView(this.rig.camera, shadowDir, this.sky.fog.far);
+    this.views.setCamera(this.rig.camera);
+    this.views.cullVehicleShadows(shadowDir);
     this.world.setNight(this.sky.night);
     this.world.setLight(this.sky.light);
     this.world.updateWobble(dt);
     this.props.setNight(this.sky.night);
     this.props.update(dt);
-    for (const p of this.props.sprays) this.fx.splash(p.x, p.y + 0.8, p.z, 0, 7, 0, 2);
     this.features.update(dt);
     this.views.setFocus(this.rig.target);
     this.views.setCamera(this.rig.camera); // Sichtfeld fürs nächste Bild (Animationen außerhalb sparen)
+    P.end('world');
+    P.begin('effects');
+    for (const p of this.props.sprays) this.fx.splash(p.x, p.y + 0.8, p.z, 0, 7, 0, 2);
     this.particles.update(dt, this.rig.target);
     this.fx.update(dt);
     this.tracers.update(dt);
+    P.end('effects');
+    P.begin('ui');
     const talk = this.panels.talkingTo() ?? (this.chat.isOpen ? null : this.shopNearMe());
     this.stores.setTalkable(talk);
     this.stores.update(dt, me.x, me.z, this.predictor.inVehicle);
     this.phonesView.update(dt); this.questMarkers.update(dt); this.arenas.update(dt);
     this.storyDir.update(dt); this.storyUi.update();
+    P.end('ui');
     // Linienstärke: mit dem Zoom dünner, mit der Auflösung dicker (Referenz 720p)
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
     const day = this.viewDay();
     const dusk = Math.max(0, 1 - Math.abs(day - 0.74) / 0.08, 1 - Math.abs(day - 0.27) / 0.06);
     this.post.update(this.sky.mood, this.sky.night, dusk);
+    P.begin('audio');
     this.rig.camera.getWorldDirection(tmpV3);
     this.sfx.frame(rawDt, this.rig.target.x, myY, this.rig.target.z, tmpV3.x, tmpV3.z);
     this.ownCarAudio(rawDt);
     this.footsteps(me.x, me.z, rawDt);
+    P.end('audio');
 
+    P.begin('ui');
     this.updateHud(latest, vehicleStates, me);
+    P.end('ui');
+    P.begin('minimap');
     this.minimapTimer -= rawDt;
     if (this.minimapTimer <= 0 && latest) {
       this.minimapTimer = MINIMAP_INTERVAL;
       this.drawMinimap(latest, vehicleStates, me);
     }
+    P.end('minimap');
 
     this.renderer.info.reset();
+    P.begin('render');
     this.post.render();
-    this.updateResolution(rawDt, performance.now() - now);
+    P.end('render');
+    // Dev: Shader-Programme, die erst nach dem Aufwärmen kompiliert werden (= Hänger beim Spielen) melden
+    const progs = this.renderer.info.programs;
+    if (progs && progs.length !== this.programCount) {
+      if (this.programCount > 0 && (import.meta as { env?: { DEV?: boolean } }).env?.DEV) {
+        // Verursacher suchen: Objekte, deren Material eines der neuen Programme benutzt
+        const fresh = new Set(progs.slice(this.programCount));
+        const props = (this.renderer as unknown as { properties: { get(m: THREE.Material): { currentProgram?: unknown } } }).properties;
+        const who: string[] = [];
+        this.scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+          for (const mat of m ? (Array.isArray(m) ? m : [m]) : []) {
+            if (fresh.has(props.get(mat).currentProgram as never)) {
+              let top: THREE.Object3D = o; while (top.parent && top.parent !== this.scene) top = top.parent;
+              who.push(`${mat.type}${mat.name ? ' ' + mat.name : ''} an ${o.type} „${o.name}“ in „${top.name}“`);
+            }
+          }
+        });
+        console.warn(`[gfx] ${fresh.size} Shader-Programm(e) nach dem Aufwärmen kompiliert:`, [...new Set(who)].slice(0, 6).join(' | ') || [...fresh].map((p) => (p as unknown as { name: string }).name));
+      }
+      this.programCount = progs.length;
+    }
+    const cpuMs = performance.now() - now;
+    this.updateResolution(rawDt, cpuMs);
+    this.bench?.afterFrame(frameDtMs, cpuMs);
     this.hud.tickFps(rawDt, this.renderer.info.render.calls, this.gfx.retro ? 1 : this.resScale);
 
     // Debug-Overlay (F3): Werte jeden Frame, Neuzeichnen ~4x pro Sekunde
@@ -852,6 +978,8 @@ export class Game {
     }
     this.views.endFrame();
     this.fx.flash(f.x, gy + 1, f.z, 0.01, 0.01);
+    this.world.plants.warmup();
+    this.props.warmupInstances();
     const extra = this.props.warmupMeshes(f.x, gy, f.z);
     this.scene.add(...extra);
     // Ein echtes Bild über die Nachbearbeitung (gleiche Render-Ziele/Farbräume, Schattenpass) –
@@ -1348,6 +1476,28 @@ export class Game {
   }
 }
 
+// ------------------------------------------------------------------ Qualitätsstufen
+/**
+ * Qualitätsstufen: ändern nur, WIE gerendert wird – alle Inhalte, Umrisslinien (Cel-Look) und Bloom
+ * bleiben in jeder Stufe. Mittel = Ziel für Laptops mit integrierter GPU (z. B. Intel UHD 620).
+ */
+const PRESETS: Record<GfxPreset, { label: string; shadowMap: number; maxPixelRatio: number; renderScale: number; shadows: boolean }> = {
+  hoch: { label: 'Hoch', shadowMap: 2048, maxPixelRatio: 1.5, renderScale: 0.9, shadows: true },
+  mittel: { label: 'Mittel', shadowMap: 1024, maxPixelRatio: 1.0, renderScale: 0.9, shadows: true },
+  niedrig: { label: 'Niedrig (ohne Schatten)', shadowMap: 1024, maxPixelRatio: 1.0, renderScale: 0.75, shadows: false },
+};
+function applyPreset(g: GfxSettings) {
+  const p = PRESETS[g.preset ?? 'mittel'];
+  g.shadows = p.shadows; g.outlines = true; g.bloom = true;
+}
+/** Startwert: integrierte Grafik (Intel, AMD-APU, Mobil) -> Mittel, sonst Hoch. */
+function detectPreset(gl: WebGLRenderingContext | WebGL2RenderingContext): GfxPreset {
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const name = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+  if (/intel|uhd|iris|radeon\(tm\) graphics|vega \d+ graphics|mali|adreno|powervr|apple gpu|swiftshader|llvmpipe/i.test(name)) return 'mittel';
+  return 'hoch';
+}
+
 // ------------------------------------------------------------------ Einstellungen speichern
 const GFX_KEY = 'sunstate.gfx';
 function loadGfx(): GfxSettings {
@@ -1357,6 +1507,8 @@ function loadGfx(): GfxSettings {
   } catch { /* egal */ }
   const q = new URLSearchParams(location.search);
   if (q.has('retro')) def.retro = q.get('retro') !== '0';
+  const p = q.get('preset');
+  if (p === 'hoch' || p === 'mittel' || p === 'niedrig') { def.preset = p; applyPreset(def); }
   return def;
 }
 function saveGfx(g: GfxSettings) {

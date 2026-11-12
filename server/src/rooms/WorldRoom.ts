@@ -86,6 +86,7 @@ const SAVE_INTERVAL = 120;
 /** Ab diesem Aufprall-Tempoverlust (m/s) verletzt ein Unfall den Fahrer. */
 const CRASH_HURT_DV = 9;
 /** Dev-Modus: Live-Tuning erlaubt (nicht im Produktionsstart `npm start`). */
+const NO_VEHICLES: ServerVehicle[] = [];
 export const DEV = process.env.NODE_ENV !== 'production' && process.env.npm_lifecycle_event !== 'start';
 
 interface PosEvent { x: number; z: number; ev: GameEvent; vid: number }
@@ -890,6 +891,9 @@ export class WorldRoom {
       else if (a in names) this.pop.forcePart = names[a];
       else if (a) { say('/pop <' + DAY_PARTS.map((d) => DAY_PART_NAMES[d].toLowerCase()).join('|') + '|auto>'); return; }
       say(this.pop.describe());
+    } else if (cmd === 'perf') {
+      // Server-Tick-Profil seit dem letzten /perf
+      say(this.tickReport());
     } else if (cmd === 'wetter' || cmd === 'weather') {
       // Wetter erzwingen (Population Tables / Barks): /wetter klar|regen|hitze
       const names: Record<string, Weather> = { klar: 'clear', regen: 'rain', hitze: 'heat', clear: 'clear', rain: 'rain', heat: 'heat' };
@@ -1675,10 +1679,13 @@ export class WorldRoom {
 
   // ------------------------------------------------------------------ Simulation
   private tick(dt: number) {
+    const t0 = performance.now();
+    let t = t0;
     this.clock += dt;
     for (const p of this.players.values()) p.cmdBudget = Math.min(CMD_BUDGET_MAX, p.cmdBudget + CMD_REFILL_PER_TICK);
     for (const [k, t] of this.treeCd) { if (t - dt <= 0) this.treeCd.delete(k); else this.treeCd.set(k, t - dt); }
     this.rebuildGrid();
+    t = this.lap('grid', t);
 
     const fast: [number, number, number, number][] = [];
     for (const p of this.players.values()) {
@@ -1690,6 +1697,7 @@ export class WorldRoom {
       if (v.race === MG_MARK && v.driver === DRIVER_NPC && Math.hypot(v.sim.car.vx, v.sim.car.vz) > 10) fast.push([v.sim.car.x, v.sim.car.z, v.sim.car.vx, v.sim.car.vz]);
     }
     this.traffic.update(dt, fast);
+    t = this.lap('traffic', t);
     // Freie Fahrzeuge (ohne Fahrer) rollen aus, fallen, werden geschoben – bis sie einschlafen
     const steps = Math.round(dt / SIM_DT);
     for (const v of this.vehicles.values()) {
@@ -1698,7 +1706,9 @@ export class WorldRoom {
       if (isWaterVehicle(v.kind) && Math.abs(v.sim.car.s) < 0.01) continue;
       for (let k = 0; k < steps; k++) this.physicsStep(v, 0, 0, 0, null);
     }
+    t = this.lap('physics', t);
     this.hitPawns();
+    t = this.lap('pawns', t);
     // Fahrer "sitzen" im Fahrzeug: Fußposition mitführen (fürs Aussteigen & die Anzeige)
     for (const p of this.players.values()) {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : p.ride >= 0 ? this.vehicles.get(p.ride) : undefined;
@@ -1706,8 +1716,11 @@ export class WorldRoom {
       else if (p.ride >= 0) p.ride = -1;
     }
     this.air.update(dt);
+    t = this.lap('air', t);
     this.pop.update(dt);
+    t = this.lap('population', t);
     this.perception.update(dt);
+    t = this.lap('perception', t);
     if (this.npcDebug.size && (this.npcDebugT -= dt) <= 0) {
       this.npcDebugT = 0.5;
       for (const id of this.npcDebug) {
@@ -1717,35 +1730,81 @@ export class WorldRoom {
         p.conn.send({ t: 'npcDebug', ...this.perception.debugView(pos.x, pos.z), pop: this.pop.describe() });
       }
     }
-    this.peds.update(dt, [...this.vehicles.values()].map((v) => ({ x: v.sim.car.x, z: v.sim.car.z, speed: v.sim.car.s, vx: v.sim.car.vx, vz: v.sim.car.vz })));
+    // Nur schnelle Fahrzeuge sind eine Gefahr (Fußgänger und Gehirn ignorieren alles unter 5 m/s) –
+    // spart bei ~500 Fahrzeugen x ~450 NPCs den Großteil der Paar-Prüfungen und Objekte pro Tick
+    const threats = this.threats;
+    threats.length = 0;
+    for (const v of this.vehicles.values()) {
+      const c = v.sim.car;
+      if (Math.abs(c.s) >= 5) threats.push({ x: c.x, z: c.z, speed: c.s, vx: c.vx, vz: c.vz });
+    }
+    this.peds.update(dt, threats);
+    t = this.lap('peds', t);
     this.updateProps(dt);
     this.updateFire(dt);
     this.updateWorkshops(dt);
     this.updatePlayers(dt);
+    t = this.lap('world+players', t);
     this.hunt.update(dt);
     this.mg.update(dt);
     this.police.update(dt);
     this.copter.update(dt, steps, SIM_DT);
+    t = this.lap('police+minigames', t);
     this.updatePullOut(dt);
     this.updateSinking(dt);
     this.quests.update(dt);
     this.story.update(dt, this.players.values());
     this.races.update(dt);
     this.gangs.update(dt, this.isNight());
+    t = this.lap('quests+story+gangs', t);
     this.maintainVehicles(dt);
+    t = this.lap('maintain', t);
     this.sendSnapshots();
+    this.lap('snapshots', t);
     this.events.length = 0;
+    const ms = performance.now() - t0;
+    const st = this.tickStats;
+    st.total += ms; st.n++;
+    if (ms > st.max) { st.max = ms; st.worst = { ...this.tickParts }; }
+    for (const k in this.tickParts) this.tickParts[k] = 0;
   }
+
+  private threats: { x: number; z: number; speed: number; vx: number; vz: number }[] = [];
+  private pawnList: { pawn: { x: number; z: number; h: number; rt: number; vx: number; vz: number; vy: number }; ped?: Ped; player?: ServerPlayer }[] = [];
+
+  /** Server-Tick-Profil: Summe je Teilsystem (ms), Anzahl Ticks, längster Tick. `/perf` zeigt es an. */
+  readonly tickStats = { parts: {} as Record<string, number>, total: 0, n: 0, max: 0, worst: {} as Record<string, number> };
+  /** Teilzeiten des laufenden Ticks (für den längsten Tick). */
+  private tickParts: Record<string, number> = {};
+  private lap(name: string, t: number) {
+    const now = performance.now(), d = now - t;
+    this.tickStats.parts[name] = (this.tickStats.parts[name] ?? 0) + d;
+    this.tickParts[name] = (this.tickParts[name] ?? 0) + d;
+    return now;
+  }
+  /** Profil als Text (Ø ms je Tick) und zurücksetzen. */
+  tickReport(reset = true): string {
+    const s = this.tickStats, n = Math.max(1, s.n);
+    const parts = Object.entries(s.parts).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / n).toFixed(2)}`).join(' · ');
+    const worst = Object.entries(s.worst).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(' · ');
+    const out = `Tick Ø ${(s.total / n).toFixed(2)} ms, max ${s.max.toFixed(1)} ms (${s.n} Ticks, ${this.players.size} Spieler, ${this.peds.peds.size} NPCs, ${this.vehicles.size} Fahrzeuge): ${parts}. Längster Tick: ${worst}`;
+    if (reset) { s.parts = {}; s.total = 0; s.n = 0; s.max = 0; s.worst = {}; }
+    return out;
+  }
+
 
   /** Fahrzeuge gegen Fußgänger/Spieler zu Fuß: schnell = wegschleudern, langsam = wegschieben. */
   private hitPawns() {
-    const pawns: { pawn: { x: number; z: number; h: number; rt: number; vx: number; vz: number; vy: number }; ped?: Ped; player?: ServerPlayer }[] = [
-      ...[...this.players.values()].filter((p) => p.vehicleId < 0 && p.ride < 0 && p.downT <= 0).map((p) => ({ pawn: p.pawn, player: p })),
-      ...[...this.peds.peds.values()].map((p) => ({ pawn: p, ped: p })),
-    ];
+    // Ohne Zwischen-Arrays/Generatoren (lief für ~450 NPCs jeden Tick und erzeugte viel Müll für den GC)
+    const pawns = this.pawnList;
+    pawns.length = 0;
+    for (const p of this.players.values()) if (p.vehicleId < 0 && p.ride < 0 && p.downT <= 0) pawns.push({ pawn: p.pawn, player: p });
+    for (const p of this.peds.peds.values()) pawns.push({ pawn: p, ped: p });
+    const grid = this.grid;
     for (const { pawn, ped, player } of pawns) {
       if (pawn.h > 1.2) continue;
-      for (const v of this.nearVehicles(pawn.x, pawn.z)) {
+      const gx = Math.floor(pawn.x / GRID), gz = Math.floor(pawn.z / GRID);
+      for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) for (const v of grid.get((gz + oz) * 4096 + gx + ox) ?? NO_VEHICLES) {
         const c = v.sim.car;
         if (c.fly && !c.fly.ground) continue; // Luftfahrzeug in der Luft
         const hit = boxCircle(c, v.sim.prof, pawn.x, pawn.z, PAWN_RADIUS);
@@ -2057,13 +2116,18 @@ export class WorldRoom {
     const floorsJson = this.mg.floorsJson();
     const common = `"time":${Date.now()},"day":${r3((((Date.now() - this.startedAt) / DAY_LENGTH_MS) + 0.35) % 1)},"players":${JSON.stringify(players)},"quest":null`;
     const R2 = INTEREST * INTEREST;
+    // Fußgänger-Tupel erst bei Bedarf (nur NPCs in der Nähe eines Spielers) und einmal je Tick
     const pedStr = new Map<number, string>();
-    for (const ped of this.peds.peds.values()) {
+    const pedTuple = (ped: Ped): string => {
+      const hit = pedStr.get(ped.id);
+      if (hit !== undefined) return hit;
       const tup: (number | string)[] = [ped.id, r1(ped.x), r1(ped.z), r2(ped.a), ped.color, ped.cop ? 3 : ped.gang ? 4 + Math.max(0, GANG_IDS.indexOf(ped.gang as GangId)) : this.peds.isRunning(ped) ? 1 : ped.angry > 0 ? 2 : 0, r1(ped.h), ped.rt > 0 ? 1 : 0, ped.arch, ped.act];
       // Kurzzeitgedächtnis: Spieler, den der NPC ängstlich im Blick behält (Kopfdrehung rechnet der Client)
       if (ped.mind?.fear) tup.push(ped.mind.fear.pid);
-      pedStr.set(ped.id, JSON.stringify(tup));
-    }
+      const str = JSON.stringify(tup);
+      pedStr.set(ped.id, str);
+      return str;
+    };
     const propStr = new Map<number, string>();
     for (const b of this.props.values()) {
       propStr.set(b.id, JSON.stringify([b.id, r2(b.x), r2(b.y), r2(b.z), r3(b.qx), r3(b.qy), r3(b.qz), r3(b.qw), (b.rest ? 1 : 0) | (b.spray > 0 ? 2 : 0)]));
@@ -2113,7 +2177,7 @@ export class WorldRoom {
       const pd: string[] = [], pg: number[] = [];
       for (const ped of this.peds.peds.values()) {
         if (!nearPed(ped.x, ped.z)) continue;
-        const t = pedStr.get(ped.id)!;
+        const t = pedTuple(ped);
         if (view.peds.get(ped.id) !== t) { pd.push(t); view.peds.set(ped.id, t); }
       }
       for (const id of view.peds.keys()) {
