@@ -1,6 +1,6 @@
-// StadtblÃ¶cke = FlÃ¤chen zwischen den StraÃŸen (Halbkanten-Traversierung des planaren
-// StraÃŸengraphs), eingerÃ¼ckt um Fahrbahn + Gehweg und rekursiv entlang der lÃ¤ngsten
-// Kante in GrundstÃ¼cke geteilt. GebÃ¤ude richten ihre Front zur nÃ¤chsten StraÃŸe aus.
+// Stadtblöcke = Flächen zwischen den Straßen (Halbkanten-Traversierung des planaren
+// Straßengraphs), eingerückt um Fahrbahn + Gehweg und rekursiv entlang der längsten
+// Kante in Grundstücke geteilt. Gebäude richten ihre Front zur nächsten Straße aus.
 import { makeValueNoise, mulberry32 } from '../math';
 import {
   bbox, centroid, distToSegment, insetPolygon, orientedRect, pointAt, pointInPolygon, polygonArea, simplify, splitPolygon,
@@ -21,8 +21,8 @@ const PAL_WOOD = [0x8a6a48, 0x9b7a55, 0x7a5a3a, 0xa88a62];
 
 /** Gestaltungsregeln je Viertel-Stil. */
 interface StyleRule {
-  lotArea: number; // ZielgrÃ¶ÃŸe eines GrundstÃ¼cks (mÂ²)
-  front: number; side: number; back: number; // AbstÃ¤nde (m)
+  lotArea: number; // Zielgröße eines Grundstücks (m²)
+  front: number; side: number; back: number; // Abstände (m)
   maxDepth: number;
   free: { park: number; parking: number; gas: number; vacant: number };
 }
@@ -41,10 +41,10 @@ const STYLES: Record<string, StyleRule> = {
 
 const DOWNTOWN_CORE: Vec2 = [1340, 1000];
 
-// ------------------------------------------------------------------ FlÃ¤chen des Graphen
-/** Alle inneren FlÃ¤chen des planaren StraÃŸengraphs mit der Quell-Kante je Polygonseite. */
+// ------------------------------------------------------------------ Flächen des Graphen
+/** Alle inneren Flächen des planaren Straßengraphs mit der Quell-Kante je Polygonseite. */
 function faces(map: WorldMap): { poly: Poly; src: number[] }[] {
-  // Sackgassen entfernen (sie erzeugen Spitzen in den FlÃ¤chen)
+  // Sackgassen entfernen (sie erzeugen Spitzen in den Flächen)
   const deg = new Map<number, number>();
   let live = map.edges.filter((e) => e.type !== RoadType.Pier && e.a !== e.b);
   for (let pass = 0; pass < 20; pass++) {
@@ -91,14 +91,14 @@ function faces(map: WorldMap): { poly: Poly; src: number[] }[] {
           if (last && Math.hypot(last[0] - pts[i][0], last[1] - pts[i][1]) < 0.5) continue;
           poly.push(pts[i]); src.push(cur.e);
         }
-        // Am Zielknoten: die im Uhrzeigersinn (mathematisch) nÃ¤chste ausgehende Kante
+        // Am Zielknoten: die im Uhrzeigersinn (mathematisch) nächste ausgehende Kante
         const v = cur.fwd ? edge.b : edge.a;
         const list = out.get(v)!;
         const idx = list.findIndex((h) => h.e === cur.e && h.fwd === !cur.fwd);
         const nxt = list[(idx - 1 + list.length) % list.length];
         cur = { e: nxt.e, fwd: nxt.fwd };
       }
-      // Innere FlÃ¤chen haben (mit dieser Drehrichtung) negative polygonArea
+      // Innere Flächen haben (mit dieser Drehrichtung) negative polygonArea
       const a = polygonArea(poly);
       if (a < 0 && -a < 120000 && poly.length >= 3) result.push({ poly, src });
     }
@@ -106,11 +106,11 @@ function faces(map: WorldMap): { poly: Poly; src: number[] }[] {
   return result;
 }
 
-// ------------------------------------------------------------------ GrundstÃ¼cke
+// ------------------------------------------------------------------ Grundstücke
 function subdivide(poly: Poly, target: number, rnd: () => number, depth = 0): Poly[] {
   const area = Math.abs(polygonArea(poly));
   if (area < target * 1.7 || depth > 8) return [poly];
-  // lÃ¤ngste Kante finden, senkrecht dazu (nahe der Mitte) teilen
+  // längste Kante finden, senkrecht dazu (nahe der Mitte) teilen
   let li = 0, ll = 0;
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i], b = poly[(i + 1) % poly.length];
@@ -126,7 +126,7 @@ function subdivide(poly: Poly, target: number, rnd: () => number, depth = 0): Po
   return [...subdivide(p1, target, rnd, depth + 1), ...subdivide(p2, target, rnd, depth + 1)];
 }
 
-/** LÃ¤ngste GrundstÃ¼ckskante, die am Blockrand (also an der StraÃŸe) liegt. */
+/** Längste Grundstückskante, die am Blockrand (also an der Straße) liegt. */
 function frontage(lot: Poly, block: Poly, segs?: SegmentIndex): { a: Vec2; b: Vec2 } | null {
   let best: { a: Vec2; b: Vec2 } | null = null, bl = 0;
   for (let i = 0; i < lot.length; i++) {
@@ -139,20 +139,20 @@ function frontage(lot: Poly, block: Poly, segs?: SegmentIndex): { a: Vec2; b: Ve
       const p = block[k], q = block[(k + 1) % block.length];
       if (distToSegment(mx, mz, p[0], p[1], q[0], q[1]).d < 1) onEdge = true;
     }
-    // auch Kanten direkt an einer StraÃŸe zÃ¤hlen (z. B. an StichstraÃŸen in offenen BlÃ¶cken)
+    // auch Kanten direkt an einer Straße zählen (z. B. an Stichstraßen in offenen Blöcken)
     if (!onEdge && segs?.onRoad([mx, mz], 3)) onEdge = true;
     if (onEdge) { best = { a, b }; bl = l; }
   }
   return best;
 }
 
-/** GebÃ¤ude-Grundriss passend ins GrundstÃ¼ck, Front an der StraÃŸenkante. */
+/** Gebäude-Grundriss passend ins Grundstück, Front an der Straßenkante. */
 function placeBuilding(lot: Poly, f: { a: Vec2; b: Vec2 }, rule: StyleRule, maxW = Infinity) {
   const fl = Math.hypot(f.b[0] - f.a[0], f.b[1] - f.a[1]);
   const u: Vec2 = [(f.b[0] - f.a[0]) / fl, (f.b[1] - f.a[1]) / fl];
   const c = centroid(lot);
   let v: Vec2 = [-u[1], u[0]];
-  if ((c[0] - f.a[0]) * v[0] + (c[1] - f.a[1]) * v[1] < 0) v = [-v[0], -v[1]]; // v zeigt ins GrundstÃ¼ck
+  if ((c[0] - f.a[0]) * v[0] + (c[1] - f.a[1]) * v[1] < 0) v = [-v[0], -v[1]]; // v zeigt ins Grundstück
   let u0 = Infinity, u1 = -Infinity, vmax = 0;
   for (const p of lot) {
     const du = (p[0] - f.a[0]) * u[0] + (p[1] - f.a[1]) * u[1];
@@ -162,12 +162,12 @@ function placeBuilding(lot: Poly, f: { a: Vec2; b: Vec2 }, rule: StyleRule, maxW
   let w = Math.min(maxW, u1 - u0 - rule.side * 2);
   let d = Math.min(rule.maxDepth, vmax - rule.front - rule.back);
   const um = (u0 + u1) / 2;
-  // Front zeigt zur StraÃŸe (entgegen v)
+  // Front zeigt zur Straße (entgegen v)
   const rot = Math.atan2(-v[0], -v[1]);
   for (let tries = 0; tries < 8; tries++) {
     if (w < 4 || d < 3.5) return null;
     const cv = rule.front + d / 2;
-    // mittig, sonst entlang der Front zur breiteren Seite rutschen (z. B. bei dreieckigen GrundstÃ¼cken)
+    // mittig, sonst entlang der Front zur breiteren Seite rutschen (z. B. bei dreieckigen Grundstücken)
     const slack = Math.max(0, (u1 - u0 - w) / 2 - rule.side);
     for (const shift of [0, -slack, slack, -slack / 2, slack / 2]) {
       const cx = f.a[0] + u[0] * (um + shift) + v[0] * cv, cz = f.a[1] + u[1] * (um + shift) + v[1] * cv;
@@ -179,14 +179,14 @@ function placeBuilding(lot: Poly, f: { a: Vec2; b: Vec2 }, rule: StyleRule, maxW
   return null;
 }
 
-// ------------------------------------------------------------------ HÃ¶hen & Stile
+// ------------------------------------------------------------------ Höhen & Stile
 function buildingFor(style: string, x: number, z: number, w: number, d: number, noise: (x: number, z: number) => number, rnd: () => number):
   { h: number; style: number; color: number } {
   const pick = <T>(a: T[]) => a[Math.floor(rnd() * a.length)];
   const n = noise(x * 0.02, z * 0.02);
   switch (style) {
     case 'downtown': {
-      // Hoch im Kern, flacher zur KÃ¼ste und zu den RÃ¤ndern
+      // Hoch im Kern, flacher zur Küste und zu den Rändern
       const dCore = Math.hypot(x - DOWNTOWN_CORE[0], z - DOWNTOWN_CORE[1]);
       const core = Math.max(0, 1 - dCore / 200);
       const coast = Math.min(1, Math.max(0, (1430 - x) / 50));
@@ -239,14 +239,14 @@ export function buildCity(map: WorldMap, seed: number) {
     const blockPoly = simplify(inset, 0.8);
     if (Math.abs(polygonArea(blockPoly)) < 150) continue;
     const blockId = map.blocks.length;
-    // FÃ¼hrt eine StraÃŸe in den Block hinein (StichstraÃŸe), bleibt er offen
+    // Führt eine Straße in den Block hinein (Stichstraße), bleibt er offen
     const [bx0, bz0, bx1, bz1] = bbox(blockPoly);
     const open = map.edges.some((e) => e.pts.some((p) => p[0] > bx0 && p[0] < bx1 && p[1] > bz0 && p[1] < bz1 && pointInPolygon(p[0], p[1], blockPoly)));
     map.blocks.push({ id: blockId, district: district.id, poly: blockPoly, open });
 
     for (const lotPoly of subdivide(blockPoly, rule.lotArea, rnd)) {
       if (!lotPoly.every((p) => onLand(p, district.style)) || !onLand(centroid(lotPoly), district.style)) continue;
-      // In offenen BlÃ¶cken: GrundstÃ¼cke an der StichstraÃŸe feiner teilen, Teile auf der StraÃŸe entfallen
+      // In offenen Blöcken: Grundstücke an der Stichstraße feiner teilen, Teile auf der Straße entfallen
       const onRoad = (p: Poly) => samplePoints(p).some((q) => ctx.segs.onRoad(q, 0.5));
       const pieces = open && onRoad(lotPoly) ? subdivide(lotPoly, rule.lotArea / 4, rnd).filter((p) => !onRoad(p)) : [lotPoly];
       for (const p of pieces) fillLot(ctx, p, frontage(p, blockPoly, open ? ctx.segs : undefined), district.id, blockId);
@@ -269,7 +269,7 @@ function samplePoints(poly: Poly): Vec2[] {
   return out;
 }
 
-/** Sicherheitsnetz: GebÃ¤ude, die eine Fahrbahn oder einen Gehweg berÃ¼hren, entfallen. */
+/** Sicherheitsnetz: Gebäude, die eine Fahrbahn oder einen Gehweg berühren, entfallen. */
 function removeBuildingsOnRoads(ctx: Ctx) {
   const { map, segs } = ctx;
   const remap = new Map<number, number>();
@@ -295,7 +295,7 @@ interface Ctx {
   segs: SegmentIndex;
 }
 
-/** Nutzung festlegen und ggf. ein GebÃ¤ude mit Front zur StraÃŸe setzen. */
+/** Nutzung festlegen und ggf. ein Gebäude mit Front zur Straße setzen. */
 function fillLot(ctx: Ctx, lotPoly: Poly, fr: { a: Vec2; b: Vec2 } | null, districtId: number, blockId: number) {
   const { map, rnd, noise } = ctx;
   const district = map.districts[districtId];
@@ -325,7 +325,7 @@ function addBuilding(map: WorldMap, b: BuildingDef) {
   return map.buildings.length - 1;
 }
 
-/** RÃ¤umlicher Index der StraÃŸensegmente fÃ¼r schnelle Abstandsabfragen. */
+/** Räumlicher Index der Straßensegmente für schnelle Abstandsabfragen. */
 class SegmentIndex {
   private cells = new Map<number, [number, number][]>();
   constructor(private map: WorldMap, private size = 32) {
@@ -343,7 +343,7 @@ class SegmentIndex {
       }
     }
   }
-  /** Liegt p innerhalb von Fahrbahn + Gehweg + margin einer StraÃŸe? */
+  /** Liegt p innerhalb von Fahrbahn + Gehweg + margin einer Straße? */
   onRoad(p: Vec2, margin: number): boolean {
     const r = 12 + margin;
     const x0 = Math.floor((p[0] - r) / this.size), x1 = Math.floor((p[0] + r) / this.size);
@@ -360,13 +360,13 @@ class SegmentIndex {
 }
 
 /**
- * StraÃŸenrandbebauung: Wo an einer StraÃŸe im Viertel (oder an ausgewÃ¤hlten LandstraÃŸen)
- * kein Block liegt, entstehen GrundstÃ¼cke entlang der StraÃŸe mit Front zur Fahrbahn.
+ * Straßenrandbebauung: Wo an einer Straße im Viertel (oder an ausgewählten Landstraßen)
+ * kein Block liegt, entstehen Grundstücke entlang der Straße mit Front zur Fahrbahn.
  */
 function frontageLots(ctx: Ctx) {
   const { map, rnd, noise, segs } = ctx;
   const rural = new Map<string, number>([
-    ['Pine Hollow Road', -1], ['Northwest Road', -1], ['Northeast Road', -1], ['Spit Road', -1], ['Sabalâ€“Cane Road', -1],
+    ['Pine Hollow Road', -1], ['Northwest Road', -1], ['Northeast Road', -1], ['Spit Road', -1], ['Sabal–Cane Road', -1],
     ['Coastline Highway', -1], ['Okee Trail', -1],
   ]);
   const occupied = (p: Vec2) => {
@@ -394,9 +394,9 @@ function frontageLots(ctx: Ctx) {
         const width = Math.max(10, Math.sqrt(rule.lotArea) * (d ? 0.9 : 1.2)) * (0.85 + rnd() * 0.3);
         const depth = Math.min(rule.front + rule.maxDepth + rule.back, d ? 44 : 30);
         if (!d && noise(p.x * 0.01, p.z * 0.01) < 0.5) { s += width; continue; } // Weiler in Gruppen
-        // GrundstÃ¼cks-Rechteck: Vorderkante an der Gehweg-/StraÃŸenkante
+        // Grundstücks-Rechteck: Vorderkante an der Gehweg-/Straßenkante
         const off = e.width / 2 + e.sidewalk + 0.6;
-        const nx = -p.dz * side, nz = p.dx * side; // vom StraÃŸenrand weg
+        const nx = -p.dz * side, nz = p.dx * side; // vom Straßenrand weg
         const fa: Vec2 = [p.x + nx * off - p.dx * (width / 2), p.z + nz * off - p.dz * (width / 2)];
         const fb: Vec2 = [p.x + nx * off + p.dx * (width / 2), p.z + nz * off + p.dz * (width / 2)];
         const poly: Poly = [fa, fb, [fb[0] + nx * depth, fb[1] + nz * depth], [fa[0] + nx * depth, fa[1] + nz * depth]];
@@ -407,7 +407,7 @@ function frontageLots(ctx: Ctx) {
           && !probes.some((q) => segs.onRoad(q, 0.5)) && !poly.some(occupied) && !occupied(c);
         if (ok) {
           if (d) {
-            // Frontkante fa-fb (Reihenfolge so, dass placeBuilding ins GrundstÃ¼ck zeigt)
+            // Frontkante fa-fb (Reihenfolge so, dass placeBuilding ins Grundstück zeigt)
             fillLot(ctx, poly, { a: fa, b: fb }, d.id, -1);
           } else if (rnd() < 0.8) {
             const place = placeBuilding(poly, { a: fa, b: fb }, rule, 14);
@@ -426,7 +426,7 @@ function frontageLots(ctx: Ctx) {
   }
 }
 
-/** Tankstellen an LandstraÃŸen: GrundstÃ¼ck an der nÃ¤chsten StraÃŸe, Shop + Dach. */
+/** Tankstellen an Landstraßen: Grundstück an der nächsten Straße, Shop + Dach. */
 function gasStations(map: WorldMap) {
   for (const [x, z] of POI.gasStations) {
     let best: { p: Vec2; dir: Vec2; e: number } | null = null, bd = Infinity;

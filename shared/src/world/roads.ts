@@ -1,12 +1,14 @@
-// StraÃŸengraph aus Catmull-Rom-Splines: Hauptachsen aus palmara.ts, Viertelraster mit
-// eigenem Drehwinkel und geschwungene LandstraÃŸen. Alle Linien werden planarisiert
-// (jeder Schnittpunkt wird ein Knoten). Dazu die gemeinsame Kreuzungsgeometrie fÃ¼r
+// Straßengraph aus Catmull-Rom-Splines: Hauptachsen aus palmara.ts, Viertelraster mit
+// eigenem Drehwinkel und geschwungene Landstraßen. Alle Linien werden planarisiert
+// (jeder Schnittpunkt wird ein Knoten). Dazu die gemeinsame Kreuzungsgeometrie für
 // Rendering, Rasterung und Verkehrs-KI.
 import { makeValueNoise, mulberry32 } from '../math';
 import {
   catmullRom, cumulative, distToSegment, lineIntersection, pointAt, pointInPolygon, polylineLength,
   segmentIntersection, subPolyline, centroid, type Vec2,
 } from './geometry';
+import { inAirport } from './airport';
+import { TEST_TRACK } from './features';
 import { DISTRICTS, PIERS, ROADS, ROUNDABOUTS, type DistrictDef } from './palmara';
 import { Tile } from './tiles';
 import { RoadType, type RoadEdge, type RoadNode, type WorldMap } from './WorldMap';
@@ -20,17 +22,22 @@ export const ROAD_SPECS: Record<number, { lanes: number; laneWidth: number; side
   [RoadType.Pier]: { lanes: 2, laneWidth: 1.6, sidewalk: 0, shoulder: 0 },
 };
 
-interface Stroke { name: string; type: number; pts: Vec2[]; cum: number[]; palms: boolean; main: boolean }
-
-const SAMPLE = 4; // Abtastabstand der Splines in Metern
-const MERGE = 7; // Knoten nÃ¤her als das werden zusammengelegt
-const SNAP = 16; // Linienenden so nah an einer anderen StraÃŸe werden angeschlossen
-
-function makeStroke(name: string, type: number, pts: Vec2[], palms: boolean, main: boolean): Stroke {
-  return { name, type, pts, cum: cumulative(pts), palms, main };
+interface Stroke {
+  name: string; type: number; pts: Vec2[]; cum: number[]; palms: boolean; main: boolean;
+  /** Endet bewusst an einem Ziel (Steg, Flugfeld, Parkplatz …): [Anfang, Ende]. */
+  dest: [boolean, boolean];
 }
 
-/** Kontrollpunkte einer LandstraÃŸe per Noise seitlich verformen (Enden bleiben fest). */
+const SAMPLE = 4; // Abtastabstand der Splines in Metern
+const MERGE = 7; // Knoten näher als das werden zusammengelegt
+const SNAP = 16; // Linienenden so nah an einer anderen Straße werden angeschlossen
+const JOIN = 18; // Einmündungen so nah an einer bestehenden Kreuzung werden dort zusammengelegt
+
+function makeStroke(name: string, type: number, pts: Vec2[], palms: boolean, main: boolean, dest: [boolean, boolean] = [false, false]): Stroke {
+  return { name, type, pts, cum: cumulative(pts), palms, main, dest };
+}
+
+/** Kontrollpunkte einer Landstraße per Noise seitlich verformen (Enden bleiben fest). */
 function ruralize(ctrl: Vec2[], amp: number, noise: (x: number, z: number) => number): Vec2[] {
   const dense = catmullRom(ctrl, 60);
   const L = polylineLength(dense);
@@ -65,7 +72,7 @@ function clipLine(o: Vec2, d: Vec2, poly: Vec2[]): [number, number][] {
   return out;
 }
 
-/** Rasterlinien eines Viertels, an Viertelgrenze und KÃ¼ste beschnitten. */
+/** Rasterlinien eines Viertels, an Viertelgrenze und Küste beschnitten. */
 function districtGrid(d: DistrictDef, idx: number, map: WorldMap, mains: Stroke[], seed: number): Stroke[] {
   const rnd = mulberry32(seed * 31 + idx * 977);
   for (let i = 0; i < 8; i++) rnd(); // erste Werte kleiner Seeds sind schlecht verteilt
@@ -90,11 +97,11 @@ function districtGrid(d: DistrictDef, idx: number, map: WorldMap, mains: Stroke[
       const o: Vec2 = [c[0] + across[0] * (k * step + off[axis]), c[1] + across[1] * (k * step + off[axis])];
       const intervals = clipLine(o, dir, d.poly);
       if (!intervals.length) continue;
-      // In groÃŸen Vierteln innere Linien gelegentlich weglassen -> unterschiedlich groÃŸe BlÃ¶cke
+      // In großen Vierteln innere Linien gelegentlich weglassen -> unterschiedlich große Blöcke
       if (Math.abs(k) >= 1 && intervals[0][1] - intervals[0][0] > 200 && rnd() < 0.06) continue;
       const lineType = d.mainEvery && ((k % d.mainEvery) + d.mainEvery) % d.mainEvery === 0 ? RoadType.Main : type;
       for (const [t0, t1] of intervals) {
-        // Ãœber die Viertelgrenze hinaus verlÃ¤ngern, damit das Raster an die HauptstraÃŸen anschlieÃŸt
+        // Über die Viertelgrenze hinaus verlängern, damit das Raster an die Hauptstraßen anschließt
         let run: Vec2[] = [];
         const flush = () => {
           if (run.length >= 2 && polylineLength(run) > 24) out.push(makeStroke(`${d.name} ${axis ? 'Avenue' : 'Street'} ${k}`, lineType, run, false, false));
@@ -108,16 +115,44 @@ function districtGrid(d: DistrictDef, idx: number, map: WorldMap, mains: Stroke[
       }
     }
   }
-  // Rasterlinien, die (fast) parallel neben einer HauptstraÃŸe laufen, entfallen
-  return out.filter((s) => {
+  // Rasterlinien, die (fast) parallel neben einer Hauptstraße laufen, entfallen; laufen sie nur
+  // abschnittsweise dicht parallel daneben (spitzes Zusammenlaufen), fällt dieser Abschnitt weg
+  const kept: Stroke[] = [];
+  for (const s of out) {
     let near = 0;
     for (const p of s.pts) {
       for (const m of mains) {
         if (nearPolyline(m.pts, p, 22)) { near++; break; }
       }
     }
-    return near < s.pts.length * 0.5;
-  });
+    if (near >= s.pts.length * 0.5) continue;
+    const dir: Vec2 = [s.pts[1][0] - s.pts[0][0], s.pts[1][1] - s.pts[0][1]];
+    const dl = Math.hypot(dir[0], dir[1]) || 1;
+    let run: Vec2[] = [];
+    const flush = () => {
+      if (run.length >= 2 && polylineLength(run) > 24) kept.push(makeStroke(s.name, s.type, run, false, false));
+      run = [];
+    };
+    for (const p of s.pts) {
+      // Abstand > SNAP, damit das verbleibende Ende nicht flach an die Hauptstraße andockt
+      if (mains.some((m) => parallelNear(m.pts, p, [dir[0] / dl, dir[1] / dl], SNAP + 8))) flush(); else run.push(p);
+    }
+    flush();
+  }
+  return kept;
+}
+
+/** Läuft eine Polylinie näher als r an p vorbei, mit weniger als 25° Winkel zu dir? */
+function parallelNear(pts: Vec2[], p: Vec2, dir: Vec2, r: number): boolean {
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    if (Math.min(a[0], b[0]) - r > p[0] || Math.max(a[0], b[0]) + r < p[0]) continue;
+    if (Math.min(a[1], b[1]) - r > p[1] || Math.max(a[1], b[1]) + r < p[1]) continue;
+    if (distToSegment(p[0], p[1], a[0], a[1], b[0], b[1]).d >= r) continue;
+    const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
+    if (Math.abs((dx * dir[0] + dz * dir[1]) / l) > Math.cos((25 * Math.PI) / 180)) return true;
+  }
+  return false;
 }
 
 function nearPolyline(pts: Vec2[], p: Vec2, r: number): boolean {
@@ -130,6 +165,150 @@ function nearPolyline(pts: Vec2[], p: Vec2, r: number): boolean {
   return false;
 }
 
+// ------------------------------------------------------------------ Lose Enden anschließen
+/** Kein Wasser, kein Flughafen, kein Testgelände zwischen a und b? */
+function landPath(map: WorldMap, a: Vec2, b: Vec2): boolean {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const T = TEST_TRACK;
+  for (let k = 0, n = Math.max(1, Math.ceil(L / 3)); k <= n; k++) {
+    const x = a[0] + ((b[0] - a[0]) * k) / n, z = a[1] + ((b[1] - a[1]) * k) / n;
+    const t = map.tileAt(x, z);
+    if (t === Tile.WATER || t === Tile.VOID || t === Tile.ROCK) return false;
+    if (inAirport(x, z)) return false;
+    if (x > T.x0 - 6 && x < T.x0 + T.w + 6 && z > T.z0 - 6 && z < T.z0 + T.d + 6) return false;
+  }
+  return true;
+}
+
+/** Richtung am Linienende nach außen (über ~10 m gemittelt). */
+function endDir(s: Stroke, atEnd: boolean): Vec2 {
+  const L = s.cum[s.cum.length - 1];
+  const p0 = pointAt(s.pts, s.cum, atEnd ? Math.max(0, L - 10) : Math.min(L, 10));
+  const p1 = atEnd ? s.pts[s.pts.length - 1] : s.pts[0];
+  const dx = p1[0] - p0.x, dz = p1[1] - p0.z, l = Math.hypot(dx, dz) || 1;
+  return [dx / l, dz / l];
+}
+
+/**
+ * Linienenden ohne Anschluss (weiter als SNAP von jeder anderen Straße) verlängern:
+ *   1. geradeaus bis zur nächsten Straße (Strahl),
+ *   2. sonst schräg zum nächsten Straßenpunkt vor dem Ende (höchstens 70° Abweichung),
+ *   3. sonst zu einem anderen losen Ende in der Nähe, geradeaus oder rechtwinklig (z. B. zwei
+ *      Rasterlinien an der Küste werden zu einer Uferstraße verbunden).
+ * Die Verlängerung muss über Land führen und darf keine dritte Straße kreuzen.
+ * Was übrig bleibt, schneidet buildRoadGraph bei Rasterstraßen bis zur Kreuzung zurück.
+ */
+function connectEnds(strokes: Stroke[], map: WorldMap) {
+  type Box = [number, number, number, number];
+  const box = (s: Stroke): Box => {
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const [x, z] of s.pts) { x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z); }
+    return [x0, z0, x1, z1];
+  };
+  const boxes = strokes.map(box);
+  const targets = (si: number, p: Vec2, r: number) => strokes
+    .map((o, oi) => oi)
+    .filter((oi) => oi !== si && strokes[oi].type !== RoadType.Pier)
+    .filter((oi) => { const b = boxes[oi]; return p[0] > b[0] - r && p[0] < b[2] + r && p[1] > b[1] - r && p[1] < b[3] + r; });
+  const minDist = (si: number, p: Vec2) => {
+    let best = Infinity;
+    for (const oi of targets(si, p, SNAP)) {
+      const o = strokes[oi];
+      for (let i = 0; i < o.pts.length - 1; i++) best = Math.min(best, distToSegment(p[0], p[1], o.pts[i][0], o.pts[i][1], o.pts[i + 1][0], o.pts[i + 1][1]).d);
+    }
+    return best;
+  };
+  /** Schneidet die Strecke a→b eine Straße (außer si) vor dem Anteil tMax? */
+  const crosses = (si: number, a: Vec2, b: Vec2, tMax: number, skip = -1) => {
+    const r = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    for (const oi of targets(si, a, r)) {
+      if (oi === skip) continue;
+      const o = strokes[oi];
+      for (let i = 0; i < o.pts.length - 1; i++) {
+        const hit = segmentIntersection(a, b, o.pts[i], o.pts[i + 1]);
+        if (hit && hit.t > 0.02 && hit.t < tMax) return true;
+      }
+    }
+    return false;
+  };
+  const extend = (s: Stroke, atEnd: boolean, to: Vec2) => {
+    const from = atEnd ? s.pts[s.pts.length - 1] : s.pts[0];
+    const L = Math.hypot(to[0] - from[0], to[1] - from[1]);
+    const add: Vec2[] = [];
+    for (let d = SAMPLE; d < L; d += SAMPLE) add.push([from[0] + ((to[0] - from[0]) * d) / L, from[1] + ((to[1] - from[1]) * d) / L]);
+    add.push(to);
+    s.pts = atEnd ? [...s.pts, ...add] : [...add.reverse(), ...s.pts];
+    s.cum = cumulative(s.pts);
+    boxes[strokes.indexOf(s)] = box(s);
+  };
+  const loose = (si: number, atEnd: boolean) => {
+    const s = strokes[si];
+    if (s.dest[atEnd ? 1 : 0]) return false; // Stege: nur der landseitige Anfang wird angeschlossen
+    return minDist(si, atEnd ? s.pts[s.pts.length - 1] : s.pts[0]) >= SNAP;
+  };
+
+  strokes.forEach((s, si) => {
+    for (const atEnd of [false, true]) {
+      if (!loose(si, atEnd)) continue;
+      const e = atEnd ? s.pts[s.pts.length - 1] : s.pts[0];
+      const dir = endDir(s, atEnd);
+      const reach = s.main ? 110 : 80;
+
+      // 1) Strahl geradeaus
+      const far: Vec2 = [e[0] + dir[0] * reach, e[1] + dir[1] * reach];
+      let tBest = Infinity, steep = false;
+      for (const oi of targets(si, e, reach)) {
+        const o = strokes[oi];
+        for (let i = 0; i < o.pts.length - 1; i++) {
+          const hit = segmentIntersection(e, far, o.pts[i], o.pts[i + 1]);
+          if (!hit || hit.t >= tBest) continue;
+          tBest = hit.t;
+          // flaches Einmünden (unter 30°) ergibt eine spitze Gabel – dann lieber nicht
+          const sx = o.pts[i + 1][0] - o.pts[i][0], sz = o.pts[i + 1][1] - o.pts[i][1];
+          steep = Math.abs(dir[0] * sz - dir[1] * sx) / (Math.hypot(sx, sz) || 1) > 0.5;
+        }
+      }
+      if (tBest < Infinity && steep) {
+        const hit: Vec2 = [e[0] + dir[0] * reach * tBest, e[1] + dir[1] * reach * tBest];
+        if (landPath(map, e, hit)) { extend(s, atEnd, hit); continue; }
+      }
+
+      // 2) schräg zum nächsten Straßenpunkt
+      let best: { q: Vec2; d: number; oi: number } | null = null;
+      for (const oi of targets(si, e, reach * 0.75)) {
+        const o = strokes[oi];
+        for (let i = 0; i < o.pts.length - 1; i++) {
+          const a = o.pts[i], b = o.pts[i + 1];
+          const r = distToSegment(e[0], e[1], a[0], a[1], b[0], b[1]);
+          if (r.d > reach * 0.75 || (best && r.d >= best.d)) continue;
+          const q: Vec2 = [a[0] + (b[0] - a[0]) * r.t, a[1] + (b[1] - a[1]) * r.t];
+          if (((q[0] - e[0]) * dir[0] + (q[1] - e[1]) * dir[1]) / r.d < Math.cos((70 * Math.PI) / 180)) continue;
+          best = { q, d: r.d, oi };
+        }
+      }
+      if (best && landPath(map, e, best.q) && !crosses(si, e, best.q, 0.97, best.oi)) { extend(s, atEnd, best.q); continue; }
+
+      // 3) zu einem anderen losen Ende
+      let pair: { q: Vec2; d: number } | null = null;
+      strokes.forEach((o, oi) => {
+        if (oi === si) return;
+        for (const oEnd of [false, true]) {
+          const q = oEnd ? o.pts[o.pts.length - 1] : o.pts[0];
+          const d = Math.hypot(q[0] - e[0], q[1] - e[1]);
+          if (d > 110 || d < 1 || (pair && d >= pair.d)) continue;
+          // geradeaus (bis 70°) oder rechtwinklig (80–100°) – keine Schrägen quer durch Blöcke
+          const cos = ((q[0] - e[0]) * dir[0] + (q[1] - e[1]) * dir[1]) / d;
+          if (cos < Math.cos((70 * Math.PI) / 180) && Math.abs(cos) > Math.cos((80 * Math.PI) / 180)) continue;
+          if (!loose(oi, oEnd)) continue;
+          pair = { q, d };
+        }
+      });
+      const p = pair as { q: Vec2; d: number } | null;
+      if (p && landPath(map, e, p.q) && !crosses(si, e, p.q, 0.97)) extend(s, atEnd, p.q);
+    }
+  });
+}
+
 // ------------------------------------------------------------------ Planarisierung
 interface Cut { s: number; node: number }
 
@@ -139,11 +318,13 @@ export function buildRoadGraph(map: WorldMap, seed: number) {
   const strokes: Stroke[] = [];
   for (const r of ROADS) {
     const ctrl = r.rural ? ruralize(r.pts, r.rural, noise) : r.pts;
-    strokes.push(makeStroke(r.name, r.type, catmullRom(ctrl, SAMPLE), !!r.palms, true));
+    const dest: [boolean, boolean] = [r.dest === 'start' || r.dest === 'both', r.dest === 'end' || r.dest === 'both'];
+    strokes.push(makeStroke(r.name, r.type, catmullRom(ctrl, SAMPLE), !!r.palms, true, dest));
   }
-  for (const p of PIERS) strokes.push(makeStroke(p.name, RoadType.Pier, catmullRom(p.pts, SAMPLE), false, true));
+  for (const p of PIERS) strokes.push(makeStroke(p.name, RoadType.Pier, catmullRom(p.pts, SAMPLE), false, true, [false, true]));
   const mains = strokes.slice();
   DISTRICTS.forEach((d, i) => strokes.push(...districtGrid(d, i, map, mains.filter((m) => m.type !== RoadType.Pier), seed)));
+  connectEnds(strokes, map);
 
   // Knoten mit Zusammenlegen naher Punkte
   const nodePos: Vec2[] = [];
@@ -163,7 +344,7 @@ export function buildRoadGraph(map: WorldMap, seed: number) {
   };
   const cuts: Cut[][] = strokes.map(() => []);
 
-  // RÃ¤umlicher Hash der Segmente
+  // Räumlicher Hash der Segmente
   const H = 48;
   const hash = new Map<number, [number, number][]>();
   strokes.forEach((s, si) => {
@@ -201,13 +382,13 @@ export function buildRoadGraph(map: WorldMap, seed: number) {
     }
   }
 
-  // 2) Linienenden: an nahe StraÃŸen anschlieÃŸen (T-Kreuzungen), sonst eigener Knoten
+  // 2) Linienenden: an nahe Straßen anschließen (T-Kreuzungen), sonst eigener Knoten
   strokes.forEach((s, si) => {
     const L = s.cum[s.cum.length - 1];
     for (const atEnd of [false, true]) {
       const e = atEnd ? s.pts[s.pts.length - 1] : s.pts[0];
       const sEnd = atEnd ? L : 0;
-      // schon eine Kreuzung in der NÃ¤he des Endes?
+      // schon eine Kreuzung in der Nähe des Endes?
       const existing = cuts[si].find((c) => Math.abs(c.s - sEnd) < SNAP);
       if (existing) { cuts[si].push({ s: sEnd, node: existing.node }); continue; }
       let best: { si: number; s: number; d: number; p: Vec2 } | null = null;
@@ -224,8 +405,19 @@ export function buildRoadGraph(map: WorldMap, seed: number) {
         }
       }
       if (best) {
-        const node = addNode(best.p);
-        cuts[best.si].push({ s: best.s, node });
+        // Liegt auf der Zielstraße schon eine Kreuzung in der Nähe, dort einmünden statt
+        // eine zweite Einmündung wenige Meter daneben zu bauen
+        const b = best;
+        // (nur wenn die Straße dadurch nicht seitlich abknickt)
+        const back = pointAt(s.pts, s.cum, atEnd ? Math.max(0, L - 24) : Math.min(L, 24));
+        const straight = (c: Cut) => {
+          const q = nodePos[c.node];
+          const ax = e[0] - back.x, az = e[1] - back.z, bx = q[0] - back.x, bz = q[1] - back.z;
+          return (ax * bx + az * bz) / ((Math.hypot(ax, az) * Math.hypot(bx, bz)) || 1) > Math.cos((20 * Math.PI) / 180);
+        };
+        const near = cuts[b.si].filter((c) => Math.abs(c.s - b.s) < JOIN && straight(c)).sort((x, y) => Math.abs(x.s - b.s) - Math.abs(y.s - b.s))[0];
+        const node = near ? near.node : addNode(b.p);
+        if (!near) cuts[b.si].push({ s: b.s, node });
         cuts[si].push({ s: sEnd, node });
       } else {
         cuts[si].push({ s: sEnd, node: addNode(e) });
@@ -267,14 +459,17 @@ export function buildRoadGraph(map: WorldMap, seed: number) {
     }
   });
 
-  // 4) Knoten aufbauen, kurze Sackgassen-Stummel des Rasters entfernen
+  // 4) Knoten aufbauen; Sackgassen des Rasters, die connectEnds nicht anschließen konnte,
+  //    bis zur letzten Kreuzung zurückschneiden (Hauptachsen und Stege bleiben)
   let nodes: RoadNode[] = nodePos.map((p, id) => ({ id, x: p[0], z: p[1], edges: [], roundabout: 0 }));
   const isMain = new Set(strokes.filter((s) => s.main).map((s) => s.name));
   let alive = edges;
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 20; pass++) {
     const deg = new Map<number, number>();
     for (const e of alive) { deg.set(e.a, (deg.get(e.a) ?? 0) + 1); deg.set(e.b, (deg.get(e.b) ?? 0) + 1); }
-    alive = alive.filter((e) => isMain.has(e.name) || !((deg.get(e.a) === 1 || deg.get(e.b) === 1) && e.len < 40));
+    const before = alive.length;
+    alive = alive.filter((e) => isMain.has(e.name) || !(deg.get(e.a) === 1 || deg.get(e.b) === 1));
+    if (alive.length === before) break;
   }
   // Neu nummerieren
   const used = new Set<number>();
@@ -308,10 +503,10 @@ export interface Arm {
   hw: number; // halbe Fahrbahnbreite
   sw: number; // Gehwegbreite
   trim: number;
-  base: Vec2; // Fahrbahnende (Mitte) auf HÃ¶he von trim
+  base: Vec2; // Fahrbahnende (Mitte) auf Höhe von trim
 }
 
-/** Richtung einer Kante vom Knoten weg (Ã¼ber einige Meter gemittelt). */
+/** Richtung einer Kante vom Knoten weg (über einige Meter gemittelt). */
 function armDir(e: RoadEdge, atA: boolean): Vec2 {
   const s = Math.min(8, e.len / 2);
   const p0 = pointAt(e.pts, e.cum, atA ? 0 : e.len), p1 = pointAt(e.pts, e.cum, atA ? s : e.len - s);
@@ -357,7 +552,7 @@ function computeTrims(map: WorldMap) {
       if (arm.atA) arm.edge.trimA = trim; else arm.edge.trimB = trim;
     }
   }
-  // Kurze Kanten: Trims dÃ¼rfen sich nicht Ã¼berlappen
+  // Kurze Kanten: Trims dürfen sich nicht überlappen
   for (const e of map.edges) {
     const sum = e.trimA + e.trimB;
     if (sum > e.len - 1) {
@@ -368,8 +563,8 @@ function computeTrims(map: WorldMap) {
 }
 
 /**
- * Umriss der KreuzungsflÃ¤che (Fahrbahn) bzw. mit `extra` > 0 inklusive Gehweg.
- * Ecken zwischen zwei Armen werden mit einer quadratischen BÃ©zierkurve abgerundet.
+ * Umriss der Kreuzungsfläche (Fahrbahn) bzw. mit `extra` > 0 inklusive Gehweg.
+ * Ecken zwischen zwei Armen werden mit einer quadratischen Bézierkurve abgerundet.
  */
 export function junctionOutline(map: WorldMap, n: RoadNode, extra: (a: Arm) => number = () => 0): Vec2[] {
   const list = arms(map, n);
