@@ -254,6 +254,18 @@ export class StoryDirector {
     void this.ui.choose(h.name, [{ who: h.name, text: h.desc }], opts.map((o) => o.label)).then((i) => opts[i]?.run());
   }
 
+  /** Ort der Figur mit der nächsten Hauptmission (❗), nächstgelegene zuerst – Ziel für die Navi-Route. */
+  goalPoint(): Point | null {
+    const me = this.me();
+    let best: Point | null = null, bd = Infinity;
+    for (const v of this.npcs.values()) {
+      if (!(v.marker.userData.label as string).startsWith('❗')) continue;
+      const d = (v.x - me.x) ** 2 + (v.z - me.z) ** 2;
+      if (d < bd) { bd = d; best = { x: v.x, z: v.z }; }
+    }
+    return best;
+  }
+
   /** Kartenpunkte: Story-Figuren (❗ = hat eine Hauptmission) und Wohnorte. */
   dots(): MapDot[] {
     const out: MapDot[] = [];

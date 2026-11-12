@@ -32,23 +32,77 @@ export function snapRoad(map: WorldMap, x: number, z: number, types?: number[]):
   return best;
 }
 
+/**
+ * Virtuelle Verbindungen für die Navigation: Teile des Straßengraphen, die physisch befahrbar, im Graph
+ * aber nicht verbunden sind (z. B. Anfang der Seven Spans Bridge), werden über ihre nächsten Knoten
+ * verbunden (Lücke < 60 m). Einzelne Knoten ohne Anschluss (Stegenden) bleiben außen vor.
+ */
+const linkCache = new WeakMap<WorldMap, Map<number, [number, number][]>>();
+function navLinks(map: WorldMap): Map<number, [number, number][]> {
+  let links = linkCache.get(map);
+  if (links) return links;
+  links = new Map();
+  const { nodes, edges } = map;
+  const comp = new Int32Array(nodes.length).fill(-1);
+  let c = 0;
+  for (const n of nodes) {
+    if (comp[n.id] >= 0) continue;
+    const st = [n.id];
+    comp[n.id] = c;
+    while (st.length) {
+      const u = st.pop()!;
+      for (const eid of nodes[u].edges) {
+        const e = edges[eid];
+        if (e.type === RoadType.Pier) continue;
+        const w = e.a === u ? e.b : e.a;
+        if (comp[w] < 0) { comp[w] = c; st.push(w); }
+      }
+    }
+    c++;
+  }
+  const size = new Int32Array(c);
+  for (const k of comp) size[k]++;
+  const add = (a: number, b: number, d: number) => {
+    for (const [x, y] of [[a, b], [b, a]]) { const l = links!.get(x) ?? []; l.push([y, d]); links!.set(x, l); }
+  };
+  for (let k = 0; k < c; k++) {
+    if (size[k] < 2) continue;
+    let best = -1, other = -1, bd = 60 * 60;
+    for (const a of nodes) {
+      if (comp[a.id] !== k) continue;
+      for (const b of nodes) {
+        if (comp[b.id] === k || size[comp[b.id]] < 2) continue;
+        const d = (a.x - b.x) ** 2 + (a.z - b.z) ** 2;
+        if (d < bd) { bd = d; best = a.id; other = b.id; }
+      }
+    }
+    if (best >= 0) add(best, other, Math.sqrt(bd));
+  }
+  linkCache.set(map, links);
+  return links;
+}
+
 /** Kürzester Weg über das Straßennetz (Dijkstra mit Binärheap) als Polylinie. */
 export function roadRoute(map: WorldMap, from: Point, to: Point): Vec2[] {
   const { nodes, edges } = map;
+  const links = navLinks(map);
   const near = (p: Point) => {
     let b = -1, bd = Infinity;
     for (const n of nodes) { const d = (n.x - p.x) ** 2 + (n.z - p.z) ** 2; if (d < bd && n.edges.length) { bd = d; b = n.id; } }
     return b;
   };
-  const s = near(from), g = near(to);
+  const s = near(from);
+  let g = near(to);
   if (s < 0 || g < 0) return [[from.x, from.z], [to.x, to.z]];
   const dist = new Float64Array(nodes.length).fill(Infinity);
+  const prev = new Int32Array(nodes.length).fill(-1);
+  /** Kante, über die der Knoten erreicht wurde (-1 = virtuelle Verbindung). */
   const via = new Int32Array(nodes.length).fill(-1);
   const heap: [number, number][] = [[0, s]];
   dist[s] = 0;
   const push = (it: [number, number]) => {
     heap.push(it);
-    for (let i = heap.length - 1; i > 0;) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; }
+    for (let i = heap.length - 1; i > 0;) { const q = (i - 1) >> 1; if (heap[q][0] <= heap[i][0]) break; [heap[q], heap[i]] = [heap[i], heap[q]]; i = q; }
   };
   const pop = () => {
     const top = heap[0], last = heap.pop()!;
@@ -65,6 +119,9 @@ export function roadRoute(map: WorldMap, from: Point, to: Point): Vec2[] {
     }
     return top;
   };
+  const relax = (u: number, w: number, nd: number, eid: number) => {
+    if (nd < dist[w]) { dist[w] = nd; prev[w] = u; via[w] = eid; push([nd, w]); }
+  };
   while (heap.length) {
     const [d, u] = pop();
     if (d > dist[u]) continue;
@@ -72,17 +129,26 @@ export function roadRoute(map: WorldMap, from: Point, to: Point): Vec2[] {
     for (const eid of nodes[u].edges) {
       const e = edges[eid];
       if (e.type === RoadType.Pier) continue;
-      const w = e.a === u ? e.b : e.a;
-      const nd = d + e.len;
-      if (nd < dist[w]) { dist[w] = nd; via[w] = eid; push([nd, w]); }
+      relax(u, e.a === u ? e.b : e.a, d + e.len, eid);
+    }
+    for (const [w, len] of links.get(u) ?? []) relax(u, w, d + len, -1);
+  }
+  // Ziel trotzdem nicht erreichbar: bis zum erreichbaren Knoten, der dem Ziel am nächsten liegt –
+  // den Rest zeichnet der Aufrufer als Luftlinie
+  if (!Number.isFinite(dist[g])) {
+    let bd = Infinity;
+    for (const n of nodes) {
+      if (!Number.isFinite(dist[n.id])) continue;
+      const d = (n.x - to.x) ** 2 + (n.z - to.z) ** 2;
+      if (d < bd) { bd = d; g = n.id; }
     }
   }
   const out: Vec2[] = [];
-  for (let u = g; u !== s && via[u] >= 0;) {
+  for (let u = g; u !== s && prev[u] >= 0; u = prev[u]) {
+    if (via[u] < 0) { out.push([nodes[u].x, nodes[u].z]); continue; }
     const e = edges[via[u]];
     const pts = e.b === u ? e.pts : [...e.pts].reverse(); // von u rückwärts sammeln
     for (let i = pts.length - 1; i > 0; i--) out.push(pts[i]);
-    u = e.a === u ? e.b : e.a;
   }
   out.push([nodes[s].x, nodes[s].z]);
   return out.reverse();
