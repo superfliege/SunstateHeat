@@ -258,7 +258,7 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
   schnell = Schaden oder Absturz, Wasser = Absturz. Helikopter: Rotor läuft hoch, Schweben, Drehen auf der Stelle,
   seitwärts, Landung auf Dächern, Abwind (Staub/Gras/Gischt). Treibstoff (abschaltbar, Tankstelle am Vorfeld kostet Geld).
   Mitfahrer: E an einem Luftfahrzeug mit Pilot (Sitzplätze laut Config). Aussteigen nur am Boden bzw. knapp darüber.
-  Rangsperre (abschaltbar): Sunbird/Kolibri ab „Fahrer“, Marlin/Pelikan ab „Unternehmer“.
+  Freigabe nach Rang (abschaltbar, `rankGate`): Sunbird/Kolibri ab „Fahrer“, Marlin/Pelikan ab „Unternehmer“. Darunter darf man trotzdem fliegen – das gilt als Diebstahl und gibt sofort 3 Fahndungssterne.
   Respawn nach Zerstörung (90 s) oder weit weg abgestellt (240 s). Netz: Luftfahrzeuge sind bis 450 m sichtbar,
   jenseits der normalen Sichtweite seltener aktualisiert. Polizeihubschrauber ab Fahndungsstufe 4.
 - **Testen:** `npm run air-test` (Flugphysik + Server ohne Browser), `/tp flughafen`, `/flug kolibri`,

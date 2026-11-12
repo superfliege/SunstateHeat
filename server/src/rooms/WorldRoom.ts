@@ -690,22 +690,24 @@ export class WorldRoom {
     if (!best) return;
     if (isAircraft(best.kind)) {
       const d = aircraftDef(best.sim.variant);
-      const denied = best.driver < 0 ? this.air.pilotDenied(p, best) : 'busy';
-      if (denied) {
-        // Pilotensitz belegt oder Rang zu niedrig: als Mitfahrer, wenn ein Pilot drin sitzt und Platz ist
-        if (best.driver < 0) { this.noticeTo(p, denied, 'bad'); return; }
-        if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, denied === 'busy' ? `${d.name}: Alle ${d.seats} Plätze belegt.` : denied, 'bad'); return; }
+      if (best.driver >= 0) {
+        // Pilotensitz belegt: als Mitfahrer, wenn Platz ist
+        if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, `${d.name}: Alle ${d.seats} Plätze belegt.`, 'bad'); return; }
         best.riders = [...(best.riders ?? []), p.id];
         p.ride = best.id;
         this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). E = aussteigen nach der Landung.`, 'info');
         return;
       }
+      if (best.driver !== DRIVER_NONE) return;
+      // Unter dem nötigen Rang darf man trotzdem fliegen – das gilt aber als Diebstahl: sofort 3 Sterne
+      const stolen = this.air.unauthorizedPilot(p, best);
       best.driver = p.id; best.idleTime = 0; best.sim.car.sleep = 0;
       p.vehicleId = best.id;
       p.stunts = newStuntTracker();
       this.noticeTo(p, d.type === 'heli'
         ? `${d.name}: Shift = steigen, Leertaste = sinken, A/D = drehen, Q/R = seitwärts. Rotor läuft hoch …`
         : `${d.name}: W = Schub, Shift = steigen (ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h abheben), Leertaste = sinken/bremsen.${d.runwayOnly ? ' Startet nur von Landebahnen.' : ''}`, 'info');
+      if (stolen) { this.police.raise(p, 3); this.noticeTo(p, stolen, 'bad'); }
       return;
     }
     if (best.driver === DRIVER_NPC) {

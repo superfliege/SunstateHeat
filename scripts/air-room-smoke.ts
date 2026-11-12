@@ -45,17 +45,20 @@ for (const id of ['sunbird', 'marlin', 'kolibri', 'pelikan']) {
 }
 check(SIM_DT > 0, 'Simulation läuft mit festem Schritt');
 
-// --- Rangsperre: Neuling darf den Kolibri nicht fliegen
+// --- Rang: Neuling darf den Kolibri fliegen, bekommt dafür aber 3 Sterne
 const A = mk('Pilotin'), B = mk('Gast'), C = mk('Zaungast');
 const kol = fleet('kolibri');
 A.p.profile.story = { ...A.p.profile.story!, rank: 0 };
 put(A.p, kol.sim.car.x + 3, kol.sim.car.z);
 use(A.p);
-check(A.p.vehicleId < 0 && A.p.ride < 0 && (!AIR_SETTINGS.rankGate || /Rang/.test(lastNotice(A.msgs)?.text ?? '')), `Rangsperre: ${lastNotice(A.msgs)?.text}`);
-// Rang „Fahrer“: darf fliegen
+check(A.p.vehicleId === kol.id && (!AIR_SETTINGS.rankGate || A.p.wanted >= 3), `Unter Rang: fliegen erlaubt, Fahndung ${A.p.wanted} (${lastNotice(A.msgs)?.text})`);
+// Rang „Fahrer“: darf ohne Fahndung fliegen
+use(A.p); // wieder aussteigen
+check(A.p.vehicleId < 0, 'Aussteigen am Boden');
+A.p.wanted = 0; A.p.heat = 0; A.p.searchT = 0; A.p.reports.length = 0;
 A.p.profile.story!.rank = rankIndex('fahrer');
 use(A.p);
-check(A.p.vehicleId === kol.id, 'Rang Fahrer: Pilotin sitzt im Kolibri');
+check(A.p.vehicleId === kol.id && A.p.wanted === 0, 'Rang Fahrer: Pilotin sitzt im Kolibri, keine Fahndung');
 // Mitfahrer
 put(B.p, kol.sim.car.x - 3, kol.sim.car.z);
 use(B.p);

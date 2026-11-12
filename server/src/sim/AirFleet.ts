@@ -1,5 +1,5 @@
 // Luftfahrzeug-Flotte am Flughafen: Spawn der vier Luftfahrzeuge (aircraft.json), Respawn nach
-// Zerstörung oder wenn sie weit weg abgestellt wurden, Tankstelle, Rangsperre, Bahnwarnungen
+// Zerstörung oder wenn sie weit weg abgestellt wurden, Tankstelle, Rang (darunter = Diebstahl, 3 Sterne), Bahnwarnungen
 // (Spieler zu Fuß/im Auto auf einer Bahn, während ein Flugzeug startet oder landet).
 import { dist2 } from '../../../shared/src/math';
 import { AIR_SETTINGS, AIRCRAFT, aircraftById, aircraftColor, aircraftDef, airGround, isAircraftVariant, placeAircraft, type AircraftDef } from '../../../shared/src/sim/aircraft';
@@ -69,14 +69,14 @@ export class AirFleet {
     return v;
   }
 
-  /** Darf der Spieler dieses Luftfahrzeug fliegen? null = ja, sonst Begründung. */
-  pilotDenied(p: ServerPlayer, v: ServerVehicle): string | null {
+  /** Fliegt der Spieler unter dem nötigen Rang (= Diebstahl)? null = erlaubt, sonst Hinweistext. */
+  unauthorizedPilot(p: ServerPlayer, v: ServerVehicle): string | null {
     if (!AIR_SETTINGS.rankGate) return null;
     const d = aircraftDef(v.sim.variant);
     if (!d.minRank) return null;
     const need = rankIndex(d.minRank);
     const have = p.profile.story?.rank ?? 0;
-    if (need >= 0 && have < need) return `${d.name}: Fliegen erst ab Rang „${rankOf(need).name}“. Mitfliegen geht schon.`;
+    if (need >= 0 && have < need) return `${d.name} gestohlen – freigegeben erst ab Rang „${rankOf(need).name}“. Der Tower hat die Polizei alarmiert!`;
     return null;
   }
 
