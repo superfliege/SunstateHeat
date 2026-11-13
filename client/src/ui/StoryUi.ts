@@ -51,7 +51,7 @@ export class StoryUi {
       if (!this.job || this.choiceFn) return;
       // Nicht blockierende Dialoge (Funk während der Fahrt) laufen von selbst weiter; Enter bleibt dem Chat
       if (!this.job.block) return;
-      if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyF') { e.preventDefault(); e.stopPropagation(); this.next(); }
+      if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyE') { e.preventDefault(); e.stopPropagation(); this.next(); }
       else if (e.code === 'Escape') { e.preventDefault(); e.stopPropagation(); this.skip(); }
     }, true);
   }

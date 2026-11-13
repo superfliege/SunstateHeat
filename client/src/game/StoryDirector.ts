@@ -232,10 +232,10 @@ export class StoryDirector {
   }
 
   hint(t: StoryTarget): string {
-    if (t.kind === 'npc') return `<b>F</b> Mit ${charOf(t.npc.character)?.short ?? t.npc.character} sprechen`;
-    if (t.kind === 'club') return `<b>F</b> Velvet Tide (Hausverbot)`;
+    if (t.kind === 'npc') return `<b>E</b> Mit ${charOf(t.npc.character)?.short ?? t.npc.character} sprechen`;
+    if (t.kind === 'club') return `<b>E</b> Velvet Tide (Hausverbot)`;
     const h = STORY.homes[t.id];
-    return t.locked ? `🔒 ${h.name}` : `<b>F</b> ${h.name} (Garage / Zuhause)`;
+    return t.locked ? `🔒 ${h.name}` : `<b>E</b> ${h.name} (Garage / Zuhause)`;
   }
 
   interact(t: StoryTarget) {

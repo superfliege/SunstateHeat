@@ -52,7 +52,7 @@ export type ClientMsg =
   | { t: 'choice'; id: string; option: string }
   /** Am Wohnort: Garagenfahrzeug holen bzw. als Zuhause (Spawnpunkt) wählen. */
   | { t: 'home'; do: 'garage' | 'set'; id: string }
-  /** F gedrückt gehalten (Interaktion mit Haltedauer, z. B. Leuchtfeuer). */
+  /** E gedrückt gehalten (Interaktion mit Haltedauer, z. B. Leuchtfeuer). */
   | { t: 'hold'; on: boolean }
   /** Nur Dev-Modus: Handling-Werte live ändern (Server übernimmt sie, damit die Prediction passt). */
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }

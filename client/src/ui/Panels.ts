@@ -76,7 +76,7 @@ export class Panels {
     window.addEventListener('keydown', (e) => {
       if (!this.mode || e.defaultPrevented || e.repeat) return;
       const m = this.mode;
-      if (e.code === 'Escape' || (e.code === 'KeyI' && m.kind === 'inv') || (e.code === 'KeyJ' && m.kind === 'log') || (e.code === 'KeyF' && (m.kind === 'phone' || m.kind === 'talk'))) {
+      if (e.code === 'Escape' || (e.code === 'KeyI' && m.kind === 'inv') || (e.code === 'KeyJ' && m.kind === 'log') || (e.code === 'KeyE' && (m.kind === 'phone' || m.kind === 'talk'))) {
         e.preventDefault();
         this.close();
       } else if (m.kind === 'talk' && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
@@ -176,13 +176,13 @@ export class Panels {
       option(shop.type === 'paint' ? 'Kannst du meine Karre machen?' : shop.type === 'ammo' ? 'Zeig mal, was du hast.' : 'Ich will was kaufen.', () => this.talk('buy', pickLine(ASK[shop.type])));
       option('Was gibt\'s Neues?', () => this.talk('hello', pickLine(GOSSIP)));
       option('Tschüss.', () => this.close());
-      box.append(opts, el('p', 'pn-foot', '1–3 oder klicken · Esc oder F zum Gehen'));
+      box.append(opts, el('p', 'pn-foot', '1–3 oder klicken · Esc oder E zum Gehen'));
       return;
     }
     this.renderShop(box, shop, s);
     option('Das war\'s erst mal.', () => this.talk('hello', pickLine(['Sonst noch was?', 'Kann ich sonst noch helfen?'])));
     option('Tschüss.', () => this.close());
-    box.append(opts, el('p', 'pn-foot', 'Rücktaste = zurück · Esc oder F zum Gehen'));
+    box.append(opts, el('p', 'pn-foot', 'Rücktaste = zurück · Esc oder E zum Gehen'));
   }
 
   private renderShop(box: HTMLElement, shop: ShopDef, s: PlayerStats) {
@@ -235,7 +235,7 @@ export class Panels {
       }
       box.append(wrap);
     }
-    box.append(el('p', 'pn-foot', 'Esc oder F zum Auflegen'));
+    box.append(el('p', 'pn-foot', 'Esc oder E zum Auflegen'));
   }
 
   /** Story-Abschnitt im Quest-Log: Rang, Ruf, Zuhause, Crew, Ziel, Hauptmissionen, Anrufe. */
@@ -298,7 +298,7 @@ export class Panels {
       row.append(info, el('span', 'pn-state', state));
       list.append(row);
     }
-    box.append(el('h3', undefined, 'Nebenjobs & Aufträge'), list, el('p', 'pn-foot', 'Story-Figuren: ❗/💬-Markierungen (F) · Telefone: gelbe Markierungen (F) · Esc oder J zum Schließen'));
+    box.append(el('h3', undefined, 'Nebenjobs & Aufträge'), list, el('p', 'pn-foot', 'Story-Figuren: ❗/💬-Markierungen (E) · Telefone: gelbe Markierungen (E) · Esc oder J zum Schließen'));
   }
 
   private renderInventory(box: HTMLElement, s: PlayerStats) {

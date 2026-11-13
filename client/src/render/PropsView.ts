@@ -44,7 +44,7 @@ export class PropsView {
   private inst = new Map<number, Inst>();
   private loose = new Map<number, Loose>();
   private lampMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0 });
-  private poolMat = new THREE.MeshBasicMaterial({ color: 0xffc070, map: standaloneTexture('lamp_pool'), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  private poolMat = new THREE.MeshBasicMaterial({ color: 0xffc070, map: standaloneTexture('lamp_pool'), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, visible: false }); // Bodenlichtkegel entfernt (Issue #49)
   private bulbLocal = new THREE.Vector3();
   private typeInst: TypeInst[] = [];
   /** Umgeworfene Props (Instanz ausgeblendet). */

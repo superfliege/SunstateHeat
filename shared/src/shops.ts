@@ -155,7 +155,7 @@ function shopSiteFree(map: WorldMap, cx: number, cz: number, rot: number): boole
  * Läden stehen an der Straße: Tür zur Fahrbahn, Front parallel zum Straßenverlauf (frei gedreht).
  * Unter dem Laden sind die Kacheln für Fahrzeuge massiv; zu Fuß gelten die exakten Wände und die
  * Einrichtung (map.furniture). Findet sich kein freier Platz, entfällt der Laden. Eingekauft wird
- * beim Verkäufer hinter der Theke (F). Tankstellen-Shops (Gas & Go) ersetzen das massive
+ * beim Verkäufer hinter der Theke (E). Tankstellen-Shops (Gas & Go) ersetzen das massive
  * Shop-Gebäude der Tankstelle. Paint & Pray ist ein Werkstattdienst: ein Mechaniker steht am
  * Werkstattplatz, kein Gebäude. Läuft am Ende von generateWorld (danach wird der Chunk-Index neu gebaut).
  */

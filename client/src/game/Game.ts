@@ -297,6 +297,9 @@ export class Game {
     this.input.onChatKey = () => this.chat.open();
     this.input.onMapKey = () => this.minimap.toggleBig();
     this.input.onInteract = () => {
+      // E im umgekippten Fahrzeug: aufrichten (F bleibt ein-/aussteigen)
+      const flipped = this.predictor.sim?.car;
+      if (flipped && flipped.flip >= ASSISTS.unflipDelay) { this.unflipFrames = 6; return; }
       if (this.joinOffer) { this.net.send({ t: 'questJoin' }); return; }
       const st = this.storyDir.nearest();
       if (st) { this.storyDir.interact(st); return; }
@@ -838,7 +841,7 @@ export class Game {
       if (this.questState?.freeze && this.predictor.inVehicle) { s.ax = 0; s.ay = 0; buttons = Btn.BRAKE; }
       else if (this.questState?.freeze && this.questState.mg) { s.ax = 0; s.ay = 0; buttons = 0; } // Minispiel zu Fuß: Countdown
       if (this.unflipFrames > 0) { buttons |= Btn.UNFLIP; this.unflipFrames--; }
-      if (this.ride >= 0) { s.ax = 0; s.ay = 0; buttons = 0; } // Mitfahrer: nur E zum Aussteigen
+      if (this.ride >= 0) { s.ax = 0; s.ay = 0; buttons = 0; } // Mitfahrer: nur F zum Aussteigen
       // Catch the Taxi: unendlich Nitro (Server setzt dasselbe)
       if (this.questState?.hunt === 'taxi' && this.predictor.sim) { const sim = this.predictor.sim; sim.prof = taxiProfile(sim.prof); sim.car.nitro = 1; }
       this.predictor.step(s.ax, s.ay, buttons, SIM_DT);
@@ -1373,17 +1376,17 @@ export class Game {
     } else { this.drive.set(null); this.drive.drift(null, 1); }
 
     if (this.chat.isOpen || this.storyBlock) { this.hud.setHint(null); return; }
-    if (this.joinOffer) { this.hud.setHint(`<b>F</b> Bei „${this.joinOffer}“ mitmachen`); return; }
+    if (this.joinOffer) { this.hud.setHint(`<b>E</b> Bei „${this.joinOffer}“ mitmachen`); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
-    if (this.ride >= 0) { this.hud.setHint('Mitfahrer · <b>E</b> Aussteigen (nach der Landung)'); return; }
+    if (this.ride >= 0) { this.hud.setHint('Mitfahrer · <b>F</b> Aussteigen (nach der Landung)'); return; }
     if (this.predictor.inVehicle && sim && sim.car.fly) {
       const f = sim.car.fly, d = aircraftDef(sim.variant);
       const fuelNear = Math.hypot(sim.car.x - AIR_FUEL.x, sim.car.z - AIR_FUEL.z) < AIR_FUEL.r;
-      if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>E</b> Aussteigen');
+      if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>F</b> Aussteigen');
       else if (fuelNear && f.ground && AIR_SETTINGS.fuelEnabled && f.fuel < 0.999) this.hud.setHint(`Tankstelle: stehen bleiben zum Tanken (${Math.round(f.fuel * 100)} %)`);
-      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>E</b> Aussteigen (am Boden)');
-      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>E</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken');
+      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>F</b> Aussteigen (am Boden)');
+      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>F</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken');
       return;
     }
     if (this.predictor.inVehicle && sim) {
@@ -1393,9 +1396,9 @@ export class Game {
       if (c.flip >= ASSISTS.unflipDelay) this.hud.setHint('<b>E</b> Fahrzeug aufrichten');
       else if (c.flip > 0.5) this.hud.setHint(`Überschlagen … aufrichten in ${Math.ceil(ASSISTS.unflipDelay - c.flip)} s`);
       else if (ws && (sim.dmg.hp < 1000 || sim.dmg.parts)) this.hud.setHint('Werkstatt: kurz <b>anhalten</b> zum Reparieren');
-      else if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>E</b> Aussteigen');
-      else if (mech) this.hud.setHint(`<b>F</b> Mit ${mech.keeper.name} sprechen (${mech.name}) · <b>E</b> Aussteigen`);
-      else this.hud.setHint(`<b>E</b> Aussteigen · <b>Leertaste</b> Handbremse${sim.prof.nitroForce > 0 ? ' · <b>Shift</b> Nitro' : ''}`);
+      else if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>F</b> Aussteigen');
+      else if (mech) this.hud.setHint(`<b>E</b> Mit ${mech.keeper.name} sprechen (${mech.name}) · <b>F</b> Aussteigen`);
+      else this.hud.setHint(`<b>F</b> Aussteigen · <b>Leertaste</b> Handbremse${sim.prof.nitroForce > 0 ? ' · <b>Shift</b> Nitro' : ''}`);
     } else {
       const v = this.nearestEnterable(vehicles, me.x, me.z);
       if (v) {
@@ -1403,11 +1406,11 @@ export class Game {
         const verb = v.driver === -2 ? 'Übernehmen' : air ? (v.driver >= 0 ? 'Mitfliegen' : 'Einsteigen') : 'Einsteigen';
         const name = air ? `${air.name}, ${air.seats} Sitze` : v.kind === VehicleKind.Car || v.kind === VehicleKind.Bike ? variantInfo(v.variant).name : VEHICLE_DEFS[v.kind as VehicleKindId].name;
         const shop = this.shopNearMe();
-        this.hud.setHint(`<b>E</b> ${verb} (${name})${shop ? ` · <b>F</b> Mit ${shop.keeper.name} sprechen` : ''}`);
+        this.hud.setHint(`<b>F</b> ${verb} (${name})${shop ? ` · <b>E</b> Mit ${shop.keeper.name} sprechen` : ''}`);
       } else {
         const shop = this.shopNearMe();
         const ph = this.phoneNearMe();
-        this.hud.setHint(shop ? `<b>F</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.mg ? `<b>F</b> Arena-Telefon (${MINIGAMES[ph.mg].icon} ${MINIGAMES[ph.mg].name})` : ph.taxi ? '<b>F</b> Catch the Taxi' : ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
+        this.hud.setHint(shop ? `<b>E</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.mg ? `<b>E</b> Arena-Telefon (${MINIGAMES[ph.mg].icon} ${MINIGAMES[ph.mg].name})` : ph.taxi ? '<b>E</b> Catch the Taxi' : ph.race ? '<b>E</b> Renntelefon (Straßenrennen)' : '<b>E</b> Missionstelefon') : null);
       }
     }
   }

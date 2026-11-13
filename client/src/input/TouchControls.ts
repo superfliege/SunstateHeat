@@ -51,8 +51,8 @@ export class TouchControls {
   onFullscreenFail: () => void = () => {};
 
   private readonly defs: BtnDef[] = [
-    { id: 'use', label: 'E', cls: 'use', tap: (t) => t.input.pressUse() },
-    { id: 'act', label: 'F', cls: 'act', tap: (t) => { t.input.onInteract(); window.setTimeout(() => t.input.onInteractUp(), 120); } },
+    { id: 'use', label: 'F', cls: 'use', tap: (t) => t.input.pressUse() },
+    { id: 'act', label: 'E', cls: 'act', tap: (t) => { t.input.onInteract(); window.setTimeout(() => t.input.onInteractUp(), 120); } },
     { id: 'sprint', label: '»', cls: 'sprint', hold: Btn.SPRINT },
     { id: 'weapon', label: '⚔', cls: 'weapon', mode: 'foot', tap: (t) => t.input.onWeaponCycle(1) },
     { id: 'brake', label: '■', cls: 'brake', mode: 'veh', hold: Btn.BRAKE },

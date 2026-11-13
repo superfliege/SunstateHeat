@@ -37,7 +37,7 @@ export const CORAL_KEYS_EVENTS: StreetEventDef[] = [
       phase('struggle', [14, 18], { actions: [act('angler', 'Fish', 'drift', 'bernhard')], lines: [say('angler', "Er… zieht… mich…", 4), think('angler', "Nicht loslassen. Für die Ehre.", 10)] }),
       phase('splash', [5, 6], { actions: [act('angler', 'Flinch', 'fall')], physics: [{ kind: 'splash', role: 'angler' }], lines: [sfx('angler', "PLATSCH!"), shout('angler', "Ich komme wieder, Bernhard!", 3)] }),
     ],
-    interventions: [{ id: 'pull', label: 'Mitziehen (F halten)', detect: { kind: 'interact', target: 'rod', hold: 4 }, phases: ['bite', 'struggle'], outcome: 'landed' }],
+    interventions: [{ id: 'pull', label: 'Mitziehen (E halten)', detect: { kind: 'interact', target: 'rod', hold: 4 }, phases: ['bite', 'struggle'], outcome: 'landed' }],
     outcomes: {
       landed: { label: 'Riesenfisch gefangen', money: 200, xp: 40, items: ['Foto mit Bernhard'], fame: 2,
         lines: [shout('angler', "BERNHARD! Nach zwanzig Jahren! …Jetzt lassen wir ihn wieder frei, oder? Er ist Familie.")],

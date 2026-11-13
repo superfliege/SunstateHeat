@@ -88,7 +88,7 @@ const BASE_QUESTS: QuestDefinition[] = [
     stages: [
       { id: 'meet', description: 'Alle treffen sich nachts am Leuchtturm.', objectives: [{ type: 'groupAt', at: 'lighthouse', radius: 16 }] },
       {
-        id: 'beacon', description: 'Einer bedient das Leuchtfeuer (F gedrückt halten, 60 s), die anderen wehren die Angreifer ab.', timeLimitSeconds: 200,
+        id: 'beacon', description: 'Einer bedient das Leuchtfeuer (E gedrückt halten, 60 s), die anderen wehren die Angreifer ab.', timeLimitSeconds: 200,
         onStart: [{ do: 'spawnEnemies', tag: 'raiders', gang: 'neon', count: 4, at: 'lighthouse', radius: 40 }],
         objectives: [{ type: 'interact', at: 'lighthouse', holdSeconds: 60 }, { type: 'defeat', tag: 'raiders' }],
       },

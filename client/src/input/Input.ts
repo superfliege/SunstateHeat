@@ -35,11 +35,12 @@ export class Input {
     window.addEventListener('keydown', (e) => {
       if (this.blocked) return;
       if (e.code === 'Enter') { e.preventDefault(); this.onChatKey(); return; }
-      if (e.code === 'KeyE' && !e.repeat) this.usePressed = true;
+      // F = ein-/aussteigen, E = Aktionen (reden, Telefone, Fernrohr, aufrichten …)
+      if (e.code === 'KeyF' && !e.repeat) this.usePressed = true;
       if (e.code === 'KeyM' && !e.repeat) this.onMapKey();
       // preventDefault markiert die Taste als verbraucht: das Fenster, das sie gerade geöffnet
       // hat, darf sie nicht im selben Ereignis gleich wieder schließen (Panels)
-      if (e.code === 'KeyF' && !e.repeat) { e.preventDefault(); this.onInteract(); }
+      if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); this.onInteract(); }
       if (e.code === 'KeyI' && !e.repeat) { e.preventDefault(); this.onInventory(); }
       if (e.code === 'KeyJ' && !e.repeat) { e.preventDefault(); this.onQuestLog(); }
       if (/^Digit[1-5]$/.test(e.code) && !e.repeat) this.onWeaponSlot(Number(e.code.slice(5)));
@@ -58,7 +59,7 @@ export class Input {
       if (this.blocked || (e.target as HTMLElement).tagName !== 'CANVAS') return;
       this.onWeaponCycle(e.deltaY > 0 ? 1 : -1);
     }, { passive: true });
-    window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (e.code === 'KeyF') this.onInteractUp(); });
+    window.addEventListener('keyup', (e) => { this.keys.delete(e.code); if (e.code === 'KeyE') this.onInteractUp(); });
     window.addEventListener('blur', () => { this.keys.clear(); this.fire = false; });
   }
 

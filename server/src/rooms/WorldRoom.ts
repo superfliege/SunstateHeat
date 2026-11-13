@@ -642,7 +642,7 @@ export class WorldRoom {
     }
   }
 
-  /** E-Taste: aussteigen, oder ins nächste freie Fahrzeug einsteigen. */
+  /** F-Taste: aussteigen, oder ins nächste freie Fahrzeug einsteigen. */
   private toggleVehicle(p: ServerPlayer) {
     if (p.downT > 0) return;
     // Mitfahrer: aussteigen (nur am Boden bzw. Helikopter knapp darüber)
@@ -708,7 +708,7 @@ export class WorldRoom {
         if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, `${d.name}: Alle ${d.seats} Plätze belegt.`, 'bad'); return; }
         best.riders = [...(best.riders ?? []), p.id];
         p.ride = best.id;
-        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). E = aussteigen nach der Landung.`, 'info');
+        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). F = aussteigen nach der Landung.`, 'info');
         return;
       }
       if (best.driver !== DRIVER_NONE) return;
@@ -840,7 +840,7 @@ export class WorldRoom {
       if (!ph || this.races.has(p.id)) return;
       if (current) { current.driver = DRIVER_NONE; current.buttons = 0; p.vehicleId = -1; }
       p.pawn = newPawn(ph.x, ph.z, 0);
-      say(`${ph.name} – F drücken zum Starten.`);
+      say(`${ph.name} – E drücken zum Starten.`);
     } else if (cmd === 'mg' || cmd === 'minispiel') {
       // Minispiele: /mg <modus> [anzahl|mit] [leicht|normal|schwer] · /mg stop
       this.mg.devCommand(p, text.slice(1).toLowerCase().split(/\s+/).slice(1), say);
@@ -850,7 +850,7 @@ export class WorldRoom {
       if (!ph || this.hunt.has(p.id)) return;
       if (current) { current.driver = DRIVER_NONE; current.buttons = 0; p.vehicleId = -1; }
       p.pawn = newPawn(ph.x, ph.z, 0);
-      say(`${ph.name} – F drücken zum Starten.`);
+      say(`${ph.name} – E drücken zum Starten.`);
     } else if (cmd === 'hurt') {
       this.hurtPlayer(p, Number(arg) || 30);
     } else if (cmd === 'xp') {
@@ -1685,7 +1685,7 @@ export class WorldRoom {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       if (!v || isWaterVehicle(v.kind) || !carInWater(this.map, v.sim.car) || this.sinkNote.has(p.id) || this.mg.has(p.id)) continue;
       this.sinkNote.set(p.id, 12);
-      this.noticeTo(p, 'Dein Auto säuft ab! Steig aus (E) und schwimm ans Ufer.', 'info');
+      this.noticeTo(p, 'Dein Auto säuft ab! Steig aus (F) und schwimm ans Ufer.', 'info');
     }
   }
 

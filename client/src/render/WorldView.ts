@@ -1326,7 +1326,6 @@ export class WorldView {
 
   // ------------------------------------------------------------------ Zusammenbau
   private assemble() {
-    const pool = new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2);
     const bulb = new THREE.BoxGeometry(0.7, 0.25, 0.7);
     for (let cz = 0; cz < RC; cz++) {
       for (let cx = 0; cx < RC; cx++) {
@@ -1367,10 +1366,7 @@ export class WorldView {
           const b = instanced(bulb, this.lampMaterial, ch.lamps);
           b.name = 'lamps';
           grp.add(b);
-          const p = instanced(pool, this.lampPoolMaterial, ch.pools);
-          p.name = 'lampPools';
-          p.renderOrder = 2;
-          grp.add(p);
+          // Bodenlichtkegel der Laternen bewusst weggelassen (Issue #49) – die Leuchte selbst genügt.
         }
         this.chunkGroups.push(grp);
         this.group.add(grp);

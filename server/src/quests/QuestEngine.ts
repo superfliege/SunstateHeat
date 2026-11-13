@@ -627,7 +627,7 @@ export class QuestEngine {
           if (v && !o.done) { targets.push([v.sim.car.x, v.sim.car.z, 4, 5]); prog.push(`Ziel: ${Math.max(0, Math.round(v.sim.dmg.hp / 10))} %`); }
           break;
         }
-        case 'interact': if (l && !o.done) { targets.push([l.x, l.z, 7, 1]); prog.push(`Halten ${Math.floor(o.t)}/${d.holdSeconds} s (F)`); } break;
+        case 'interact': if (l && !o.done) { targets.push([l.x, l.z, 7, 1]); prog.push(`Halten ${Math.floor(o.t)}/${d.holdSeconds} s (E)`); } break;
         case 'race': {
           const i = o.idx.get(p.id) ?? 0, pts = o.pts ?? [];
           if (i < pts.length) { targets.push([pts[i].x, pts[i].z, 16, 2]); if (pts[i + 1]) targets.push([pts[i + 1].x, pts[i + 1].z, 16, 2]); }
