@@ -57,7 +57,24 @@ export type ClientMsg =
   /** Nur Dev-Modus: Handling-Werte live ändern (Server übernimmt sie, damit die Prediction passt). */
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }
   /** Nur Dev-Modus: NPC-Debugdaten (F3 → NPC-Tab) an-/abbestellen. */
-  | { t: 'npcDebug'; on: boolean };
+  | { t: 'npcDebug'; on: boolean }
+  /** Handy (#43): offene Warteräume abfragen, einem beitreten, den eigenen Warteraum starten. */
+  | { t: 'lobbies' }
+  | { t: 'lobbyJoin'; kind: LobbyKind; id: string }
+  | { t: 'lobbyStart' };
+
+/** Warteraum-Art: Minispiel, Straßenrennen, Koop-Auftrag. */
+export type LobbyKind = 'mg' | 'race' | 'quest';
+/** Offener Warteraum (Handy-Liste). */
+export interface LobbyInfo {
+  kind: LobbyKind; id: string; title: string;
+  /** Namen der Wartenden, Höchstzahl, Sekunden bis zum automatischen Start */
+  members: string[]; max: number; t: number;
+  /** Beitritt möglich (sonst Grund) */
+  ok: boolean; reason: string;
+  /** Bin ich schon drin? */
+  mine: boolean;
+}
 
 // ---------- Server -> Client ----------
 /** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll/Fallschirm), 0 / 1 = Ragdoll / 2 = Fallschirm, Waffenindex, Story-Rang] */
@@ -155,6 +172,8 @@ export interface QuestState {
   hunt?: 'taxi' | 'hunter';
   /** Fahrzeug-Minispiel (shared/minigames): verbleibende Spieler, Feed, Ergebnis … */
   mg?: MgHud;
+  /** Warteraum (#43): wer wartet, Höchstzahl – jeder Teilnehmer kann mit E starten. */
+  lobby?: { members: string[]; max: number };
 }
 
 export interface PhoneQuest {
@@ -216,6 +235,8 @@ export type ServerMsg =
   | { t: 'questLog'; done: string[]; cooldowns: Record<string, number> }
   | { t: 'bonus'; kind: string; points: number; money: number; info: string; total: number }
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }
+  /** Handy (#43): offene Warteräume */
+  | { t: 'lobbies'; list: LobbyInfo[] }
   | { t: 'error'; text: string }
   /** Nur Dev-Modus: NPCs um den Spieler (F3 → NPC-Tab). */
   | { t: 'npcDebug'; peds: NpcDebugPed[]; events: [number, number, number, number, number][]; pop: string };

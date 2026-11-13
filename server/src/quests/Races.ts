@@ -4,7 +4,7 @@
 // KI-Fahrer → Countdown (Fahrzeuge stehen) → Rennen über Checkpoints → Preisgeld je Platz.
 // KI-Fahrer nutzen dieselbe Fahrphysik wie Spieler und folgen der Ideallinie.
 import { clamp, dist2, wrapAngle } from '../../../shared/src/math';
-import { Btn, type PhoneQuest, type QuestState } from '../../../shared/src/protocol';
+import { Btn, type LobbyInfo, type PhoneQuest, type QuestState } from '../../../shared/src/protocol';
 import { CHECKPOINT_RADIUS, RACE_FIELD, RACE_MAX_PLAYERS, raceTracks, trackPose, type RaceTrack } from '../../../shared/src/races';
 import { placeCar, upVector } from '../../../shared/src/sim/car';
 import { CAR_VARIANTS, variantInfo } from '../../../shared/src/sim/handling';
@@ -36,7 +36,8 @@ export interface RaceHost {
   finished?(p: ServerPlayer, raceId: string, place: number): void;
 }
 
-const LOBBY_TIME = 15;
+/** Warteraum (#43): bleibt so lange offen, wenn niemand vorher startet (s). */
+const LOBBY_TIME = 90;
 const JOIN_RANGE = 60;
 const GRID_TIME = 5;
 const COUNT_FROM = 3;
@@ -142,21 +143,44 @@ export class Races {
       if (run.members.length >= RACE_MAX_PLAYERS) run.t = Math.min(run.t, 1);
       return;
     }
-    const race: Race = { id: nextRace++, track, phase: 'lobby', t: 0, members: [p.id], racers: [], elapsed: 0, limit: 0, finished: 0 };
-    // Andere freie Spieler in der Nähe einladen – dann wartet die Anmeldung kurz
-    const ph = track.phone;
-    const nearby = [...this.h.players.values()].filter((o) => {
-      if (o === p || this.byPlayer.has(o.id) || this.h.blocked(o)) return false;
-      const q = this.h.positionOf(o);
-      return dist2(q.x, q.z, ph.x, ph.z) < JOIN_RANGE * JOIN_RANGE;
-    });
-    if (nearby.length) {
-      race.t = LOBBY_TIME;
-      for (const o of nearby) this.h.notice(o, `${p.name} startet das Straßenrennen „${track.def.name}“ – drück F am 🏁 Renntelefon, um mitzufahren (${LOBBY_TIME} s)!`, 'info');
-      this.h.notice(p, `Anmeldung offen: ${nearby.length} Spieler in der Nähe können ${LOBBY_TIME} s lang beitreten.`, 'info');
-    }
+    // Warteraum (#43): bleibt offen, bis jemand mit E startet oder die Zeit abläuft; alle freien Spieler erfahren davon
+    const race: Race = { id: nextRace++, track, phase: 'lobby', t: this.h.players.size > 1 ? LOBBY_TIME : 0, members: [p.id], racers: [], elapsed: 0, limit: 0, finished: 0 };
     this.races.set(race.id, race);
     this.byPlayer.set(p.id, race);
+    if (this.h.players.size <= 1) return; // allein online: gleich los
+    for (const o of this.h.players.values()) {
+      if (o === p || this.byPlayer.has(o.id) || this.h.blocked(o)) continue;
+      this.h.notice(o, `${p.name} wartet im Warteraum: Straßenrennen „${track.def.name}“ – per Handy (M) beitreten!`, 'info');
+    }
+    this.h.notice(p, `Warteraum offen: Mitfahrer können per Handy (M) oder am Renntelefon beitreten. E = Rennen starten (sonst automatisch in ${LOBBY_TIME} s).`, 'info');
+  }
+
+  // ------------------------------------------------------------------ Warteräume (Handy, #43)
+  lobbies(p: ServerPlayer): LobbyInfo[] {
+    const out: LobbyInfo[] = [];
+    const blocked = this.h.blocked(p);
+    for (const race of this.races.values()) {
+      if (race.phase !== 'lobby') continue;
+      const mine = race.members.includes(p.id);
+      const reason = mine ? '' : blocked || (this.byPlayer.has(p.id) ? 'Du bist bereits angemeldet.' : race.members.length >= RACE_MAX_PLAYERS ? 'Das Starterfeld ist voll.' : '');
+      out.push({ kind: 'race', id: race.track.def.id, title: `🏁 ${race.track.def.name}`, members: this.members(race).map((q) => q.name), max: RACE_MAX_PLAYERS, t: Math.ceil(race.t), ok: !reason && !mine, reason, mine });
+    }
+    return out;
+  }
+
+  /** Per Handy einem offenen Rennen beitreten (nur Warteräume, keine neuen Rennen). */
+  joinRemote(p: ServerPlayer, trackId: string) {
+    const run = this.active(trackId);
+    if (!run || run.phase !== 'lobby') { this.h.notice(p, 'Dieser Warteraum ist nicht mehr offen.', 'bad'); return; }
+    this.request(p, trackId);
+  }
+
+  /** E im Warteraum: Rennen starten. */
+  startNow(p: ServerPlayer): boolean {
+    const race = this.byPlayer.get(p.id);
+    if (!race || race.phase !== 'lobby') return false;
+    if (race.t > 3) { race.t = 3; for (const m of this.members(race)) this.h.notice(m, `${p.name} startet das Rennen!`, 'good'); }
+    return true;
   }
 
   abandon(p: ServerPlayer) {
@@ -446,7 +470,12 @@ export class Races {
     const t = race.track, d = t.def;
     const base = { id: d.id, title: `🏁 ${d.name}`, stageIdx: 0, stageCount: 1, timer: -1, targets: [] as QuestState['targets'] };
     if (race.phase === 'lobby') {
-      return { ...base, stage: 'Anmeldung läuft – andere Spieler können am Renntelefon beitreten.', prog: `Fahrer: ${race.members.length}/${RACE_MAX_PLAYERS} · Start in ${Math.max(0, Math.ceil(race.t))} s`, timer: Math.max(0, Math.ceil(race.t)) };
+      const names = this.members(race).map((q) => q.name);
+      return {
+        ...base, stage: 'Warteraum – andere können per Handy (M) oder am Renntelefon beitreten. E = Rennen starten.',
+        prog: `Fahrer: ${names.join(', ')} (${race.members.length}/${RACE_MAX_PLAYERS}) · Start in ${Math.max(0, Math.ceil(race.t))} s`,
+        timer: Math.max(0, Math.ceil(race.t)), lobby: { members: names, max: RACE_MAX_PLAYERS },
+      };
     }
     const me = race.racers.find((r) => r.pid === p.id);
     if (!me) return null;

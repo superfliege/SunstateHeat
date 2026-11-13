@@ -57,7 +57,7 @@ export class TouchControls {
     { id: 'weapon', label: '⚔', cls: 'weapon', mode: 'foot', tap: (t) => t.input.onWeaponCycle(1) },
     { id: 'brake', label: '■', cls: 'brake', mode: 'veh', hold: Btn.BRAKE },
     { id: 'horn', label: '♪', cls: 'horn', mode: 'veh', hold: Btn.HORN },
-    { id: 'map', label: '🗺', cls: 'menu m-map', tap: (t) => t.input.onMapKey() },
+    { id: 'map', label: '📱', cls: 'menu m-map', tap: (t) => t.input.onPhoneKey() },
     { id: 'inv', label: '🎒', cls: 'menu m-inv', tap: (t) => t.input.onInventory() },
     { id: 'log', label: '📜', cls: 'menu m-log', tap: (t) => t.input.onQuestLog() },
     { id: 'chat', label: '💬', cls: 'menu m-chat', tap: (t) => t.input.onChatKey() },

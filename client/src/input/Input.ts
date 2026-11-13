@@ -14,6 +14,8 @@ export class Input {
   blocked = false;
   onChatKey: () => void = () => {};
   onMapKey: () => void = () => {};
+  /** Handy (M): Warteräume für Minispiele, Rennen und Koop-Aufträge (#43). */
+  onPhoneKey: () => void = () => {};
   onInteract: () => void = () => {};
   onInventory: () => void = () => {};
   onQuestLog: () => void = () => {};
@@ -37,7 +39,8 @@ export class Input {
       if (e.code === 'Enter') { e.preventDefault(); this.onChatKey(); return; }
       // F = ein-/aussteigen, E = Aktionen (reden, Telefone, Fernrohr, aufrichten …)
       if (e.code === 'KeyF' && !e.repeat) this.usePressed = true;
-      if (e.code === 'KeyM' && !e.repeat) this.onMapKey();
+      if (e.code === 'KeyK' && !e.repeat) this.onMapKey();
+      if (e.code === 'KeyM' && !e.repeat) { e.preventDefault(); this.onPhoneKey(); }
       // preventDefault markiert die Taste als verbraucht: das Fenster, das sie gerade geöffnet
       // hat, darf sie nicht im selben Ereignis gleich wieder schließen (Panels)
       if (e.code === 'KeyE' && !e.repeat) { e.preventDefault(); this.onInteract(); }

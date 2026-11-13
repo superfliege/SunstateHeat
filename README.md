@@ -37,12 +37,14 @@ GitHub-Repositories (feste Commits). Ohne sie läuft das Spiel trotzdem – dann
 |---|---|
 | WASD / Pfeiltasten | Laufen bzw. Gas, Bremse/Rückwärts (S) und Lenken; in der Luft: W/S neigen, A/D drehen |
 | Shift | Sprinten, im Auto Nitro (Sport- und Muscle-Cars); im Luftfahrzeug **Steigen** (Flugzeug: ab Abhebegeschwindigkeit abheben) |
-| E | Ein- und aussteigen (auch NPC-Autos übernehmen); nach 3 s auf dem Dach: aufrichten |
+| F | Ein- und aussteigen (auch NPC-Autos übernehmen, bei Mitspielern mitfahren); in der Luft: mit Fallschirm abspringen |
+| E | Aktionen: reden, Telefone, Fernrohr, halten; nach 3 s auf dem Dach: aufrichten; im Warteraum: Runde starten |
 | Leertaste | Handbremse (blockiert die Hinterräder -> Drift); im Luftfahrzeug **Sinken** bzw. Radbremse am Boden |
 | Q / R | Helikopter: seitwärts links / rechts |
 | H | Hupe |
 | Enter | Chat öffnen und senden (Esc bricht ab) |
-| M | Große Karte |
+| M | Handy: offene Warteräume (Minispiele, Rennen, Koop-Aufträge) – von überall beitreten |
+| K | Große Karte |
 | F3 | Debug-Overlay mit Tabs (Tab-Taste wechselt): **Karte** (Straßengraph, Blöcke, Grundstücke, Viertel – Ziehen/Mausrad, C = Spieler, 1–6 = Ebenen) **Fahrzeug** (Tempo, Drehzahl, Gang, Federweg/Last/Schlupf je Rad, Kraftpfeile am Auto) und **NPC** (Dev: Archetyp, Absichtskette, Bedürfnisse, Smart Object, Reaktion, wahrgenommene Ereignisse als Kreise; Knöpfe zum Erzwingen von Tageszeit/Wetter) |
 | F4 | Nur Dev-Modus: Live-Tuning-Panel (Handling-Werte, Arcade-Hilfen, Kamera; Export als JSON) |
 | F7 | Bildschirmwackeln an/aus |

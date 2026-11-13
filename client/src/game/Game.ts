@@ -300,10 +300,14 @@ export class Game {
     // UI-Verdrahtung
     this.input.onChatKey = () => this.chat.open();
     this.input.onMapKey = () => this.minimap.toggleBig();
+    this.input.onPhoneKey = () => this.panels.toggleHandy();
+    this.panels.onMap = () => this.minimap.toggleBig();
     this.input.onInteract = () => {
       // E im umgekippten Fahrzeug: aufrichten (F bleibt ein-/aussteigen)
       const flipped = this.predictor.sim?.car;
       if (flipped && flipped.flip >= ASSISTS.unflipDelay) { this.unflipFrames = 6; return; }
+      // Warteraum (#43): E startet die Runde
+      if (this.questState?.lobby) { this.net.send({ t: 'lobbyStart' }); return; }
       if (this.joinOffer) { this.net.send({ t: 'questJoin' }); return; }
       const st = this.storyDir.nearest();
       if (st) { this.storyDir.interact(st); return; }
@@ -494,6 +498,7 @@ export class Game {
         if (msg.t === 'rankUp') this.sfx.ui('good', 0.8);
         break;
       case 'questLog': this.panels.setQuestLog(msg.done, msg.cooldowns); break;
+      case 'lobbies': this.panels.setLobbies(msg.list); break;
       case 'error':
         this.hud.toast(msg.text, 'bad');
         break;
@@ -1388,6 +1393,7 @@ export class Game {
 
     if (this.chat.isOpen || this.storyBlock) { this.hud.setHint(null); return; }
     if (!this.predictor.inVehicle && this.predictor.pawn.pc) { this.hud.setHint(`Fallschirm · <b>WASD</b> lenken · ${Math.round(this.predictor.pawn.h)} m`); return; }
+    if (this.questState?.lobby) { this.hud.setHint(`Warteraum (${this.questState.lobby.members.length}/${this.questState.lobby.max}) · <b>E</b> Runde starten · <b>M</b> Handy`); return; }
     if (this.joinOffer) { this.hud.setHint(`<b>E</b> Bei „${this.joinOffer}“ mitmachen`); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }

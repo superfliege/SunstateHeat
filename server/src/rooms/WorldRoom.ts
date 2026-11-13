@@ -303,6 +303,7 @@ export class WorldRoom {
       dialog: (p, lines, kind) => this.story.dialog(p, lines, kind),
       offerChoice: (p, id) => this.story.offerChoice(p, id),
       applyChoice: (p, id, opt) => this.story.applyChoice(p, id, opt),
+      teleport: (p, x, z) => this.teleport(p, x, z),
     });
     this.story = new Story({
       map, locations: questLocations(map),
@@ -629,6 +630,10 @@ export class WorldRoom {
       case 'home': if (typeof msg.id === 'string') { if (msg.do === 'garage') this.story.garageVehicle(player, msg.id); else if (msg.do === 'set') this.story.setHome(player, msg.id); } break;
       case 'phone': if (typeof msg.id === 'string') this.openPhone(player, msg.id); break;
       case 'questAccept': if (typeof msg.id === 'string') this.acceptQuest(player, msg.id); break;
+      // Handy (#43): Warteräume
+      case 'lobbies': this.sendLobbies(player); break;
+      case 'lobbyJoin': this.joinLobby(player, msg.kind, String(msg.id)); break;
+      case 'lobbyStart': if (!this.mg.startNow(player) && !this.races.startNow(player)) this.quests.startNow(player); break;
       case 'questAbandon': if (!this.races.abandon(player) && !this.hunt.abandon(player) && !this.mg.abandon(player)) this.quests.abandon(player); break;
       case 'shop': if (typeof msg.shop === 'string' && typeof msg.item === 'string') this.buy(player, msg.shop, msg.item); break;
       case 'useItem': if (typeof msg.id === 'string') this.useItem(player, msg.id); break;
@@ -1324,6 +1329,25 @@ export class WorldRoom {
     if (!ph || p.downT > 0) return;
     const quests = ph.mg ? this.mg.listing(p, ph.mg).map((q) => (q.ok && this.quests.isActive(p.id) ? { ...q, intro: [...q.intro, { who: 'Arenaleiter', text: 'Achtung: Dein laufender Auftrag wird abgebrochen, wenn du mitmachst.' }] } : q)) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level).map((q) => ({ ...q, intro: this.story.lines(p, q.intro) }));
     p.conn.send({ t: 'phone', id: ph.id, name: ph.name, quests });
+  }
+
+  /** Per Handy einem Warteraum beitreten (#43). */
+  private joinLobby(p: ServerPlayer, kind: string, id: string) {
+    if (p.downT > 0) return;
+    if (kind === 'quest') {
+      if (this.races.has(p.id) || this.hunt.has(p.id) || this.mg.has(p.id)) { this.noticeTo(p, 'Du bist gerade anderweitig angemeldet.', 'bad'); return; }
+      if (this.quests.joinLobby(p, Number(id))) this.sendLobbies(p);
+    } else if (kind === 'mg') {
+      if (this.quests.isActive(p.id) && !this.mg.has(p.id)) this.quests.abandon(p); // Minispiel geht vor
+      this.mg.joinRemote(p, id);
+      this.sendLobbies(p);
+    } else if (kind === 'race') {
+      this.races.joinRemote(p, id);
+      this.sendLobbies(p);
+    }
+  }
+  private sendLobbies(p: ServerPlayer) {
+    p.conn.send({ t: 'lobbies', list: [...this.mg.lobbies(p), ...this.races.lobbies(p), ...this.quests.lobbies(p)] });
   }
 
   private acceptQuest(p: ServerPlayer, id: string) {

@@ -1,6 +1,6 @@
 // Overlay-Fenster: Gespräch mit Verkäufern (F vor der Theke), Inventar (I), Quest-Log (J), Telefon.
 // Alle Daten kommen vom Server; Käufe und Benutzen werden dort geprüft, das Fenster zeigt nur an.
-import type { ClientMsg, PhoneQuest, PlayerStats, QuestState } from '../../../shared/src/protocol';
+import type { ClientMsg, LobbyInfo, PhoneQuest, PlayerStats, QuestState } from '../../../shared/src/protocol';
 import { GANGS, GANG_IDS, repStatus } from '../../../shared/src/gangs';
 import { QUESTS } from '../../../shared/src/questData';
 import { BACKPACK_SLOTS, ITEMS } from '../../../shared/src/items';
@@ -11,7 +11,8 @@ import { charOf, CREW_IDS, MISSION_META, missionTitle, RANKS, rankOf, STORY, sty
 import { speaker } from './StoryUi';
 
 type TalkStep = 'hello' | 'buy';
-type Mode = { kind: 'talk'; shop: ShopDef; step: TalkStep; line: string } | { kind: 'inv' } | { kind: 'log' } | { kind: 'phone'; name: string; quests: PhoneQuest[]; talk?: DialogueLine[]; color?: string } | null;
+type Mode = { kind: 'talk'; shop: ShopDef; step: TalkStep; line: string } | { kind: 'inv' } | { kind: 'log' } | { kind: 'phone'; name: string; quests: PhoneQuest[]; talk?: DialogueLine[]; color?: string }
+  | { kind: 'handy'; list: LobbyInfo[] | null } | null;
 
 // ------------------------------------------------------------------ Gesprächszeilen
 const GREET: Record<ShopType, string[]> = {
@@ -69,6 +70,9 @@ export class Panels {
   /** Gesprächsoptionen der aktuellen Ansicht (Tasten 1–9). */
   private options: (() => void)[] = [];
   onOpenChange: (open: boolean) => void = () => {};
+  /** Handy: große Karte öffnen */
+  onMap: () => void = () => {};
+  private poll = 0;
   /** Gespräch beendet (für den Abschiedsgruß des Verkäufers). */
   onTalkEnd: (shop: ShopDef, line: string) => void = () => {};
 
@@ -76,7 +80,7 @@ export class Panels {
     window.addEventListener('keydown', (e) => {
       if (!this.mode || e.defaultPrevented || e.repeat) return;
       const m = this.mode;
-      if (e.code === 'Escape' || (e.code === 'KeyI' && m.kind === 'inv') || (e.code === 'KeyJ' && m.kind === 'log') || (e.code === 'KeyE' && (m.kind === 'phone' || m.kind === 'talk'))) {
+      if (e.code === 'Escape' || (e.code === 'KeyI' && m.kind === 'inv') || (e.code === 'KeyJ' && m.kind === 'log') || (e.code === 'KeyM' && m.kind === 'handy') || (e.code === 'KeyE' && (m.kind === 'phone' || m.kind === 'talk'))) {
         e.preventDefault();
         this.close();
       } else if (m.kind === 'talk' && /^(Digit|Numpad)[1-9]$/.test(e.code)) {
@@ -107,6 +111,9 @@ export class Panels {
   toggleLog() { if (this.mode?.kind === 'log') this.close(); else this.setMode({ kind: 'log' }); }
   setQuestLog(done: string[], cooldowns: Record<string, number>) { this.done = done; this.cooldowns = cooldowns; this.sig = ''; if (this.mode?.kind === 'log') this.render(); }
   toggleInventory() { if (this.mode?.kind === 'inv') this.close(); else this.setMode({ kind: 'inv' }); }
+  /** Handy (M): offene Warteräume, Beitreten von überall (#43). */
+  toggleHandy() { if (this.mode?.kind === 'handy') this.close(); else { this.setMode({ kind: 'handy', list: null }); this.send({ t: 'lobbies' }); } }
+  setLobbies(list: LobbyInfo[]) { if (this.mode?.kind === 'handy') { this.mode.list = list; this.render(); } }
 
   close() { this.setMode(null); }
 
@@ -115,6 +122,9 @@ export class Panels {
     if (this.mode?.kind === 'talk' && m?.kind !== 'talk') this.onTalkEnd(this.mode.shop, pickLine(BYE));
     this.mode = m;
     this.sig = '';
+    // Handy: Warteräume regelmäßig aktualisieren, solange es offen ist
+    window.clearInterval(this.poll);
+    if (m?.kind === 'handy') this.poll = window.setInterval(() => this.send({ t: 'lobbies' }), 1500);
     this.root.classList.toggle('hidden', !m);
     if (!m) this.root.replaceChildren();
     else this.render();
@@ -142,7 +152,7 @@ export class Panels {
     this.options = [];
     const box = el('div', 'pn-box');
     const head = el('div', 'pn-head');
-    const title = el('h2', undefined, m.kind === 'talk' ? m.shop.name : m.kind === 'phone' ? m.name : m.kind === 'log' ? 'Quest-Log' : 'Inventar');
+    const title = el('h2', undefined, m.kind === 'talk' ? m.shop.name : m.kind === 'phone' ? m.name : m.kind === 'log' ? 'Quest-Log' : m.kind === 'handy' ? '📱 Handy' : 'Inventar');
     if (m.kind === 'talk') box.style.borderColor = '#' + SHOP_COLORS[m.shop.type].toString(16).padStart(6, '0');
     const close = el('button', 'pn-close', '✕');
     close.onclick = () => this.close();
@@ -151,6 +161,7 @@ export class Panels {
     if (m.kind === 'talk') this.renderTalk(box, m.shop, m.step, m.line, s);
     else if (m.kind === 'phone') { if (m.color) box.style.borderColor = m.color; this.renderPhone(box, m.quests, m.talk, m.color); }
     else if (m.kind === 'log') this.renderLog(box, s);
+    else if (m.kind === 'handy') this.renderHandy(box, m.list);
     else this.renderInventory(box, s);
     this.root.replaceChildren(box);
   }
@@ -202,6 +213,36 @@ export class Panels {
       list.append(row);
     }
     box.append(list);
+  }
+
+  /** Handy: offene Warteräume (Minispiele, Rennen, Koop-Aufträge) mit Beitreten/Starten, Karte. */
+  private renderHandy(box: HTMLElement, list: LobbyInfo[] | null) {
+    const tools = el('div', 'pn-row');
+    const map = el('button', 'pn-buy', '🗺️ Karte (K)');
+    map.onclick = () => { this.close(); this.onMap(); };
+    tools.append(el('div', 'pn-info', ''), map);
+    box.append(el('h3', undefined, 'Warteräume'));
+    if (!list) box.append(el('p', 'pn-foot', 'Verbinde …'));
+    else if (!list.length) box.append(el('p', 'pn-foot', 'Gerade wartet niemand. Starte selbst ein Minispiel, Rennen oder einen Koop-Auftrag an einem Telefon – dann können andere hier beitreten.'));
+    for (const l of list ?? []) {
+      const row = el('div', 'pn-row');
+      const info = el('div', 'pn-info');
+      const kind = l.kind === 'mg' ? 'Minispiel' : l.kind === 'race' ? 'Straßenrennen' : 'Koop-Auftrag';
+      info.append(el('b', undefined, l.title), el('small', undefined, `${kind} · ${l.members.join(', ') || '–'} (${l.members.length}/${l.max}) · Start in ${l.t} s`));
+      let btn: HTMLButtonElement;
+      if (l.mine) {
+        btn = el('button', 'pn-buy', '▶ Jetzt starten');
+        btn.onclick = () => { this.send({ t: 'lobbyStart' }); this.close(); };
+      } else {
+        btn = el('button', 'pn-buy', l.ok ? 'Beitreten' : l.reason || 'Nicht möglich');
+        btn.disabled = !l.ok;
+        btn.onclick = () => this.send({ t: 'lobbyJoin', kind: l.kind, id: l.id });
+      }
+      row.append(info, btn);
+      box.append(row);
+    }
+    box.append(tools);
+    box.append(el('p', 'pn-foot', 'Im Warteraum: E = Runde starten · Esc oder M zum Schließen'));
   }
 
   private renderPhone(box: HTMLElement, quests: PhoneQuest[], talk?: DialogueLine[], color?: string) {

@@ -3,7 +3,7 @@
 // Ziele werden geteilt ausgewertet; Belohnungen bekommt jeder Teilnehmer voll (Spec 13.3).
 import { GANGS, questRep, repStatus, type GangId } from '../../../shared/src/gangs';
 import { dist2 } from '../../../shared/src/math';
-import type { PhoneQuest, QuestState } from '../../../shared/src/protocol';
+import type { LobbyInfo, PhoneQuest, QuestState } from '../../../shared/src/protocol';
 import { QUESTS, QUEST_BY_ID } from '../../../shared/src/questData';
 import { racePoints, waterNear, type Point } from '../../../shared/src/questLocations';
 import type { DialogueLine, Objective, QuestAction, QuestDefinition } from '../../../shared/src/quests';
@@ -53,7 +53,15 @@ export interface QuestHost {
   /** Entscheidung anbieten bzw. anwenden (Rückgabe: gültige Option). */
   offerChoice(p: ServerPlayer, id: string): void;
   applyChoice(p: ServerPlayer, id: string, option: string): boolean;
+  /** Spieler versetzen (Warteraum-Start: entfernte Mitglieder zum Treffpunkt holen). */
+  teleport?(p: ServerPlayer, x: number, z: number): void;
 }
+
+/** Warteraum eines Koop-Auftrags (#43): wartet auf Mitspieler, jeder Teilnehmer kann mit E starten. */
+interface QuestLobby { id: number; def: QuestDefinition; level: number; members: number[]; t: number; at: Point }
+/** So lange bleibt ein Koop-Warteraum offen (s). */
+const QUEST_LOBBY_WAIT = 90;
+let nextLobby = 1;
 
 interface Pickup { tag: string; x: number; z: number }
 interface ObjState { def: Objective; done: boolean; t: number; n: number; pts?: Point[]; idx: Map<number, number> }
@@ -115,6 +123,9 @@ export class QuestEngine {
   start(starter: ServerPlayer, def: QuestDefinition, level: number): boolean {
     const reason = this.unavailable(starter, def, level);
     if (reason) { this.h.notice(starter, reason, 'bad'); return false; }
+    // Koop-Aufträge am Telefon: erst in den Warteraum (#43)
+    // (allein online: wie bisher sofort los)
+    if (def.coop.max > 1 && def.giver.type === 'payphone' && this.h.players.size > 1) return this.openLobby(starter, def, level);
     const sp = this.h.positionOf(starter);
     const crew: ServerPlayer[] = [starter];
     for (const o of this.h.players.values()) {
@@ -126,6 +137,12 @@ export class QuestEngine {
       this.h.notice(starter, `„${def.title}“ braucht mindestens ${def.coop.min} Spieler im Umkreis von ${JOIN_RANGE} m.`, 'bad');
       return false;
     }
+    this.begin(crew, def, sp);
+    return true;
+  }
+
+  /** Auftrag mit dieser Crew beginnen. */
+  private begin(crew: ServerPlayer[], def: QuestDefinition, sp: Point) {
     const run: Run = {
       id: nextRun++, def, stage: -1, participants: new Set(crew.map((c) => c.id)), start: { x: sp.x, z: sp.z },
       stageT: 0, timeLeft: -1, objs: [], pickups: [], spawned: new Map(), maxHp: new Map(), places: [], ending: 0, elapsed: 0,
@@ -136,7 +153,107 @@ export class QuestEngine {
       this.h.notice(c, `Auftrag gestartet: ${def.title}${crew.length > 1 ? ` (${crew.length} Spieler)` : ''}`, 'info');
     }
     this.beginStage(run, 0);
+  }
+
+  // ------------------------------------------------------------------ Warteräume (#43)
+  private lobbiesQ = new Map<number, QuestLobby>();
+  private lobbyOf = new Map<number, QuestLobby>();
+
+  private openLobby(p: ServerPlayer, def: QuestDefinition, level: number): boolean {
+    const open = [...this.lobbiesQ.values()].find((l) => l.def.id === def.id);
+    if (open) return this.joinLobby(p, open.id);
+    const pos = this.h.positionOf(p);
+    const lobby: QuestLobby = { id: nextLobby++, def, level, members: [p.id], t: QUEST_LOBBY_WAIT, at: { x: pos.x, z: pos.z } };
+    this.lobbiesQ.set(lobby.id, lobby);
+    this.lobbyOf.set(p.id, lobby);
+    for (const o of this.h.players.values()) {
+      if (o === p || this.isActive(o.id) || !this.h.canJoin(o, def)) continue;
+      this.h.notice(o, `${p.name} sucht Mitspieler für „${def.title}“ – per Handy (M) beitreten!`, 'info');
+    }
+    this.h.notice(p, `Warteraum „${def.title}“: ${def.coop.min}–${def.coop.max} Spieler. Mitspieler treten per Handy (M) bei. E = Auftrag starten (sonst automatisch in ${QUEST_LOBBY_WAIT} s).`, 'info');
     return true;
+  }
+
+  joinLobby(p: ServerPlayer, lobbyId: number): boolean {
+    const l = this.lobbiesQ.get(lobbyId);
+    if (!l) { this.h.notice(p, 'Dieser Warteraum ist nicht mehr offen.', 'bad'); return false; }
+    if (this.isActive(p.id)) { this.h.notice(p, 'Du bist bereits in einem Auftrag.', 'bad'); return false; }
+    if (l.members.length >= l.def.coop.max) { this.h.notice(p, 'Alle Plätze sind belegt.', 'bad'); return false; }
+    if (!this.h.canJoin(p, l.def)) { this.h.notice(p, 'Bei diesem Auftrag kannst du (noch) nicht mitmachen.', 'bad'); return false; }
+    l.members.push(p.id);
+    this.lobbyOf.set(p.id, l);
+    for (const m of this.lobbyMembers(l)) this.h.notice(m, `${p.name} ist bei „${l.def.title}“ dabei! (${l.members.length}/${l.def.coop.max})`, 'good');
+    return true;
+  }
+
+  private lobbyMembers(l: QuestLobby): ServerPlayer[] {
+    return l.members.map((id) => this.h.players.get(id)).filter((q): q is ServerPlayer => !!q);
+  }
+
+  private leaveLobby(id: number) {
+    const l = this.lobbyOf.get(id);
+    if (!l) return;
+    this.lobbyOf.delete(id);
+    l.members = l.members.filter((m) => m !== id);
+    if (!l.members.length) this.lobbiesQ.delete(l.id);
+  }
+
+  /** E im Warteraum: Auftrag starten (Mindestanzahl muss erreicht sein). */
+  startNow(p: ServerPlayer): boolean {
+    const l = this.lobbyOf.get(p.id);
+    if (!l) return false;
+    if (l.members.length < l.def.coop.min && !this.h.soloOk) {
+      this.h.notice(p, `„${l.def.title}“ braucht mindestens ${l.def.coop.min} Spieler (${l.members.length} da).`, 'bad');
+      return true;
+    }
+    this.launchLobby(l);
+    return true;
+  }
+
+  private launchLobby(l: QuestLobby) {
+    this.lobbiesQ.delete(l.id);
+    const crew = this.lobbyMembers(l);
+    for (const id of l.members) this.lobbyOf.delete(id);
+    if (!crew.length) return;
+    if (crew.length < l.def.coop.min && !this.h.soloOk) {
+      for (const c of crew) this.h.notice(c, `„${l.def.title}“: zu wenige Mitspieler – Warteraum geschlossen.`, 'bad');
+      return;
+    }
+    // Entfernte Mitglieder (per Handy beigetreten) zum Treffpunkt holen
+    for (const c of crew) {
+      const q = this.h.positionOf(c);
+      if (dist2(q.x, q.z, l.at.x, l.at.z) > JOIN_RANGE * JOIN_RANGE) this.h.teleport?.(c, l.at.x + (Math.random() - 0.5) * 6, l.at.z + (Math.random() - 0.5) * 6);
+    }
+    this.begin(crew, l.def, l.at);
+  }
+
+  lobbies(p: ServerPlayer): LobbyInfo[] {
+    const out: LobbyInfo[] = [];
+    for (const l of this.lobbiesQ.values()) {
+      const mine = l.members.includes(p.id);
+      const reason = mine ? '' : this.isActive(p.id) ? 'Du bist bereits in einem Auftrag.' : l.members.length >= l.def.coop.max ? 'Alle Plätze sind belegt.' : !this.h.canJoin(p, l.def) ? 'Noch nicht freigeschaltet.' : '';
+      out.push({ kind: 'quest', id: String(l.id), title: `📞 ${l.def.title}`, members: this.lobbyMembers(l).map((q) => q.name), max: l.def.coop.max, t: Math.ceil(l.t), ok: !reason && !mine, reason, mine });
+    }
+    return out;
+  }
+
+  private updateLobbies(dt: number) {
+    for (const l of [...this.lobbiesQ.values()]) {
+      l.t -= dt;
+      for (const id of [...l.members]) { const q = this.h.players.get(id); if (!q || q.downT > 0) this.leaveLobby(id); }
+      if (!this.lobbiesQ.has(l.id)) continue;
+      if (l.t <= 0) this.launchLobby(l);
+    }
+  }
+
+  private lobbyView(p: ServerPlayer, l: QuestLobby): QuestState {
+    const names = this.lobbyMembers(l).map((q) => q.name);
+    return {
+      id: l.def.id, title: l.def.title, stageIdx: 0, stageCount: 1, targets: [],
+      stage: `Warteraum – Mitspieler treten per Handy (M) bei. E = Auftrag starten (mind. ${l.def.coop.min} Spieler).`,
+      prog: `Dabei: ${names.join(', ')} (${l.members.length}/${l.def.coop.max}) · Start in ${Math.max(0, Math.ceil(l.t))} s`,
+      timer: Math.max(0, Math.ceil(l.t)), lobby: { members: names, max: l.def.coop.max },
+    };
   }
 
   /** Laufender Koop-Auftrag in der Nähe, dem p beitreten kann (openJoin). */
@@ -196,6 +313,7 @@ export class QuestEngine {
   }
 
   abandon(p: ServerPlayer) {
+    if (this.lobbyOf.has(p.id)) { this.leaveLobby(p.id); this.h.notice(p, 'Warteraum verlassen.', 'info'); return; }
     const run = this.byPlayer.get(p.id);
     if (!run || run.ending > 0) return;
     this.leave(run, p.id);
@@ -203,6 +321,7 @@ export class QuestEngine {
   }
 
   onPlayerLeave(id: number) {
+    this.leaveLobby(id);
     const run = this.byPlayer.get(id);
     if (run) this.leave(run, id);
   }
@@ -396,6 +515,7 @@ export class QuestEngine {
 
   // ------------------------------------------------------------------ Tick
   update(dt: number) {
+    this.updateLobbies(dt);
     for (const run of [...this.runs.values()]) {
       if (run.ending > 0) { run.ending -= dt; if (run.ending <= 0) this.runs.delete(run.id); continue; }
       this.tick(run, dt);
@@ -602,7 +722,7 @@ export class QuestEngine {
 
   // ------------------------------------------------------------------ Anzeige
   /** Spieler hat einen aktiven Auftrag. */
-  isActive(playerId: number) { return this.byPlayer.has(playerId); }
+  isActive(playerId: number) { return this.byPlayer.has(playerId) || this.lobbyOf.has(playerId); }
 
   isCarrying(playerId: number): boolean {
     const run = this.byPlayer.get(playerId);
@@ -611,6 +731,8 @@ export class QuestEngine {
 
   /** Aktiver Auftrag für einen Spieler (Fortschritt, Zeit, Zielmarkierungen). */
   view(p: ServerPlayer): QuestState | null {
+    const lobby = this.lobbyOf.get(p.id);
+    if (lobby) return this.lobbyView(p, lobby);
     const run = this.byPlayer.get(p.id);
     if (!run || run.ending > 0) return null;
     const st = run.def.stages[run.stage];
