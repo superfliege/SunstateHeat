@@ -7,7 +7,7 @@ import { Btn } from '../protocol';
 import { footSurface, Tile } from '../world/tiles';
 import type { WorldMap } from '../world/WorldMap';
 import { setYaw, type CarState } from './car';
-import { CELL } from '../constants';
+import { CELL, WORLD_SIZE } from '../constants';
 import { circleBox, circleHitsBuildings, exactCell, pushOutOfBuildings, type Box } from '../world/collision';
 import type { VehicleDef } from './vehicleDefs';
 
@@ -19,7 +19,10 @@ export const PAWN_RADIUS = 0.45;
  * Spieler/Fußgänger. Blickrichtung: Vorwärts = (sin a, cos a).
  * h/vx/vy/vz/rt: Comic-Ragdoll nach einem Treffer (rt = Restzeit am Boden/in der Luft).
  */
-export interface PawnState { x: number; z: number; a: number; h: number; vx: number; vy: number; vz: number; rt: number }
+export interface PawnState { x: number; z: number; a: number; h: number; vx: number; vy: number; vz: number; rt: number; /** Fallschirm offen (1) – nach dem Absprung aus einem Luftfahrzeug (#41) */ pc?: number }
+/** Fallschirm: Sinkrate und Lenk-Tempo (m/s) */
+export const CHUTE_SINK = 4.5;
+export const CHUTE_SPEED = 7;
 export const newPawn = (x = 0, z = 0, a = 0): PawnState => ({ x, z, a, h: 0, vx: 0, vy: 0, vz: 0, rt: 0 });
 
 type SurfaceFn = (tile: number) => number;
@@ -108,6 +111,24 @@ export function stepPawn(
   bodies?: readonly Box[], swim = false,
 ): boolean {
   const surf = swim ? swimSurface : footSurface;
+  if (p.pc) {
+    // Fallschirm: langsam sinken, mit WASD lenken (oben = Norden)
+    const k = Math.min(1, 1.2 * dt);
+    p.vx += (ax * CHUTE_SPEED - p.vx) * k;
+    p.vz += (-ay * CHUTE_SPEED - p.vz) * k;
+    p.vy = -CHUTE_SINK;
+    p.h += p.vy * dt;
+    const nx = clamp(p.x + p.vx * dt, 4, WORLD_SIZE - 4), nz = clamp(p.z + p.vz * dt, 4, WORLD_SIZE - 4);
+    if (p.h > 20) { p.x = nx; p.z = nz; } // hoch über den Dächern: frei schweben
+    else moveWithCollision(map, p, nx, nz, PAWN_RADIUS, surf);
+    if (Math.hypot(p.vx, p.vz) > 0.5) p.a = approachAngle(p.a, Math.atan2(p.vx, p.vz), 3 * dt);
+    if (p.h <= 0) {
+      // gelandet: nicht in einem Gebäude stehen bleiben
+      p.h = 0; p.pc = 0; p.vx = p.vy = p.vz = 0;
+      if (blocked(map, p.x, p.z, PAWN_RADIUS, surf)) { const s = findFootSpot(map, p.x, p.z, 14); if (s) { p.x = s.x; p.z = s.z; } }
+    }
+    return false;
+  }
   if (p.rt > 0) {
     // Ragdoll: ballistisch, Abprallen am Boden, Reibung – Eingaben werden ignoriert
     p.rt -= dt;

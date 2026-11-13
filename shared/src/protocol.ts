@@ -60,7 +60,7 @@ export type ClientMsg =
   | { t: 'npcDebug'; on: boolean };
 
 // ---------- Server -> Client ----------
-/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll), ragdoll 0/1, Waffenindex, Story-Rang] */
+/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll/Fallschirm), 0 / 1 = Ragdoll / 2 = Fallschirm, Waffenindex, Story-Rang] */
 export type PlayerTuple = [number, string, number, number, number, number, number, number, number, number, number, number];
 /**
  * Fahrzeug-Bewegung: [id, x, z, y, yaw, vx, vz, steer, flags, pitch, roll, vy, rpm/100]
@@ -172,7 +172,7 @@ export interface SnapshotMsg {
   time: number; // Server-Zeit in ms
   day: number; // Tageszeit 0..1 (0 = Mitternacht, 0.5 = Mittag)
   ack: number; // letzte verarbeitete Eingabe-Sequenz DIESES Clients
-  /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt], Fahrzeug (packCar) oder null, Geld. */
+  /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt, Fallschirm 0/1], Fahrzeug (packCar) oder null, Geld. */
   me?: { pawn: number[]; veh: number[] | null; /** Mitfahrer in Luftfahrzeug (ID) */ ride?: number; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
   players: PlayerTuple[];
   /** Geänderte Fahrzeuge / Stammdaten / verschwundene IDs */

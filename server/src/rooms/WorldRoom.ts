@@ -106,7 +106,7 @@ export class WorldRoom {
   private readonly pickups = new Pickups({
     addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
     notice: (p, text, kind) => this.noticeTo(p, text, kind),
-    footPos: (p) => (p.vehicleId >= 0 || p.ride >= 0 || p.downT > 0 || p.pawn.rt > 0 ? null : { x: p.pawn.x, z: p.pawn.z }),
+    footPos: (p) => (p.vehicleId >= 0 || p.ride >= 0 || p.downT > 0 || p.pawn.rt > 0 || p.pawn.pc ? null : { x: p.pawn.x, z: p.pawn.z }),
     giveWeapon: (p, id, ammo) => {
       // Aufgehobene Waffe ersetzt keine eigene Waffe derselben Klasse – dann gibt es nur deren Munition
       const def = WEAPONS[id];
@@ -486,6 +486,23 @@ export class WorldRoom {
   /** Zähler für seltenere Updates entfernter Luftfahrzeuge */
   private snapNo = 0;
 
+  /**
+   * Absprung aus einem Luftfahrzeug mit automatisch öffnendem Fallschirm. false = zu niedrig
+   * (dann gelten die normalen Ausstiegsregeln).
+   */
+  private bailOut(p: ServerPlayer, v: ServerVehicle): boolean {
+    const c = v.sim.car;
+    const alt = c.y - Math.max(this.map.surfaceY(c.x, c.z), 0);
+    if (alt < 8) return false;
+    const rx = Math.cos(c.a), rz = -Math.sin(c.a); // seitlich raus
+    p.pawn = newPawn(c.x + rx * 2.5, c.z + rz * 2.5, c.a);
+    p.pawn.h = alt - 1.5;
+    p.pawn.pc = 1;
+    p.pawn.vx = c.vx * 0.3; p.pawn.vz = c.vz * 0.3;
+    this.noticeTo(p, 'Fallschirm offen! WASD = lenken.', 'info');
+    return true;
+  }
+
   /** Freie Mitfahrer-Plätze (ohne Fahrer). Luftfahrzeuge: Flotte; Landfahrzeuge/Boote: Sitzplätze je Klasse. */
   private freeSeats(v: ServerVehicle): number {
     if (isAircraft(v.kind)) return this.air.freeSeats(v);
@@ -676,7 +693,11 @@ export class WorldRoom {
     // Mitfahrer: aussteigen (nur am Boden bzw. Helikopter knapp darüber)
     if (p.ride >= 0) {
       const rv = this.vehicles.get(p.ride);
-      if (rv && isAircraft(rv.kind) && !canExitAircraft(this.map, rv.sim)) { this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return; }
+      if (rv && isAircraft(rv.kind) && !canExitAircraft(this.map, rv.sim)) {
+        // In der Luft: mit Fallschirm abspringen (#41)
+        if (this.bailOut(p, rv)) { rv.riders = (rv.riders ?? []).filter((id) => id !== p.id); p.ride = -1; return; }
+        this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return;
+      }
       // Aus fahrendem Auto springen: man fliegt ein Stück mit
       const sp = rv ? Math.hypot(rv.sim.car.vx, rv.sim.car.vz) : 0;
       this.leaveRide(p, rv && !isAircraft(rv.kind) && sp > 6 ? 0.6 : 0);
@@ -684,6 +705,12 @@ export class WorldRoom {
     }
     const current = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
     if (current && isAircraft(current.kind) && !canExitAircraft(this.map, current.sim)) {
+      // In der Luft: Pilot springt mit Fallschirm ab, die Maschine fliegt führerlos weiter (#41)
+      if (this.bailOut(p, current)) {
+        current.driver = DRIVER_NONE; current.idleTime = 0; current.buttons = 0;
+        p.vehicleId = -1;
+        return;
+      }
       this.noticeTo(p, aircraftDef(current.sim.variant).type === 'heli' ? 'Aussteigen nur knapp über dem Boden – erst runter!' : 'Aussteigen erst, wenn das Flugzeug am Boden steht.', 'bad');
       return;
     }
@@ -2189,7 +2216,7 @@ export class WorldRoom {
     const AIR_R2 = AIR_SETTINGS.airInterest ** 2;
     const players: PlayerTuple[] = [...this.players.values()].map((p) => [
       p.id, p.name, r2(p.pawn.x), r2(p.pawn.z), r3(p.pawn.a), p.vehicleId >= 0 ? p.vehicleId : p.ride, p.color, this.quests.isCarrying(p.id) ? 1 : 0,
-      r2(p.pawn.h), p.pawn.rt > 0 ? 1 : 0, p.vehicleId >= 0 || p.downT > 0 ? 0 : Math.max(0, weaponNames.indexOf(p.weapon)),
+      r2(p.pawn.h), p.pawn.pc ? 2 : p.pawn.rt > 0 ? 1 : 0, p.vehicleId >= 0 || p.downT > 0 ? 0 : Math.max(0, weaponNames.indexOf(p.weapon)),
       p.profile.story?.rank ?? 0,
     ]);
     const floorsJson = this.mg.floorsJson();
@@ -2298,7 +2325,7 @@ export class WorldRoom {
       // Eigener Zustand
       const myV = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       const pw = p.pawn;
-      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt)], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
+      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt), pw.pc ? 1 : 0], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
       parts.push(`"me":${JSON.stringify(me)}`);
       p.conn.sendRaw(`{"t":"snap","ack":${p.lastSeq},${common},${parts.join(',')}}`);
     }

@@ -161,7 +161,7 @@ export class Predictor {
       this.vehicleId = -1;
       this.sim = null;
       const p = snap.me.pawn;
-      this.pawn = { x: p[0], z: p[1], a: p[2], h: p[3], vx: p[4], vy: p[5], vz: p[6], rt: p[7] };
+      this.pawn = { x: p[0], z: p[1], a: p[2], h: p[3], vx: p[4], vy: p[5], vz: p[6], rt: p[7], pc: p[8] ?? 0 };
     }
 
     this.pending = this.pending.filter((c) => c[0] > snap.ack);

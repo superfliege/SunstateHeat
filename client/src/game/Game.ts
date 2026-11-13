@@ -899,6 +899,10 @@ export class Game {
       const g = airGround(this.map, me.x, me.z, me.y, aircraftDef(variant).type === 'heli').y;
       alt = Math.max(0, me.y - g);
       myY = g + alt * 0.8; // Fokus leicht unter dem Luftfahrzeug: es erscheint mit der Höhe größer
+    } else if (!this.predictor.inVehicle && !rideState && this.predictor.pawn.pc) {
+      // Fallschirm: Kamera folgt in die Höhe und zoomt heraus wie im Luftfahrzeug
+      alt = this.predictor.pawn.h;
+      myY += alt * 0.8;
     }
     this.rig.altitude = alt;
     this.airport.update(dt, this.sky.night, this.buffer.serverNow, vehicleStates.values(), this.rig.target);
@@ -1158,10 +1162,10 @@ export class Game {
       const pa = a.players.get(pb[0]) ?? pb;
       const pw = this.predictor.pawn;
       const st: PlayerState = isMe
-        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0 }
+        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0, chute: !!pw.pc }
         : {
             id: pb[0], name: pb[1], x: lerp(pa[2], pb[2], t), z: lerp(pa[3], pb[3], t),
-            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
+            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, chute: pb[9] === 2, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
           };
       const seat = st.veh >= 0 ? vehicleStates.get(st.veh) ?? null : null;
       if (seat) { st.x = seat.x; st.z = seat.z; }
@@ -1383,12 +1387,13 @@ export class Game {
     } else { this.drive.set(null); this.drive.drift(null, 1); }
 
     if (this.chat.isOpen || this.storyBlock) { this.hud.setHint(null); return; }
+    if (!this.predictor.inVehicle && this.predictor.pawn.pc) { this.hud.setHint(`Fallschirm · <b>WASD</b> lenken · ${Math.round(this.predictor.pawn.h)} m`); return; }
     if (this.joinOffer) { this.hud.setHint(`<b>E</b> Bei „${this.joinOffer}“ mitmachen`); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
     if (this.ride >= 0) {
       const rv = vehicles.get(this.ride);
-      this.hud.setHint(rv && isAircraft(rv.kind) ? 'Mitfahrer · <b>F</b> Aussteigen (nach der Landung)' : 'Beifahrer · <b>F</b> Aussteigen');
+      this.hud.setHint(rv && isAircraft(rv.kind) ? 'Mitfahrer · <b>F</b> Aussteigen bzw. mit Fallschirm abspringen' : 'Beifahrer · <b>F</b> Aussteigen');
       return;
     }
     if (this.predictor.inVehicle && sim && sim.car.fly) {
@@ -1396,8 +1401,8 @@ export class Game {
       const fuelNear = Math.hypot(sim.car.x - AIR_FUEL.x, sim.car.z - AIR_FUEL.z) < AIR_FUEL.r;
       if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>F</b> Aussteigen');
       else if (fuelNear && f.ground && AIR_SETTINGS.fuelEnabled && f.fuel < 0.999) this.hud.setHint(`Tankstelle: stehen bleiben zum Tanken (${Math.round(f.fuel * 100)} %)`);
-      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>F</b> Aussteigen (am Boden)');
-      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>F</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken');
+      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>F</b> Aussteigen / Abspringen');
+      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>F</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>F</b> Abspringen (Fallschirm)');
       return;
     }
     if (this.predictor.inVehicle && sim) {
