@@ -43,7 +43,11 @@ const COUNT_FROM = 3;
 const END_TIME = 8;
 const AI_NAMES = ['Rico „Turbo“ Vega', 'Candy Flash', 'Big Earl', 'Mila Nitro', 'Dex Sideways', 'Luz Overdrive', 'Junior Cruz', 'Tammy Twin-Cam'];
 
-interface Ai { skill: number; lane: number; stuck: number; reverse: number; flipT: number; offT: number; bestS: number; noProg: number }
+interface Ai {
+  skill: number; lane: number; stuck: number; reverse: number; flipT: number; offT: number; bestS: number; noProg: number;
+  /** Fahrfehler (#45): Restdauer, Art (0 = zu spät gebremst, 1 = verlenkt, 2 = Gas weg) und Zeit bis zum nächsten. */
+  err: number; errKind: number; nextErr: number; wobble: number;
+}
 interface Racer {
   /** Spieler-ID, -1 = KI */
   pid: number;
@@ -239,7 +243,7 @@ export class Races {
       const lane = (i % 2 ? -1 : 1) * (0.8 + Math.random() * 0.9);
       race.racers.push({
         pid: p ? p.id : -1, name: p ? p.name : names[i % names.length], vid: v.id,
-        ai: p ? null : { skill: 0.94 + Math.random() * 0.09, lane, stuck: 0, reverse: 0, flipT: 0, offT: 0, bestS: 0, noProg: 0 },
+        ai: p ? null : { skill: 0.84 + Math.random() * 0.12, lane, stuck: 0, reverse: 0, flipT: 0, offT: 0, bestS: 0, noProg: 0, err: 0, errKind: 0, nextErr: 6 + Math.random() * 20, wobble: 0 },
         cp: 0, s: 0, seg: 0, place: 0, time: 0, dnf: false,
       });
       if (p) this.h.notice(p, `Dein Fahrzeug: ${variantInfo(variant).name}. Startplatz ${i + 1}.`, 'info');
@@ -378,7 +382,8 @@ export class Races {
     let skill = race.track.def.skill * ai.skill;
     if (lead > -Infinity && lead < 1e5) {
       const gap = r.s - lead;
-      if (gap > 60) skill *= 0.9; else if (gap < -60) skill *= 1.07;
+      // Gummiband: vorne deutlich nachlassen, hinten nur leicht aufholen
+      if (gap > 30) skill *= gap > 120 ? 0.78 : 0.86; else if (gap < -90) skill *= 1.04;
     }
     const DEC = 8, MU = 9.5;
     let want = 60;
@@ -390,6 +395,23 @@ export class Races {
       want = Math.min(want, Math.sqrt(vC * vC + 2 * DEC * d));
     }
     want *= skill;
+    // Fahrfehler: gelegentlich zu schnell in die Kurve, verlenkt oder kurz vom Gas – sorgt für Abflüge und Unfälle
+    if (race.phase === 'run' && !r.place) {
+      ai.nextErr -= dt;
+      if (ai.err <= 0 && ai.nextErr <= 0) {
+        // vor Kurven (muss bremsen) meist den Bremspunkt verpassen, sonst verlenken oder vom Gas gehen
+        ai.errKind = want < speed - 2 && Math.random() < 0.75 ? 0 : Math.random() < 0.6 ? 1 : 2;
+        ai.err = ai.errKind === 0 ? 1.6 : ai.errKind === 1 ? 0.9 : 1.2;
+        ai.wobble = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.4);
+        ai.nextErr = 10 + Math.random() * 22 * ai.skill; // bessere Fahrer patzen seltener
+      }
+    }
+    if (ai.err > 0) {
+      ai.err -= dt;
+      if (ai.errKind === 0) want = Math.max(want * 1.35, speed); // Bremspunkt verpasst
+      else if (ai.errKind === 1) ax = clamp(ax + ai.wobble, -1, 1); // verlenkt
+      else want *= 0.55; // vom Gas, schaltet zu früh
+    }
     const done = r.place > 0 || race.phase === 'end';
     if (done) want = Math.min(want, 9);
     if (r.s > end - 25) want = 0;
@@ -397,7 +419,7 @@ export class Races {
     let ay = speed < want - 0.5 ? 1 : speed > want + 1.5 ? -1 : 0.25;
     if (Math.abs(diff) > 0.9 && speed > 9) ay = -0.7;
     let buttons = want === 0 && speed < 2 ? Btn.BRAKE : 0;
-    if (!done && race.phase === 'run' && speed > 18 && ay > 0 && Math.abs(diff) < 0.08 && c.nitro > 0.3 && skill > 0.95) buttons |= Btn.SPRINT;
+    if (!done && race.phase === 'run' && speed > 18 && ay > 0 && Math.abs(diff) < 0.08 && c.nitro > 0.3 && skill > 0.93) buttons |= Btn.SPRINT;
 
     // Festgefahren: zurücksetzen; überschlagen/weit weg: auf die Strecke setzen
     if (want > 3 && speed < 1.5) ai.stuck += dt; else ai.stuck = Math.max(0, ai.stuck - dt * 2);
