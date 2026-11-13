@@ -47,7 +47,7 @@ const clearStory = async () => {
 };
 await clearStory();
 for (const s of shots) {
-  for (const c of s.cmds ?? []) { await send(c); await page.waitForTimeout(500); }
+  for (const c of s.cmds ?? []) { await send(c); await page.waitForTimeout(1600); }
   await page.evaluate((p: number[] | undefined) => { const g = (globalThis as any).__game; if (p) g.photo(...p); else g.photo(); }, s.photo);
   await clearStory();
   for (const k of s.keys ?? []) await page.keyboard.press(k);
