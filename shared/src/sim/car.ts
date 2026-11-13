@@ -430,15 +430,22 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
     let comp = rayLen - t;
     // Rad hat Masse: an einer Stufe federt es nicht schlagartig ein, sondern mit begrenzter Geschwindigkeit
     // (der Rest steckt kurz im Reifen) – sonst katapultiert jeder Bordstein die Karosserie hoch
-    if (compPrev[i] > 0.005 && comp > compPrev[i] + ASSISTS.wheelCompRate * h) comp = compPrev[i] + ASSISTS.wheelCompRate * h;
+    // Gilt nur für Stufen im Boden: sinkt die Karosserie selbst schnell (Landung), federt das Rad im selben
+    // Tempo ein – sonst holt die Feder die Einfederung nach dem Aufsetzen verspätet nach und katapultiert
+    // das Fahrzeug wieder hoch (endloses Hüpfen, #47)
+    const bodyDown = -((c.vx + c.wy * WP[2] - c.wz * WP[1]) * AY[0] + (c.vy + c.wz * WP[0] - c.wx * WP[2]) * AY[1] + (c.vz + c.wx * WP[1] - c.wy * WP[0]) * AY[2]);
+    const maxRate = Math.max(ASSISTS.wheelCompRate, bodyDown);
+    if (compPrev[i] > 0.005 && comp > compPrev[i] + maxRate * h) comp = compPrev[i] + maxRate * h;
     c.comp[i] = Math.min(comp, d.rest + 0.15);
     // Dämpfer: Einfedergeschwindigkeit begrenzt (Reifen/Gummilager schlucken harte Schläge)
     const compVel = Math.max(-2.5, Math.min(2.5, (c.comp[i] - compPrev[i]) / h));
     let f = d.springK * comp + d.damperC * compVel;
     if (comp > d.rest) f += d.springK * 12 * (comp - d.rest) + d.damperC * 2 * Math.max(0, compVel); // Anschlag
     // Stabilisator: Achsgegenseite
+    // Nur wenn auch das Gegenrad Bodenkontakt hat: hängt es in der Luft, kann der Stabilisator
+    // sich nicht abstützen – sonst drückt er die belastete Seite hoch und schaukelt das Auto endlos auf (#47)
     const other = i ^ 1;
-    f += (comp - c.comp[other]) * d.springK * p.antiRoll * 0.8;
+    if (c.ground & (1 << other)) f += (comp - c.comp[other]) * d.springK * p.antiRoll * 0.8;
     f = Math.max(0, f);
     supF[i] = f;
     groundMask |= 1 << i;
@@ -597,6 +604,13 @@ function substep(map: WorldMap, c: CarState, p: HandlingProfile, d: Derived, dmg
     const pitchRate = c.wx * AX[0] + c.wy * AX[1] + c.wz * AX[2];
     const pd = -pitchRate * Math.min(1, (groundMask ? ASSISTS.bikePitchDamp : ASSISTS.bikePitchDamp * 0.35) * h) * p.upright;
     c.wx += AX[0] * pd; c.wy += AX[1] * pd; c.wz += AX[2] * pd;
+  }
+  // Ausschaukeln: bei Schritttempo Wank-/Nickbewegung und Nachfedern dämpfen – sonst kann ein Auto nach
+  // einem Sprung von Seite zu Seite (oder auf/ab) schaukeln, ohne je zur Ruhe zu kommen (#47)
+  if (groundMask && !p.upright && speed < 6) {
+    const k = Math.min(1, (groundMask === 15 ? 3 : 5) * h * (1 - speed / 6));
+    c.wx -= c.wx * k; c.wz -= c.wz * k; // Gieren (wy) bleibt unberührt
+    if (groundMask === 15) c.vy -= c.vy * k * 0.5;
   }
   // Auf Dach/Seite?
   if (upY < 0.35 && speed < 4) c.flip += h; else if (upY > 0.6) c.flip = 0;
