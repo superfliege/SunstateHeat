@@ -8,7 +8,7 @@ import { lerp, lerpAngle } from '../../../shared/src/math';
 import { Btn, DRIVER_COP_ID, VehFlag, type GameEvent, type ServerMsg, type SnapshotMsg, type VehicleInfoTuple, type VehicleTuple } from '../../../shared/src/protocol';
 import { createCar, groundHeight, setOrientation, type CarCollision, type CarState, type Impact } from '../../../shared/src/sim/car';
 import { enginePower, newDamage, partState, PART_COUNT, smokeStage, unpackDamage, Zone5, type CarDamage } from '../../../shared/src/sim/damage';
-import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, TANK_VARIANT, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
+import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, TANK_VARIANT, seatsOf, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
 import { ARCHETYPES } from '../../../shared/src/npc/archetypes';
 import { PROP_INFO, PropType } from '../../../shared/src/world/features';
 import type { PropHit } from '../../../shared/src/sim/props';
@@ -1335,7 +1335,8 @@ export class Game {
     let best: VehicleViewState | null = null;
     let bestD = Infinity;
     for (const v of vehicles.values()) {
-      if ((v.driver >= 0 && !isAircraft(v.kind)) || this.recs.get(v.id)?.dmg.wreck) continue;
+      // Fahrzeuge anderer Spieler: als Beifahrer (Plätze prüft der Server)
+      if ((v.driver >= 0 && !isAircraft(v.kind) && seatsOf(v.variant) < 2) || this.recs.get(v.id)?.dmg.wreck) continue;
       const reach = ENTER_RADIUS + (isAircraft(v.kind) ? aircraftDef(v.variant).radius * 0.8 : profileOf(v.variant).length / 2.4);
       const d = Math.hypot(v.x - x, v.z - z);
       if (d < reach && d < bestD) { best = v; bestD = d; }
@@ -1385,7 +1386,11 @@ export class Game {
     if (this.joinOffer) { this.hud.setHint(`<b>E</b> Bei „${this.joinOffer}“ mitmachen`); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
-    if (this.ride >= 0) { this.hud.setHint('Mitfahrer · <b>F</b> Aussteigen (nach der Landung)'); return; }
+    if (this.ride >= 0) {
+      const rv = vehicles.get(this.ride);
+      this.hud.setHint(rv && isAircraft(rv.kind) ? 'Mitfahrer · <b>F</b> Aussteigen (nach der Landung)' : 'Beifahrer · <b>F</b> Aussteigen');
+      return;
+    }
     if (this.predictor.inVehicle && sim && sim.car.fly) {
       const f = sim.car.fly, d = aircraftDef(sim.variant);
       const fuelNear = Math.hypot(sim.car.x - AIR_FUEL.x, sim.car.z - AIR_FUEL.z) < AIR_FUEL.r;
@@ -1409,7 +1414,7 @@ export class Game {
       const v = this.nearestEnterable(vehicles, me.x, me.z);
       if (v) {
         const air = isAircraft(v.kind) ? aircraftDef(v.variant) : null;
-        const verb = v.driver === -2 ? 'Übernehmen' : air ? (v.driver >= 0 ? 'Mitfliegen' : 'Einsteigen') : 'Einsteigen';
+        const verb = v.driver === -2 ? 'Übernehmen' : air ? (v.driver >= 0 ? 'Mitfliegen' : 'Einsteigen') : v.driver >= 0 ? 'Mitfahren' : 'Einsteigen';
         const name = air ? `${air.name}, ${air.seats} Sitze` : v.kind === VehicleKind.Car || v.kind === VehicleKind.Bike ? variantInfo(v.variant).name : VEHICLE_DEFS[v.kind as VehicleKindId].name;
         const shop = this.shopNearMe();
         this.hud.setHint(`<b>F</b> ${verb} (${name})${shop ? ` · <b>E</b> Mit ${shop.keeper.name} sprechen` : ''}`);

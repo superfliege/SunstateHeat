@@ -16,7 +16,7 @@ import {
   type CarCollision, type Impact,
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
-import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, TANK_VARIANT, variantByName, variantInfo } from '../../../shared/src/sim/handling';
+import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, seatsOf, TANK_VARIANT, variantByName, variantInfo } from '../../../shared/src/sim/handling';
 import { northTarget } from '../../../shared/src/world/north';
 import { carBody, findFootSpot, findSwimSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
 import type { Box } from '../../../shared/src/world/collision';
@@ -486,6 +486,13 @@ export class WorldRoom {
   /** Zähler für seltenere Updates entfernter Luftfahrzeuge */
   private snapNo = 0;
 
+  /** Freie Mitfahrer-Plätze (ohne Fahrer). Luftfahrzeuge: Flotte; Landfahrzeuge/Boote: Sitzplätze je Klasse. */
+  private freeSeats(v: ServerVehicle): number {
+    if (isAircraft(v.kind)) return this.air.freeSeats(v);
+    if (v.driver < 0 || v.race !== undefined) return 0; // nur bei Spielern, nicht in Rennen/Minispielen
+    return seatsOf(v.sim.variant) - 1 - (v.riders?.length ?? 0);
+  }
+
   /** Spieler steigt als Mitfahrer aus (Spot = Ausstiegsort, sonst neben dem Fahrzeug). */
   private leaveRide(p: ServerPlayer, power = 0) {
     const v = p.ride >= 0 ? this.vehicles.get(p.ride) : undefined;
@@ -669,8 +676,10 @@ export class WorldRoom {
     // Mitfahrer: aussteigen (nur am Boden bzw. Helikopter knapp darüber)
     if (p.ride >= 0) {
       const rv = this.vehicles.get(p.ride);
-      if (rv && !canExitAircraft(this.map, rv.sim)) { this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return; }
-      this.leaveRide(p);
+      if (rv && isAircraft(rv.kind) && !canExitAircraft(this.map, rv.sim)) { this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return; }
+      // Aus fahrendem Auto springen: man fliegt ein Stück mit
+      const sp = rv ? Math.hypot(rv.sim.car.vx, rv.sim.car.vz) : 0;
+      this.leaveRide(p, rv && !isAircraft(rv.kind) && sp > 6 ? 0.6 : 0);
       return;
     }
     const current = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
@@ -715,13 +724,23 @@ export class WorldRoom {
     for (const v of this.vehicles.values()) {
       const air = isAircraft(v.kind);
       if (air && v.copHeli !== undefined) continue;
-      if ((v.driver >= 0 && !(air && this.air.freeSeats(v) > 0)) || v.driver === DRIVER_COP || v.sim.dmg.wreck || !this.races.mayEnter(p.id, v) || !this.hunt.mayEnter(p.id, v) || !this.mg.mayEnter(p.id, v)) continue;
+      if ((v.driver >= 0 && this.freeSeats(v) <= 0) || v.driver === DRIVER_COP || v.sim.dmg.wreck || !this.races.mayEnter(p.id, v) || !this.hunt.mayEnter(p.id, v) || !this.mg.mayEnter(p.id, v)) continue;
       if (air && (v.sim.car.fly?.ground !== 1 && !canExitAircraft(this.map, v.sim))) continue; // fliegt
       const reach = ENTER_RADIUS + (air ? aircraftDef(v.sim.variant).radius * 0.8 : v.sim.prof.length / 2.4);
       const d = dist2(v.sim.car.x, v.sim.car.z, p.pawn.x, p.pawn.z);
       if (d < reach * reach && d < bestD) { best = v; bestD = d; }
     }
     if (!best) return;
+    if (!isAircraft(best.kind) && best.driver >= 0) {
+      // Ein anderer Spieler fährt: als Beifahrer einsteigen (#46)
+      const seats = seatsOf(best.sim.variant);
+      best.riders = [...(best.riders ?? []), p.id];
+      p.ride = best.id;
+      const drv = this.players.get(best.driver);
+      this.noticeTo(p, `Du fährst bei ${drv?.name ?? 'jemandem'} mit (${best.riders.length + 1}/${seats}). F = aussteigen.`, 'info');
+      if (drv) this.noticeTo(drv, `${p.name} fährt bei dir mit.`, 'info');
+      return;
+    }
     if (isAircraft(best.kind)) {
       const d = aircraftDef(best.sim.variant);
       if (best.driver >= 0) {
