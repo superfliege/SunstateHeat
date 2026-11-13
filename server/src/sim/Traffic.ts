@@ -38,6 +38,10 @@ const REVERSE_SPEED = 3;
 /** Ab dieser Entfernung zum nächsten Spieler darf ein festgefahrenes Auto einfach verschwinden. */
 const UNSEEN_RANGE = 85;
 const GRID = 16; // Zellgröße des Nachbarschaftsrasters (m)
+/** Darunter (Geschwindigkeitsänderung in m/s) zählt ein Kontakt nicht als Unfall. */
+const RESTING_DV = 1;
+/** Spätestens nach so vielen Sekunden im Unfallmodus geht es weiter (flüchten bzw. aussteigen). */
+const CRASH_MAX_TIME = 12;
 
 type Mode = 'drive' | 'crash' | 'flee' | 'depart';
 /** Verkehrspool: 0 = Stadt (Straßen mit Gehweg), 1 = außerhalb, -1 = ausgeparktes Auto */
@@ -199,6 +203,13 @@ export class Traffic {
     const b = this.brains.get(vehicleId);
     const v = this.host.vehicles.get(vehicleId);
     if (!b || !v) return;
+    if (dv < RESTING_DV) {
+      // Nur Anlehnen/Schrammen (Autos stehen aneinander – das meldet die Physik jeden Tick): keine
+      // Unfallreaktion. Sonst setzt jede Berührung den Unfall-Timer zurück, der Fahrer hängt ewig im
+      // Unfallmodus fest und um ihn herum wächst ein Knäuel aus immer mehr Verkehr.
+      if (b.mode === 'drive') b.speed = Math.min(b.speed, 0);
+      return;
+    }
     v.kinematic = false;
     if (b.panic || b.bail) return; // schon in Panik: Reaktion nicht überschreiben
     if (b.mode === 'drive') {
@@ -791,7 +802,7 @@ export class Traffic {
         // beschossen: aussteigen und weglaufen
         this.host.driverOut(v, false); this.brains.delete(v.id); return;
       }
-      if (Math.abs(s.s) < 1 && brain.timer > 1.2) {
+      if ((Math.abs(s.s) < 1 && brain.timer > 1.2) || brain.timer > CRASH_MAX_TIME) {
         if (up[1] < 0.5 || v.sim.dmg.wreck || v.sim.dmg.hp < 250) {
           this.host.driverOut(v, true); this.brains.delete(v.id); return;
         }
