@@ -1,6 +1,6 @@
 // Reproduzierbare Benchmark-Route (`?bench=1`, nur mit Dev-Server – nutzt Dev-Chatbefehle).
 //
-// Fünf Abschnitte à ~36 s (zusammen ~3 min): Teleport an den Start, Tageszeit/Wetter/Ereignis per
+// Sieben Abschnitte à ~36 s (zusammen ~4 min): Teleport an den Start, Tageszeit/Wetter/Ereignis per
 // Dev-Befehl setzen, 4 s Einschwingen (Streaming/Spawns – Hänger werden extra gezählt), dann fährt
 // ein Autopilot im Sportwagen die Straßenroute ab. Zufall ist auf Client UND Server geseedet
 // (Math.random; Server mit BENCH_SEED), damit NPCs, Verkehr und Partikel jedes Mal gleich starten.
@@ -40,6 +40,10 @@ export const BENCH_ROUTE: BenchSection[] = [
   // Gator Flats: frühmorgens (Dunst/Glühwürmchen-Ende), Stelzenhütten, Sumpf, viel Vegetation
   { id: 'gator', name: 'Gator Flats · Morgendunst', hour: 6.3, weather: 'klar', from: [1000, 1490], to: [1120, 1560], speed: 13, drive: 32 },
   { id: 'highway', name: 'Highway nach Okeefield · Nachmittag', hour: 16, weather: 'hitze', from: [1180, 1092], to: [820, 1030], speed: 26, drive: 32 },
+  // Norden: Okee Peak bei Sonnenuntergang (Gipfelplateau -> Switchback Road hinab: Fels, Wald, Leitplanken,
+  // Wolken, Fern-Silhouette) und Felder mit Mähdrescher-Kolonne (Instancing: Zäune, Zuckerrohr, Gemüse; Tiere)
+  { id: 'peak', name: 'Okee Peak Gipfel · Sonnenuntergang', hour: 18.2, weather: 'klar', from: [872, 272], to: [952, 508], speed: 11, drive: 32 },
+  { id: 'fields', name: 'Felder mit Mähdrescher-Kolonne', hour: 10, weather: 'klar', extra: ['/kolonne'], from: [960, 515], to: [880, 700], speed: 9, drive: 32 },
 ];
 
 const SETTLE = 4;

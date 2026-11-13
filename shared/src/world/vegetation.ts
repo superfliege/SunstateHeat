@@ -8,6 +8,8 @@ import { pointAt } from './geometry';
 import { Tile } from './tiles';
 import { LotUse, TreeType, Zone, type TreeDef, type WorldMap } from './WorldMap';
 import { pointInPolygon } from './geometry';
+import { okeeBase } from './okeePeak';
+import { FARMS, farmAt } from './farms';
 
 /** Bridson-Poisson-Disk auf einem Rechteck; liefert Punkte mit Mindestabstand r. */
 export function poissonDisk(x0: number, z0: number, w: number, h: number, r: number, rnd: () => number, k = 20): [number, number][] {
@@ -75,12 +77,25 @@ export function generateVegetation(map: WorldMap, seed: number): TreeDef[] {
     const r = rnd();
     let type = -1;
     switch (t) {
-      case Tile.FARM: if (r < 0.75) type = TreeType.Orange; break;
+      case Tile.FARM: if (r < 0.75 && !farmAt(x, z)) type = TreeType.Orange; break; // Hof-Plantagen: Reihen (unten)
       case Tile.DESERT: if (r < 0.02) type = TreeType.Palm; break;
       case Tile.BADLANDS: if (r < 0.03) type = TreeType.Pine; break;
       case Tile.SWAMP: if (r < (zone === Zone.GatorFlats ? 0.16 : 0.3)) type = TreeType.Mangrove; break;
       case Tile.SAND: if (r < (zone === Zone.CoralKeys ? 0.22 : 0.07)) type = TreeType.Palm; break;
       case Tile.GRASS: {
+        // Okee Peak: Vegetation nach Höhenstufen – Kiefernwald und Weiden am Fuß, lichter Mischwald,
+        // Buschland, oben nur Fels und trockenes Gras
+        const ob = x > 360 && x < 1280 && z > 30 && z < 580 ? okeeBase(x, z) : 0;
+        if (ob > 3) {
+          const h = ob;
+          const meadow = noise(x * 0.012 + 70, z * 0.012) > 0.62; // Weiden-Lichtungen
+          if (h < 48) { if (!meadow && r < (forest > 0.4 ? 0.75 : 0.32)) type = rnd() < 0.85 ? TreeType.Pine : TreeType.Oak; }
+          else if (h < 100) { if (r < (forest > 0.45 ? 0.42 : 0.18)) type = rnd() < 0.5 ? TreeType.Oak : TreeType.Pine; }
+          else if (h < 150) { if (r < 0.05) type = TreeType.Pine; }
+          break;
+        }
+        // Höfe: nur vereinzelte Schattenbäume (Felder und Weiden bleiben frei)
+        if (farmAt(x, z)) { if (r < 0.02) type = TreeType.Oak; break; }
         if (zone === Zone.PortCoralia) { if (r < 0.12) type = TreeType.Palm; break; }
         if (zone === Zone.CoralKeys) { if (r < 0.35) type = TreeType.Palm; break; }
         if (zone === Zone.GatorFlats) { if (r < 0.32) type = rnd() < 0.7 ? TreeType.Cypress : TreeType.Mangrove; break; }
@@ -90,6 +105,8 @@ export function generateVegetation(map: WorldMap, seed: number): TreeDef[] {
         break;
       }
       case Tile.DIRT: if (r < 0.04) type = TreeType.Pine; break;
+      case Tile.PASTURE: if (r < 0.006) type = TreeType.Oak; break;
+      case Tile.SCREE: if (r < 0.01) type = TreeType.Pine; break;
       case Tile.FIELD: break;
       case Tile.PLAZA: {
         // Parks und Brachen in den Städten
@@ -114,6 +131,14 @@ export function generateVegetation(map: WorldMap, seed: number): TreeDef[] {
         if (t === Tile.WATER || t === Tile.BRIDGE || t === Tile.BUILDING || t === Tile.ROAD) continue;
         add(x, z, TreeType.Palm, 0.9 + rnd() * 0.4);
       }
+    }
+  }
+  // Orangenplantagen der Höfe: lange Baumreihen (statt Poisson-Streuung)
+  for (const f of FARMS) for (const fl of f.fields) {
+    if (fl.k !== 'orange') continue;
+    const c = Math.cos(fl.rot), sn = Math.sin(fl.rot);
+    for (let v = -fl.hd + 3; v < fl.hd - 1.5; v += 5) for (let u = -fl.hw + 2.5; u < fl.hw - 1.5; u += 4.5) {
+      add(fl.x + u * c + v * sn, fl.z - u * sn + v * c, TreeType.Orange, 0.9 + rnd() * 0.25);
     }
   }
   // Palmen am Flughafen-Terminal (liegen im baumfreien Flughafengelände)

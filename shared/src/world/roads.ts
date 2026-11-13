@@ -10,6 +10,8 @@ import {
 import { inAirport } from './airport';
 import { TEST_TRACK } from './features';
 import { DISTRICTS, PIERS, ROADS, ROUNDABOUTS, type DistrictDef } from './palmara';
+import { mountainRoads } from './okeePeak';
+import { farmLanes } from './farms';
 import { Tile } from './tiles';
 import { RoadType, type RoadEdge, type RoadNode, type WorldMap } from './WorldMap';
 
@@ -321,6 +323,12 @@ export function buildRoadGraph(map: WorldMap, seed: number) {
     const dest: [boolean, boolean] = [r.dest === 'start' || r.dest === 'both', r.dest === 'end' || r.dest === 'both'];
     strokes.push(makeStroke(r.name, r.type, catmullRom(ctrl, SAMPLE), !!r.palms, true, dest));
   }
+  // Bergstraßen am Okee Peak (dichte Linien mit eigenem Höhenprofil, okeePeak.ts) und Hofzufahrten (farms.ts)
+  for (const r of mountainRoads()) {
+    const dest: [boolean, boolean] = [r.dest === 'start' || r.dest === 'both', r.dest === 'end' || r.dest === 'both'];
+    strokes.push(makeStroke(r.name, r.type, r.pts, false, true, dest));
+  }
+  for (const r of farmLanes()) strokes.push(makeStroke(r.name, r.type, catmullRom(r.pts, SAMPLE), false, true, [false, true]));
   for (const p of PIERS) strokes.push(makeStroke(p.name, RoadType.Pier, catmullRom(p.pts, SAMPLE), false, true, [false, true]));
   const mains = strokes.slice();
   DISTRICTS.forEach((d, i) => strokes.push(...districtGrid(d, i, map, mains.filter((m) => m.type !== RoadType.Pier), seed)));

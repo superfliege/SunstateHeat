@@ -102,6 +102,8 @@ export interface ServerVehicle {
   /** Quest-Fahrzeug: Tag und Lauf-ID. */
   qtag?: string;
   qrun?: number;
+  /** Quest-Verfolger: fährt auf den nächsten Teilnehmer zu (z. B. Muldenkipper im Steinbruch). */
+  qchase?: boolean;
   /** Rennwagen: Renn-ID und Besitzer (Spieler-ID, -1 = KI-Fahrer). */
   race?: number;
   raceOwner?: number;

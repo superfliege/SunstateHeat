@@ -26,6 +26,7 @@ import { createWeaponMesh } from '../render/weaponModels';
 import { createKenneyCharacter, type KenneyCharacter } from '../render/kenneyCharacters';
 import type { RagdollFrame } from '../render/ragdoll';
 import { archetypeOf } from '../../../shared/src/npc/archetypes';
+import { AnimalFigure } from '../render/AnimalModel';
 import { Act } from '../../../shared/src/npc/scenarios';
 import { GANGS, GANG_IDS } from '../../../shared/src/gangs';
 import { BARK_DURATION, barkText } from '../../../shared/src/npc/barks';
@@ -425,9 +426,11 @@ export class EntityViews {
       if (this.wheelCount >= MAX_WHEELS || !wheelsOn) continue;
       const steer = i < 2 ? s.steer : 0;
       const flat = s.tires && s.tires & (1 << i) ? 0.72 : 1;
-      tmpPos.set(w.x, tpl.wheelBaseY + comp - r * (1 - flat), w.z).applyMatrix4(root.matrixWorld);
-      tmpQuat.copy(root.quaternion).multiply(tmpQ2.setFromAxisAngle(UP, steer)).multiply(tmpQ2.setFromAxisAngle(XAX, v.spin[i]));
-      tmpScale.set(w.w, r * flat, r * flat);
+      // Räder können je Achse größer/kleiner gezeichnet sein (Traktor): Unterkante bleibt am Boden
+      const wr = w.r || r;
+      tmpPos.set(w.x, tpl.wheelBaseY + comp - wr * (1 - flat) + (wr - r), w.z).applyMatrix4(root.matrixWorld);
+      tmpQuat.copy(root.quaternion).multiply(tmpQ2.setFromAxisAngle(UP, steer)).multiply(tmpQ2.setFromAxisAngle(XAX, v.spin[i] * (r / wr)));
+      tmpScale.set(w.w, wr * flat, wr * flat);
       this.wheels.setMatrixAt(this.wheelCount++, tmpMat.compose(tmpPos, tmpQuat, tmpScale));
     }
     const len = v.prof.length;
@@ -520,9 +523,10 @@ export class EntityViews {
     const shirt = cop ? 0x2850c8 : gang && gangColor >= 0 ? gangColor : player || gang ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined;
     // Kenney Animated Characters (bevorzugt), sonst Quaternius-Packs, sonst prozedural
     if (arch >= 0 && !cop && !gang && !player) {
-      // Archetyp-Outfit: Skin-Set und Oberteilfarbe aus der Archetyp-Tabelle
+      // Archetyp-Outfit: Skin-Set und Oberteilfarbe aus der Archetyp-Tabelle; Tiere bekommen ein Tiermodell
       const def = archetypeOf(arch);
-      const ak = createKenneyCharacter(style, id, def.shirts ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined, def.skins);
+      if (def.animal) return new AnimalFigure(def.animal, id);
+      const ak = createKenneyCharacter(style, id, def.shirts ? OUTFIT_COLORS[outfit % OUTFIT_COLORS.length] : undefined, def.skins, def.gear);
       if (ak) return ak;
     }
     const k = createKenneyCharacter(cop ? 'cop' : gang ? 'gang' : player ? 'player' : style, id, cop ? undefined : shirt);

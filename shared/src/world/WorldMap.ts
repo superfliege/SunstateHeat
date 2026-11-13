@@ -22,6 +22,7 @@ export const BuildingStyle = {
   Stilt: 9, // Stelzenhütte in Gator Flats
   Store: 10, // begehbarer Laden (Hohlgebäude mit Tür, shops.ts)
   Airport: 11, // Flughafengebäude und -zaun (Optik nach tag, AirportView)
+  Farm: 12, // Hofgebäude (Scheune, Silo, Melkstall … nach tag, NorthBuilder) und Bauten am Okee Peak
 } as const;
 
 /** Gedrehtes Rechteck: [Mitte x, Mitte z, halbe Breite, halbe Tiefe, cos rot, sin rot]. */
@@ -38,7 +39,7 @@ export interface BuildingDef {
   tag?: string;
 }
 
-export const TreeType = { Palm: 0, Pine: 1, Orange: 2, Mangrove: 3, Cypress: 4 } as const;
+export const TreeType = { Palm: 0, Pine: 1, Orange: 2, Mangrove: 3, Cypress: 4, Oak: 5 } as const;
 
 export interface TreeDef { x: number; z: number; type: number; s: number; rot: number }
 

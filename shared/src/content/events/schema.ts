@@ -26,6 +26,8 @@ export const EVENT_PLACES = [
   'lifeguard_tower', 'hotel', 'water_edge', 'pier', 'dock', 'crane', 'container_yard', 'bridge', 'golf', 'garden', 'hedge', 'villa',
   'motel', 'workshop', 'carwash', 'bus_station', 'highway', 'field', 'slope', 'main_street', 'stilt_hut', 'swamp_water',
   'marina', 'souvenir_shop', 'office_tower', 'power_box', 'gas_station', 'cafe', 'awning',
+  // Norden: Höfe, Landstraßen, Berg
+  'farm', 'farm_shop', 'rodeo_arena', 'country_road', 'dirt_road', 'mountain_road', 'summit', 'quarry', 'campground', 'truck_stop', 'pasture',
 ] as const;
 export type EventPlace = (typeof EVENT_PLACES)[number];
 
@@ -36,8 +38,9 @@ export const ACT_NAME_LIST = Object.keys(Act) as ActName[];
 export const VEHICLE_KINDS = [
   'car', 'convertible', 'sports', 'limo', 'taxi', 'pickup', 'truck', 'semi', 'van', 'food_truck', 'ice_cart', 'scooter', 'segway',
   'forklift', 'crane', 'yacht', 'boat', 'airboat', 'police_car', 'tow_truck', 'mower', 'gondola', 'firetruck',
+  'combine', 'tractor', 'tour_bus', 'dump_truck', 'sheriff_pickup', 'rv', 'quad',
 ] as const;
-export const ANIMAL_KINDS = ['seagull', 'dog', 'poodle', 'rooster', 'iguana', 'gator', 'cow', 'goat', 'pelican', 'fish'] as const;
+export const ANIMAL_KINDS = ['seagull', 'dog', 'poodle', 'rooster', 'iguana', 'gator', 'cow', 'goat', 'pelican', 'fish', 'horse', 'raccoon', 'deer', 'turkey', 'hawk', 'chicken'] as const;
 export const PROP_KINDS = [
   'fries', 'trash_can', 'reflector', 'metal_detector', 'bottle_cap', 'wallet', 'flamingo_shirt', 'briefcase', 'paper_sheet',
   'megaphone', 'crate', 'domino_table', 'plastic_chair', 'speaker', 'grill', 'container', 'rubber_duck', 'bowling_ball',
@@ -45,6 +48,7 @@ export const PROP_KINDS = [
   'extinguisher', 'flashlight', 'cooler', 'ring', 'tin_foil_hat', 'camera', 'sausage', 'orange', 'orange_crate', 'flyer',
   'campaign_sign', 'umbrella', 'phone_light', 'fuse_box', 'treasure_map', 'shovel', 'fishing_rod', 'ice_cream', 'roller_skates',
   'water_bucket', 'bush', 'lemonade', 'neon_light', 'cone', 'tape', 'flowers', 'candles', 'buffet', 'rope', 'sandwich', 'dice',
+  'sled', 'trophy', 'marshmallow', 'juice_cup', 'business_card', 'tow_rope', 'siren', 'expedition_gear', 'hay_bale', 'gravel',
 ] as const;
 export type VehicleKind = (typeof VEHICLE_KINDS)[number];
 export type AnimalKind = (typeof ANIMAL_KINDS)[number];
@@ -146,11 +150,13 @@ export type MoodAxis = 'safety' | 'wealth' | 'gang';
 export type TraceKind =
   | 'police_tape' | 'wreck' | 'flowers' | 'graffiti' | 'repaired_window' | 'wanted_poster' | 'wet_footprints'
   | 'tipped_cart' | 'floating_ducks' | 'damaged_pier' | 'scattered_chairs' | 'paper_litter' | 'orange_peels'
-  | 'foam_puddle' | 'campaign_posters' | 'holes' | 'tourists_with_cameras' | 'airboat_rental' | 'double_parked';
+  | 'foam_puddle' | 'campaign_posters' | 'holes' | 'tourists_with_cameras' | 'airboat_rental' | 'double_parked'
+  | 'tire_tracks' | 'mud_splatter' | 'dust_layer' | 'hay_scattered' | 'broken_fence';
 export const TRACE_KINDS: readonly TraceKind[] = [
   'police_tape', 'wreck', 'flowers', 'graffiti', 'repaired_window', 'wanted_poster', 'wet_footprints',
   'tipped_cart', 'floating_ducks', 'damaged_pier', 'scattered_chairs', 'paper_litter', 'orange_peels',
   'foam_puddle', 'campaign_posters', 'holes', 'tourists_with_cameras', 'airboat_rental', 'double_parked',
+  'tire_tracks', 'mud_splatter', 'dust_layer', 'hay_scattered', 'broken_fence',
 ];
 
 export interface Outcome {
@@ -227,7 +233,19 @@ export interface StreetEventDef {
   rumor: RumorTemplate;
   radio?: string;
   variants?: Variant[];
+  /**
+   * Feste Schauplätze (optional): Hof-IDs (farms.ts), Bergorte und Straßennamen, an denen das
+   * Ereignis bevorzugt startet – z. B. ['double_r', 'Pinecrest Parkway']. Siehe EVENT_ANCHORS.
+   */
+  at?: string[];
 }
+
+/** Gültige Schauplätze für `at` (Höfe, Orte am Okee Peak, Landstraßen im Norden). */
+export const EVENT_ANCHORS: readonly string[] = [
+  'sunny_grove', 'double_r', 'henderson', 'cluck', 'big_melon', 'cane_creek',
+  'summit', 'switchback', 'quarry', 'campground', 'reservoir', 'ranger', 'truckstop', 'logyard',
+  'Pinecrest Parkway', 'Sabal–Cane Road', 'Okee Trail', 'Pine Hollow Road', 'Route 41', 'Highway 9', 'Northwest Road', 'Switchback Road', 'Quarry Road',
+];
 
 // ------------------------------------------------------------------ Bau-Helfer (kompakte Daten)
 export const say = (role: string, text: string, at?: number): Line => ({ role, text, style: 'say', at });
@@ -353,6 +371,7 @@ export function validateEvent(e: StreetEventDef, districtIds: readonly string[],
     if (o.wanted != null && (o.wanted < 0 || o.wanted > 4)) f(`${w}: Fahndung 0–4`);
     if (o.money != null && o.money < 0) f(`${w}: Geld darf nicht negativ sein (Strafe über wanted/rep)`);
   }
+  for (const a of e.at ?? []) if (!EVENT_ANCHORS.includes(a)) f(`unbekannter Schauplatz ${a}`);
   if (!e.rumor.text.trim()) f('Gerücht fehlt');
   if (e.rumor.heat < 0 || e.rumor.heat > 1) f('rumor.heat 0–1');
   let chance = 0;

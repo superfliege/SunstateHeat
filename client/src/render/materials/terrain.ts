@@ -1,4 +1,4 @@
-// Gelände-Material: 8 Untergrund-Schichten aus dem Atlas, weich überblendet (Gewichte pro Vertex,
+// Gelände-Material: 12 Untergrund-Schichten aus dem Atlas, weich überblendet (Gewichte pro Vertex,
 // an den Rändern mit Noise "ausgefranst" -> gemalte, unregelmäßige Übergänge statt harter Kanten)
 // und triplanar projiziert (Hänge im Gebirge verzerren nicht).
 import * as THREE from 'three';
@@ -7,8 +7,10 @@ import { MATERIALS, matIndex } from './library';
 import { noiseTexture } from './surface';
 import { toonGradient, U } from './toon';
 
-/** Reihenfolge = Kanal in den Attributen lw0 (0–3) und lw1 (4–7). */
-export const TERRAIN_LAYERS = ['sand', 'grass_tropical', 'grass_dry', 'swamp_mud', 'red_earth', 'rock', 'cane_field', 'grove_soil'] as const;
+/** Reihenfolge = Kanal in den Attributen lw0 (0–3), lw1 (4–7) und lw2 (8–11). */
+export const TERRAIN_LAYERS = ['sand', 'grass_tropical', 'grass_dry', 'swamp_mud', 'red_earth', 'rock', 'cane_field', 'grove_soil', 'gravel', 'scree', 'crop_rows', 'meadow'] as const;
+/** Anzahl der Schichten (3 Attribute à 4 Gewichte). */
+export const LAYER_COUNT = TERRAIN_LAYERS.length;
 export type TerrainLayer = (typeof TERRAIN_LAYERS)[number];
 export const LAYER = Object.fromEntries(TERRAIN_LAYERS.map((n, i) => [n, i])) as Record<TerrainLayer, number>;
 
@@ -30,24 +32,27 @@ export function terrainMaterial(): THREE.MeshToonMaterial {
       .replace('#include <common>', /* glsl */ `#include <common>
         attribute vec4 lw0;
         attribute vec4 lw1;
+        attribute vec4 lw2;
         varying vec4 vW0;
         varying vec4 vW1;
+        varying vec4 vW2;
         varying vec3 vWP;
         varying vec3 vWN;`)
       .replace('#include <worldpos_vertex>', /* glsl */ `#include <worldpos_vertex>
-        vW0 = lw0; vW1 = lw1;
+        vW0 = lw0; vW1 = lw1; vW2 = lw2;
         vWP = (modelMatrix * vec4(transformed, 1.0)).xyz;
         vWN = normalize(mat3(modelMatrix) * objectNormal);`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', /* glsl */ `#include <common>
         varying vec4 vW0;
         varying vec4 vW1;
+        varying vec4 vW2;
         varying vec3 vWP;
         varying vec3 vWN;
         uniform sampler2D uNoise;
         uniform float uNight;
-        uniform float uLayerIdx[8];
-        uniform float uLayerScale[8];
+        uniform float uLayerIdx[12];
+        uniform float uLayerScale[12];
         ${ATLAS_GLSL}
         vec3 triSample(int i, vec3 bw, vec3 dx, vec3 dy) {
           float s = uLayerScale[i], id = uLayerIdx[i];
@@ -60,21 +65,22 @@ export function terrainMaterial(): THREE.MeshToonMaterial {
         vec3 pdx = dFdx(vWP), pdy = dFdy(vWP);
         vec3 bw = pow(abs(normalize(vWN)), vec3(4.0));
         bw /= (bw.x + bw.y + bw.z);
-        float w[8];
+        float w[12];
         w[0] = vW0.x; w[1] = vW0.y; w[2] = vW0.z; w[3] = vW0.w;
         w[4] = vW1.x; w[5] = vW1.y; w[6] = vW1.z; w[7] = vW1.w;
+        w[8] = vW2.x; w[9] = vW2.y; w[10] = vW2.z; w[11] = vW2.w;
         // ausgefranste Übergänge: Rauschen verschiebt die Gewichte, dann geschärft
         vec4 nz = texture2D(uNoise, vWP.xz * 0.045);
         vec4 nz2 = texture2D(uNoise, vWP.xz * 0.011 + 0.37);
         float total = 0.0;
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 12; i++) {
           float n = (i % 2 == 0 ? nz.r : nz.g) * 0.6 + (i % 3 == 0 ? nz2.r : nz2.b) * 0.4;
           float v = w[i] > 0.001 ? max(w[i] + (n - 0.5) * 0.7, 0.0) : 0.0;
           v = v * v * v;
           w[i] = v; total += v;
         }
         vec3 col = vec3(0.0);
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 12; i++) {
           float k = w[i] / max(total, 1e-4);
           if (k < 0.02) continue;
           vec3 c = triSample(i, bw, pdx, pdy);

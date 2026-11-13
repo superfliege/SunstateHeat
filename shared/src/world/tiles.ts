@@ -17,14 +17,24 @@ export const Tile = {
   FIELD: 13, // Zuckerrohrfeld
   DESERT: 14, // Wüste (trockener Sandboden)
   BADLANDS: 15, // Ödland (rissige rote Erde)
+  GRAVEL: 16, // Schotter: Bergpfade, Steinbruch, Hofplätze (wenig Grip, staubt)
+  SCREE: 17, // Geröllfeld am Berg (sehr wenig Grip, Fahrzeuge rutschen ab)
+  CLIFF: 18, // Felswand/Abbruch: befahrbar, aber fast ohne Halt
+  RESERVOIR: 19, // Stausee (Wasser über dem Meeresspiegel, eigene Oberfläche) – Ufer wie eine Wand
+  CROP: 20, // Gemüse-/Melonenfeld in Reihen (weicher Boden)
+  PASTURE: 21, // Weide (eingezäunt, sattes Gras)
   VOID: 255, // außerhalb der Karte
 } as const;
 
 /** Laufgeschwindigkeits-Faktor zu Fuß (0 = nicht begehbar). */
 export function footSurface(t: number): number {
   switch (t) {
-    case Tile.WATER: case Tile.BUILDING: case Tile.ROCK: case Tile.VOID:
+    case Tile.WATER: case Tile.BUILDING: case Tile.ROCK: case Tile.VOID: case Tile.RESERVOIR:
       return 0;
+    case Tile.CLIFF:
+      return 0.45;
+    case Tile.SCREE: case Tile.CROP:
+      return 0.8;
     case Tile.SWAMP:
       return 0.5;
     case Tile.SAND:

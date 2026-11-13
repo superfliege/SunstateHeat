@@ -8,7 +8,8 @@ import { QUESTS, QUEST_BY_ID } from '../../../shared/src/questData';
 import { racePoints, waterNear, type Point } from '../../../shared/src/questLocations';
 import type { DialogueLine, Objective, QuestAction, QuestDefinition } from '../../../shared/src/quests';
 import { CAR_VARIANTS } from '../../../shared/src/sim/handling';
-import { findFootSpot } from '../../../shared/src/sim/movement';
+import { findFootSpot, stepPawn } from '../../../shared/src/sim/movement';
+import { ARCH_INDEX } from '../../../shared/src/npc/archetypes';
 import { snapRoad } from '../../../shared/src/story/places';
 import { defaultVariant } from '../../../shared/src/sim/vehicle';
 import { VehicleKind } from '../../../shared/src/sim/vehicleDefs';
@@ -31,6 +32,8 @@ export interface QuestHost {
   removeVehicle(id: number): void;
   /** Fahrzeug an den Verkehr übergeben (ein NPC fährt es, z. B. Konvoi). */
   adoptTraffic(v: ServerVehicle): void;
+  /** Ein Tick KI-Lenkung für ein Quest-Fahrzeug (Verfolger). */
+  driveVehicle(v: ServerVehicle, ax: number, ay: number): void;
   spawnEnemy(gang: GangId, x: number, z: number, o: { tag: string; run: number; tgt: string; hp?: number }): Ped;
   spawnNpc(x: number, z: number, o: { tag: string; run: number; hp: number }): Ped;
   nearestTraffic(x: number, z: number, maxR: number): ServerVehicle | null;
@@ -275,6 +278,16 @@ export class QuestEngine {
     run.timeLeft = st.timeLimitSeconds ?? -1;
     run.objs = st.objectives.map((def) => ({ def, done: false, t: 0, n: 0, idx: new Map() }));
     for (const o of run.objs) {
+      if (o.def.type === 'herd') {
+        // Rinder (Tier-Archetyp, damit Clients Kühe zeichnen) rund um den Startpunkt
+        const from = this.loc(run, o.def.from);
+        if (from) for (let k = 0; k < o.def.count; k++) {
+          const a = (k / o.def.count) * Math.PI * 2, r = 3 + (k % 3) * 2.5;
+          const spot = findFootSpot(this.h.map, from.x + Math.cos(a) * r, from.z + Math.sin(a) * r, 4) ?? from;
+          const ped = this.h.spawnNpc(spot.x, spot.z, { tag: o.def.tag, run: run.id, hp: 999 });
+          ped.arch = ARCH_INDEX.cow;
+        }
+      }
       if (o.def.type === 'race') {
         const refs = Array.isArray(o.def.points) ? o.def.points : [o.def.points];
         const pts = refs.map((r) => this.loc(run, r)).filter((p): p is Point => !!p);
@@ -330,7 +343,7 @@ export class QuestEngine {
           const kind = a.kind === 'boat' ? VehicleKind.Boat : a.kind === 'airboat' ? VehicleKind.Airboat : a.kind === 'bike' ? VehicleKind.Bike : VehicleKind.Car;
           const variant = a.model && kind === VehicleKind.Car ? variantByModel(a.model) : a.variant ?? defaultVariant(kind, 0);
           const v = this.h.spawnVehicle(kind, variant, spot.x, spot.z, heading, a.color);
-          if (v) { v.qtag = a.tag; v.qrun = run.id; v.home = null; if (a.traffic) this.h.adoptTraffic(v); }
+          if (v) { v.qtag = a.tag; v.qrun = run.id; v.home = null; v.qchase = !!a.chase; if (a.traffic) this.h.adoptTraffic(v); }
         }
         break;
       }
@@ -397,6 +410,17 @@ export class QuestEngine {
     if (run.timeLeft >= 0) {
       run.timeLeft -= dt;
       if (run.timeLeft <= 0) { this.finish(run, false, 'Zeit abgelaufen.'); return; }
+    }
+    // Verfolger-Fahrzeuge der Quest (chase): auf den nächsten Teilnehmer zuhalten
+    for (const v of this.h.vehicles.values()) {
+      if (v.qrun !== run.id || !v.qchase || v.sim.dmg.wreck) continue;
+      const c = v.sim.car;
+      let best: { x: number; z: number } | null = null, bd = Infinity;
+      for (const p of crew) { const q = this.h.positionOf(p); const d = dist2(q.x, q.z, c.x, c.z); if (d < bd) { bd = d; best = q; } }
+      if (!best || bd > 250 * 250) continue;
+      const diff = Math.atan2(best.x - c.x, best.z - c.z) - c.a;
+      const w = Math.atan2(Math.sin(diff), Math.cos(diff));
+      this.h.driveVehicle(v, Math.max(-1, Math.min(1, -w * 1.8)), Math.abs(w) > 1.3 ? 0.4 : 1);
     }
     for (const o of run.objs) {
       if (o.done) continue;
@@ -496,6 +520,34 @@ export class QuestEngine {
       }
       case 'loseWanted': {
         if (run.stageT > 1 && crew.every((p) => p.wanted === 0)) o.done = true;
+        break;
+      }
+      case 'herd': {
+        const cows = this.tagged(run, d.tag).ped;
+        const l = this.loc(run, d.at);
+        if (!cows.length || !l) { o.done = true; break; }
+        let cx = 0, cz = 0;
+        for (const c of cows) { cx += c.x; cz += c.z; }
+        cx /= cows.length; cz /= cows.length;
+        const drivers = crew.map((p) => at(p)).filter((q) => q.inVehicle);
+        let inside = 0;
+        const r = d.radius ?? 14;
+        for (const c of cows) {
+          if (c.rt > 0) continue;
+          // Flucht vor Fahrzeugen (Druck wie beim Treiben), Zusammenhalt der Herde, etwas Grasen
+          let fx = 0, fz = 0, push = 0;
+          for (const q of drivers) {
+            const dx = c.x - q.x, dz = c.z - q.z, dd = Math.hypot(dx, dz);
+            if (dd < 18 && dd > 0.1) { const w = (18 - dd) / 18; fx += (dx / dd) * w; fz += (dz / dd) * w; push = Math.max(push, w); }
+          }
+          const hx = cx - c.x, hz = cz - c.z, hd = Math.hypot(hx, hz);
+          if (hd > 5) { fx += (hx / hd) * 0.35; fz += (hz / hd) * 0.35; }
+          const fl = Math.hypot(fx, fz);
+          if (fl > 0.05) stepPawn(this.h.map, c, fx / fl, -fz / fl, 0, dt, 1.2 + push * 3.4);
+          if (dist2(c.x, c.z, l.x, l.z) < r * r) inside++;
+        }
+        o.n = inside;
+        if (inside >= Math.ceil(cows.length * 0.8)) o.done = true;
         break;
       }
       case 'race': {
@@ -611,6 +663,7 @@ export class QuestEngine {
         }
         case 'survive': prog.push(`Überleben ${Math.floor(o.t)}/${d.seconds} s`); break;
         case 'loseWanted': prog.push('Fahndung abschütteln'); break;
+        case 'herd': if (l && !o.done) { targets.push([l.x, l.z, d.radius ?? 14, 1]); prog.push(`Rinder in der Koppel: ${o.n}/${this.tagged(run, d.tag).ped.length}`); } break;
       }
     }
     if (run.places.length && run.def.rewards.byPlace) prog.push(`Platz ${run.places.indexOf(p.id) + 1 || '–'}`);

@@ -45,6 +45,11 @@ import { toonVC, vehicleMat } from '../render/models';
 import { AirportView } from '../render/AirportView';
 import { moodFor } from '../render/palette';
 import { Particles } from '../render/Particles';
+import { NorthView } from '../render/NorthView';
+import { CountrySound } from '../audio/CountrySound';
+import { weekdayAt } from '../../../shared/src/npc/population';
+import { FarLod } from '../render/FarLod';
+import { OKEE_PLACES, okeePads } from '../../../shared/src/world/okeePeak';
 import { Tracers } from '../render/Tracers';
 import { QuestMarkers, ShopsView } from '../render/ShopsView';
 import { ArenaView } from '../render/ArenaView';
@@ -143,6 +148,15 @@ export class Game {
   private ride = -1;
   private post: PostFX;
   private particles: Particles;
+  /** Norden: Stausee, Wasserfall, Funkturm, Windräder, Lagerfeuer, Rauch, Agrarflugzeug. */
+  private north: NorthView;
+  /** Land-Ambience und Radio. */
+  private country: CountrySound;
+  private honkWas = false;
+  /** Fern-LOD der Insel (Panorama/Fernrohr/große Flughöhe). */
+  private farLod: FarLod;
+  /** Fernrohr-Blick (Restzeit s) und Drehwinkel. */
+  private scope: { t: number; yaw: number; x: number; z: number; y: number } | null = null;
   private gfx: GfxSettings = loadGfx();
 
   private recs = new Map<number, VehRec>();
@@ -229,6 +243,10 @@ export class Game {
     };
     this.particles = new Particles(this.map);
     this.airport = new AirportView(this.map, vehicleMat, toonVC);
+    this.north = new NorthView(this.map);
+    this.country = new CountrySound(this.sfx, this.map);
+    this.farLod = new FarLod(this.map);
+    this.scene.add(this.north.group, this.farLod.group);
     // Namen der obersten Gruppen (Draw-Call-Aufschlüsselung im Benchmark)
     this.world.group.name = 'world'; this.views.group.name = 'entities'; this.particles.group.name = 'particles'; this.props.group.name = 'props';
     this.features.group.name = 'features'; this.smartObjects.group.name = 'smartObjects'; this.fx.group.name = 'vehicleFx'; this.tracers.group.name = 'tracers';
@@ -284,6 +302,10 @@ export class Game {
       if (st) { this.storyDir.interact(st); return; }
       const s = this.shopNearMe();
       if (s) { this.panels.openTalk(s); return; }
+      // Münzfernrohr am Gipfel / in den Aussichtsbuchten: Blick über ganz Palmara
+      if (this.scope) { this.scope = null; return; }
+      const tel = this.telescopeNearMe();
+      if (tel) { this.scope = { t: 25, yaw: 0, ...tel }; this.hud.toast('Fernrohr: Blick über Palmara – A/D schwenken, E beenden.', 'info'); return; }
       const ph = this.phoneNearMe();
       if (ph) this.net.send({ t: 'phone', id: ph.id });
       this.net.send({ t: 'hold', on: true });
@@ -501,6 +523,24 @@ export class Game {
   /** Tageszeit für die Darstellung (Story-Szenen dürfen sie überschreiben, z. B. Sonnenuntergang im Intro). */
   private viewDay() { return this.bench ? this.day : this.storyDir.dayOverride ?? this.day; }
 
+  private telescopeNearMe(): { x: number; y: number; z: number } | null {
+    if (this.predictor.inVehicle) return null;
+    const me = this.predictor.view();
+    const list: [number, number][] = OKEE_PLACES.telescopes.map(([x, z]) => [x, z]);
+    for (const p of okeePads()) if (p.name === 'Aussichtsbucht') list.push([p.x - 2, p.z]);
+    for (const [x, z] of list) if ((x - me.x) ** 2 + (z - me.z) ** 2 < 3.5 * 3.5) return { x, z, y: this.map.terrainHeight(x, z) + 1.5 };
+    return null;
+  }
+
+  /**
+   * Foto-/Panoramakamera (Dev, Mess- und Screenshot-Skripte): Kamera an (x, y, z), Blick auf (lx, ly, lz).
+   * Ohne Argumente zurück zur normalen Kamera.
+   */
+  photo(x?: number, y?: number, z?: number, lx?: number, ly?: number, lz?: number, fov?: number) {
+    if (x === undefined) { this.rig.photo = null; return; }
+    this.rig.photo = { pos: new THREE.Vector3(x, y, z), look: new THREE.Vector3(lx, ly, lz), fov };
+  }
+
   private phoneNearMe(): PhoneDef | null {
     const me = this.predictor.view();
     let best: PhoneDef | null = null, bd = 8 * 8;
@@ -647,6 +687,27 @@ export class Game {
         break;
       }
       case 'tree': this.world.wobbleTree(ev[1] as number, ev[2] as number, Math.random() - 0.5, Math.random() - 0.5); break;
+      case 'fence': {
+        // Zaun durchbrochen: Segment kippt um, Holzsplitter-Staub
+        const [, idx, x, z] = ev as number[];
+        this.world.setFenceBroken(idx, true);
+        const y = this.map.surfaceY(x, z);
+        this.fx.dust(x, y + 0.5, z, 1, 0x9a7652, 0, 0);
+        this.fx.sparks(x, y + 0.8, z, 0, 0, 4);
+        this.sfx.weapon('hit', { x, y, z });
+        break;
+      }
+      case 'fenceFix': this.world.setFenceBroken(ev[1] as number, false); break;
+      case 'blast': {
+        // Steinbruch-Sprengung: Staubwolke, Kamera-Wackeln in der Nähe
+        const [, x, z] = ev as number[];
+        this.north.quarryBlast();
+        const me = this.predictor.view();
+        const d = Math.hypot(me.x - x, me.z - z);
+        if (d < 160) this.rig.kick(Math.min(1, 60 / Math.max(20, d)));
+        this.sfx.weapon('heavy', { x, y: this.map.terrainHeight(x, z) + 2, z });
+        break;
+      }
       case 'prop': {
         const [, id, x, , z, speed] = ev as number[];
         const p = this.props.props[id];
@@ -834,11 +895,27 @@ export class Game {
     this.rig.altitude = alt;
     this.airport.update(dt, this.sky.night, this.buffer.serverNow, vehicleStates.values(), this.rig.target);
     this.sky.fogScale = 1 + Math.min(alt, AIR_SETTINGS.ceiling) / 90;
+    // Fernrohr: langsamer Schwenk über die Insel (A/D), läuft nach 25 s aus oder bei Bewegung
+    if (this.scope) {
+      const sc = this.scope;
+      sc.t -= dt;
+      sc.yaw += (this.input.touch.ax || (this.input.isDown('KeyD') ? 1 : this.input.isDown('KeyA') ? -1 : 0)) * dt * 0.5 + dt * 0.05;
+      const ax = 1300 - sc.x, az = 1000 - sc.z, base = Math.atan2(ax, az);
+      const yaw = base + Math.sin(sc.yaw) * 1.1;
+      this.rig.photo = { pos: new THREE.Vector3(sc.x, sc.y + 2, sc.z), look: new THREE.Vector3(sc.x + Math.sin(yaw) * 900, sc.y - 120, sc.z + Math.cos(yaw) * 900), fov: 30 };
+      if (sc.t <= 0) { this.scope = null; this.rig.photo = null; }
+    }
+    const pano = !!this.rig.photo;
+    if (pano) this.sky.fogScale = 7;
+    this.farLod.setActive(pano || alt > 140);
     // Minispiel-Zuschauer (ausgeschieden/wartend, zu Fuß): Kamera auf die Arena
     const spec = this.predictor.inVehicle ? undefined : this.questState?.mg?.spectate;
     if (spec) this.rig.update(spec[0], this.map.surfaceY(spec[0], spec[1]), spec[1], 0, 0, 0, true, dt);
     else this.rig.update(me.x, myY, me.z, me.a, ownCar?.vx ?? rideState?.vx ?? 0, ownCar?.vz ?? rideState?.vz ?? 0, this.predictor.inVehicle || !!rideState, dt, ownCar?.boost ? ASSISTS.nitroFov : 0);
     U.uTime.value += dt;
+    // Wind nimmt mit der Höhe zu (Okee Peak): Vegetation, Partikel, Windräder, Wind-Ambience
+    const windWant = 1 + Math.max(0, myY - 25) / 60;
+    U.uWind.value += (windWant - U.uWind.value) * Math.min(1, dt * 0.5);
     U.uFocus.value.set(me.x, myY + 1, me.z);
     this.sky.setMood(moodFor(this.map.zoneAt(me.x, me.z), this.map.districtAt(me.x, me.z)?.style ?? null));
     // Schattenbereich an den sichtbaren Ausschnitt anpassen (Kameraabstand = 30 / zoom)
@@ -867,6 +944,7 @@ export class Game {
     P.begin('effects');
     for (const p of this.props.sprays) this.fx.splash(p.x, p.y + 0.8, p.z, 0, 7, 0, 2);
     this.particles.update(dt, this.rig.target);
+    this.north.update(dt, this.rig.target);
     this.fx.update(dt);
     this.tracers.update(dt);
     P.end('effects');
@@ -887,6 +965,12 @@ export class Game {
     this.sfx.frame(rawDt, this.rig.target.x, myY, this.rig.target.z, tmpV3.x, tmpV3.z);
     this.ownCarAudio(rawDt);
     this.footsteps(me.x, me.z, rawDt);
+    // Land-Ambience, Radio (Standardsender je Gebiet), Hupen-Echo am Berg
+    const honkNow = this.predictor.inVehicle && (this.buttons & Btn.HORN) !== 0;
+    if (honkNow && !this.honkWas) this.country.honk(me.x, myY, me.z);
+    this.honkWas = honkNow;
+    const radioToast = this.country.update(rawDt, me.x, myY, me.z, this.predictor.inVehicle, this.viewDay(), this.sky.night, U.uWind.value, weekdayAt(Date.now()) === 0);
+    if (radioToast) this.hud.toast(radioToast, 'info');
     P.end('audio');
 
     P.begin('ui');

@@ -9,7 +9,8 @@ import { hasPopTable } from '../../../shared/src/npc/population';
 import { knockPawn, stepPawn } from '../../../shared/src/sim/movement';
 import { offsetPolyline, type Vec2 } from '../../../shared/src/world/geometry';
 import { drivablePath } from '../../../shared/src/world/roads';
-import { Zone, type RoadEdge, type WorldMap } from '../../../shared/src/world/WorldMap';
+import { RoadType, Zone, type RoadEdge, type WorldMap } from '../../../shared/src/world/WorldMap';
+import { ruralArea } from '../../../shared/src/world/north';
 import type { Mind } from './NpcBrain';
 
 const STROLL_SPEED = 1.5;
@@ -105,6 +106,25 @@ export class Pedestrians {
         const mid = e.pts[Math.floor(e.pts.length / 2)];
         const district = map.districtAt(mid[0], mid[1])?.name ?? '';
         const w: Walkway = { edge: e, side, pts: offsetPolyline(center, side * (e.width / 2 + e.sidewalk / 2)), district };
+        this.walkways.push(w);
+        for (const n of [e.a, e.b]) {
+          let l = this.byNode.get(n);
+          if (!l) this.byNode.set(n, (l = []));
+          l.push(w);
+        }
+      }
+    }
+    // Land (Norden, Okeefield-Orte ohne Gehwege): Bankett neben der Fahrbahn als Fußweg, Gebiet aus
+    // north.ts – nur dort, wo eine Population Table existiert (Höfe, Berg, Landstraße, Feldweg, Stadtrand)
+    for (const e of map.edges) {
+      if (e.sidewalk > 0 || e.type === RoadType.Pier || e.len - e.trimA - e.trimB < 16) continue;
+      const mid = e.pts[Math.floor(e.pts.length / 2)];
+      const d = map.districtAt(mid[0], mid[1])?.name;
+      const area = d ?? ruralArea(mid[0], mid[1], (x, z) => map.zoneAt(x, z), e.type === RoadType.Dirt) ?? '';
+      if (!hasPopTable(area)) continue;
+      const center = drivablePath(e, true);
+      for (const side of [1, -1] as const) {
+        const w: Walkway = { edge: e, side, pts: offsetPolyline(center, side * (e.width / 2 + 1.0)), district: area };
         this.walkways.push(w);
         for (const n of [e.a, e.b]) {
           let l = this.byNode.get(n);
@@ -250,6 +270,8 @@ export class Pedestrians {
 
   /** Waffentreffer: Schaden + Rückstoß. Gibt true zurück, wenn der Passant besiegt wurde. */
   hit(p: Ped, dmg: number, dx: number, dz: number): boolean {
+    // Tiere: Comic-Physik ohne Verletzungen (umkippen, aufrappeln, weglaufen)
+    if (isAnimal(p)) dmg = 0;
     p.hp -= dmg;
     const dead = p.hp <= 0;
     if (p.scn) { p.scn = null; p.act = 0; }
@@ -430,3 +452,8 @@ export function nearestIdx(w: Walkway, x: number, z: number): number {
   return best;
 }
 export { ARCH_INDEX };
+
+/** Ist der Passant ein Tier (Archetyp mit `animal`)? */
+export function isAnimal(p: { arch?: number }): boolean {
+  return p.arch !== undefined && p.arch >= 0 && !!archetypeOf(p.arch).animal;
+}

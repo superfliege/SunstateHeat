@@ -9,8 +9,69 @@ import { generateProps, PropType } from './features';
 import { pointAt, pointInPolygon } from './geometry';
 import { Tile } from './tiles';
 import type { WorldMap } from './WorldMap';
+import { FARMS, farmFences } from './farms';
+import { OKEE_PLACES, RESERVOIR } from './okeePeak';
 
-export interface SmartObject { id: number; kind: SmartKindId; x: number; z: number; rot: number; district: string }
+/**
+ * Höfe und Berg als Smart-Object-Sammlungen: Futtertröge, Melkstand, Heuballen, Zaunstellen,
+ * Feldreihen, Veranda, Werkbank, Gitarrenstuhl, Eierstand; am Berg Fernrohre, Lagerfeuer,
+ * Angelplätze am Stausee. Viertelname = Gebiet der Population Table ('Okee Höfe' / 'Okee Peak').
+ */
+function ruralObjects(map: WorldMap, add: (kind: SmartKindId, x: number, z: number, rot: number, district: string, species?: string) => void) {
+  const H = 'Okee Höfe', P = 'Okee Peak';
+  // Weideplätze für Tiere (je Tierart): in Weiden/Ausläufen, Hofhunde und Hühner auf dem Hofplatz
+  const ARCH: Record<string, string> = { cow: 'cow', dairy_cow: 'dairy_cow', horse: 'horse', chicken: 'chicken', goat: 'goat', dog: 'farm_dog', turkey: 'turkey' };
+  for (const f of FARMS) for (const a of f.animals) {
+    const sp = ARCH[a.kind];
+    if (!sp) continue;
+    const fl = a.field >= 0 ? f.fields[a.field] : null;
+    const n = Math.max(1, Math.ceil(a.count / 6));
+    for (let k = 0; k < n; k++) {
+      const u = fl ? (k + 0.5) / n - 0.5 : 0;
+      const x = fl ? fl.x + u * fl.hw * 1.4 : f.x + 4 + k * 3, z = fl ? fl.z : f.z + 5;
+      add(SmartKind.Graze, x, z, k * 1.3, H, sp);
+    }
+  }
+  // Wild am Berg: Hirsche und Wildtruthähne auf Lichtungen am Bergfuß
+  for (const [x, z, sp] of [[780, 430, 'deer'], [860, 400, 'deer'], [990, 380, 'deer'], [700, 400, 'turkey'], [930, 420, 'turkey'], [620, 380, 'deer'], [1040, 420, 'turkey']] as [number, number, string][]) {
+    add(SmartKind.Graze, x, z, 0, P, sp);
+  }
+  for (const f of FARMS) {
+    for (const p of f.props) {
+      const k: Partial<Record<string, SmartKindId>> = {
+        trough: SmartKind.FeedTrough, feed_trough: SmartKind.FeedTrough, hay_round: SmartKind.HayStack, hay_square: SmartKind.HayStack,
+        porch_swing: SmartKind.Porch, tool_bench: SmartKind.ToolBench, guitar_chair: SmartKind.GuitarChair, egg_stand: SmartKind.EggStand,
+        farm_stand: SmartKind.EggStand, milk_cans: SmartKind.MilkStall,
+      };
+      const kind = k[p.k];
+      if (kind !== undefined) add(kind, p.x, p.z, p.rot, H);
+    }
+    const milk = f.buildings.find((b) => b.k === 'milking' || b.k === 'stable');
+    if (milk) add(SmartKind.MilkStall, milk.x, milk.z + milk.d / 2 + 1.5, milk.rot, H);
+    // Feldarbeit: je Feld zwei Reihen-Plätze
+    for (const fl of f.fields) {
+      if (fl.k === 'arena' || fl.k === 'corral') continue;
+      for (const t of [-0.4, 0.3]) add(SmartKind.FieldRow, fl.x + fl.hw * t, fl.z + fl.hd * 0.2, fl.rot, H);
+    }
+  }
+  // Zaunstellen (Reparieren, Plaudern über den Zaun) – jede dritte Zaunseite
+  farmFences().forEach((s, i) => {
+    if (i % 3) return;
+    const x = (s.ax + s.bx) / 2, z = (s.az + s.bz) / 2;
+    add(SmartKind.FenceSpot, x, z, Math.atan2(-(s.bz - s.az), s.bx - s.ax) + Math.PI / 2, H);
+  });
+  for (const [x, z, rot] of OKEE_PLACES.telescopes) add(SmartKind.Telescope, x, z, rot, P);
+  const C = OKEE_PLACES.campground;
+  for (const [lx, lz] of [[-16, 10], [-4, 14], [8, 10], [-20, -4], [14, -6], [0, 0]]) add(SmartKind.Campfire, C.x + lx + 3, C.z + lz + 1, 0, P);
+  for (const [x, z, a] of RESERVOIR.fishSpots) add(SmartKind.FishSpot, x, z, a, P);
+  add(SmartKind.CafeTable, OKEE_PLACES.cafe.x - 3, OKEE_PLACES.cafe.z + 6, OKEE_PLACES.cafe.rot, P);
+  add(SmartKind.CafeTable, OKEE_PLACES.cafe.x + 3, OKEE_PLACES.cafe.z + 6, OKEE_PLACES.cafe.rot, P);
+  add(SmartKind.Bench, OKEE_PLACES.summit.x - 6, OKEE_PLACES.summit.z + 4, Math.PI, P);
+  void map;
+}
+
+/** species: nur diese Tierart (Archetyp-ID) nutzt das Objekt (Weideplätze). */
+export interface SmartObject { id: number; kind: SmartKindId; x: number; z: number; rot: number; district: string; species?: string }
 
 /** Handplatzierte Objekte (überschreiben nichts, ergänzen nur). Beispiel: { kind: SmartKind.Grill, x: 1200, z: 900, rot: 0, district: 'Trailerpark' } */
 export const SMART_OBJECT_OVERRIDES: Omit<SmartObject, 'id'>[] = [];
@@ -129,6 +190,7 @@ export function generateSmartObjects(map: WorldMap): SmartObject[] {
       out.push({ id: out.length, kind, x: p.x, z: p.z, rot: p.rot, district: dName });
     }
   }
+  ruralObjects(map, (kind, x, z, rot, d, species) => { if (add(kind, x, z, rot, d, 1.5) && species) out[out.length - 1].species = species; });
   for (const o of SMART_OBJECT_OVERRIDES) out.push({ ...o, id: out.length });
   cache.set(map, out);
   return out;

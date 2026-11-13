@@ -50,17 +50,19 @@ export const LAKES: ShapeDef[] = [
 
 /** Flüsse und Kanäle (Polylinie, Breite in Metern). */
 export const RIVERS: { name: string; pts: Vec2[]; width: number }[] = [
-  { name: 'Sabal River', pts: [[656, 300], [646, 380], [628, 450], [592, 520], [560, 590], [540, 630]], width: 18 },
+  // entspringt am Fuß des Okee Peak (unterhalb des Stausees)
+  { name: 'Sabal River', pts: [[626, 396], [622, 450], [592, 520], [560, 590], [540, 630]], width: 18 },
   { name: 'Bay Channel', pts: [[512, 676], [496, 740], [480, 800], [440, 840]], width: 40 },
   { name: 'Gator Canal', pts: [[912, 1340], [896, 1420], [880, 1504], [884, 1600], [904, 1720]], width: 16 },
   { name: 'Snake Run', pts: [[752, 1568], [800, 1552], [880, 1540]], width: 14 },
   { name: 'Coralia Canal', pts: [[1300, 1340], [1340, 1352], [1400, 1356], [1450, 1352]], width: 14 },
 ];
 
-/** Berge: [x, z, Radius, Höhe]. */
-export const HILLS: [number, number, number, number][] = [
-  [880, 224, 96, 34], [784, 416, 60, 18], [912, 432, 76, 24], [1040, 448, 60, 18], [1136, 392, 44, 14],
-];
+/**
+ * Kleine Hügel abseits des Bergs: [x, z, Radius, Höhe]. Die früheren Randberge im Norden sind
+ * im Okee Peak aufgegangen (okeePeak.ts: Gipfel, Grat, Stausee, Steinbruch, Bergstraßen).
+ */
+export const HILLS: [number, number, number, number][] = [];
 
 // ------------------------------------------------------------------ Zonen
 /** Zonen-Zentren (Voronoi); Viertel überschreiben die Zone in ihrem Polygon. */
@@ -160,11 +162,12 @@ export const ROADS: RoadDef[] = [
   { name: 'Cane Ridge Road', type: RoadType.Main, rural: 8, pts: [[1166, 762], [1210, 790], [1262, 812]] },
   // mündet rechtwinklig in den Coastline Highway (Kreisverkehr)
   { name: 'Refinery Road', type: RoadType.Main, pts: [[1076, 690], [1120, 690], [1164, 690], [1206, 690], [1300, 694], [1398, 690], [1424, 688]] },
-  { name: 'Pinecrest Parkway', type: RoadType.Side, rural: 14,
-    pts: [[692, 534], [688, 440], [706, 370], [800, 342], [960, 346], [1074, 372], [1092, 470], [1076, 608]] },
+  // Fußstraße des Okee Peak: hier zweigen Switchback Road (Gipfel) und Quarry Road (Steinbruch) ab
+  { name: 'Pinecrest Parkway', type: RoadType.Main, rural: 8,
+    pts: [[692, 534], [690, 488], [760, 498], [860, 510], [960, 512], [1060, 492], [1094, 524], [1076, 608]] },
   // Schleife durchs Hochland zurück nach Port Sabal (Brücke über den Sabal River)
   { name: 'Northwest Road', type: RoadType.Side, rural: 16,
-    pts: [[688, 440], [580, 430], [500, 440], [470, 480], [488, 530], [556, 552], [622, 546]] },
+    pts: [[690, 488], [640, 452], [580, 432], [500, 440], [470, 480], [488, 530], [556, 552], [622, 546]] },
   // Zufahrt zum Testgelände
   { name: 'Northeast Road', type: RoadType.Dirt, rural: 10, dest: 'end', pts: [[1330, 206], [1290, 190], [1240, 210]] },
   { name: 'Pine Hollow Road', type: RoadType.Side, rural: 20,
@@ -213,6 +216,6 @@ export const POI = {
   spawnDistrict: 'Downtown',
   questStart: [1530, 1214] as Vec2, // Kai auf der Hafeninsel
   questDest: [940, 1020] as Vec2, // Trailerpark Sunny Acres
-  gasStations: [[836, 1104], [1160, 812], [720, 560]] as Vec2[],
+  gasStations: [[836, 1104], [1160, 812], [720, 560], [1008, 548]] as Vec2[], // letzte: Truckstop am Bergfuß (Dustline)
   airboats: [[948, 1548], [936, 1566], [924, 1540]] as Vec2[],
 };

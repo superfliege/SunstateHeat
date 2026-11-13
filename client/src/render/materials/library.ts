@@ -312,6 +312,23 @@ export const MATERIALS: MaterialDef[] = [
   M({ name: 'cane_field', tile: [3, 3], palette: 'pine',
     paint: (p) => { p.fill(0x8aa048).grain(0.05); for (let x = 0; x < 64; x += 4) { p.rect(x, 0, 2, 64, 0xa8b85a); p.rect(x + 2, 0, 1, 64, 0x5e7a38); } p.speckle(0.04, [0xc8c46a], 1); } }),
 
+  // Okee Peak & Höfe: Geröll, Ackerfurchen (Gemüse/Melonen), sattes Weidegras
+  M({ name: 'scree', tile: [5, 5], palette: 'highlands',
+    paint: (p) => { p.fill(0xa49a90).grain(0.07).blotches(0x8a827c, 0.5, 16).speckle(0.09, [0xc4bab0, 0x7a726c, 0x6a6460], 2).speckle(0.03, [0xd8d0c4], 3); for (let i = 0; i < 3; i++) p.crack(Math.floor(p.rnd() * 64), Math.floor(p.rnd() * 64), 12, 0x5e5a6e); } }),
+  M({ name: 'crop_rows', tile: [4, 4], palette: 'pine', bleach: 0.15,
+    paint: (p) => {
+      p.fill(0x8a5a38).grain(0.06).speckle(0.04, [0x6e4628, 0xa87048], 1);
+      // Dämme mit Pflanzen, dazwischen dunkle Furchen
+      for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+        const r = y % 16;
+        if (r < 3) p.set(x, y, 0x5a3a22);
+        else if (r > 5 && r < 12 && p.rnd() < 0.6) p.set(x, y, p.rnd() < 0.5 ? 0x6aa848 : 0x52903a);
+      }
+      p.speckle(0.006, [0x3e8a3a, 0xd8e070], 2);
+    } }),
+  M({ name: 'meadow', tile: [6, 6], palette: 'pine', bleach: 0.1,
+    paint: (p) => grassStrokes(p, 0x8cbc5a, [0xa0cc68, 0x78aa4c, 0xb4d078, 0x6c9a44], [0xfff0a0, 0xf7f0e4, 0xd8c8f0]) }),
+
   // ---------------------------------------------------------------- Neon & Schilder
   M({ name: 'sign_backing', tile: [4, 2], palette: 'downtown', toon: { flags: SURF.EMISSIVE | SURF.NOTINT },
     paint: (p) => { p.fill(0x2c2a40); p.rect(2, 2, 60, 60, 0x3a3656); for (let i = 0; i < 5; i++) p.rect(8 + i * 10, 22, 7, 20, 0xf7f0e4); },

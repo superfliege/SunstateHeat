@@ -16,7 +16,8 @@ import {
   type CarCollision, type Impact,
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
-import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, TANK_VARIANT, variantInfo } from '../../../shared/src/sim/handling';
+import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, TANK_VARIANT, variantByName, variantInfo } from '../../../shared/src/sim/handling';
+import { northTarget } from '../../../shared/src/world/north';
 import { carBody, findFootSpot, findSwimSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
 import type { Box } from '../../../shared/src/world/collision';
 import { carVsProps, createPropBody, PROP_RESPAWN, PROP_RESPAWN_RANGE, stepPropBody, type PropBody, type PropHit } from '../../../shared/src/sim/props';
@@ -55,7 +56,8 @@ interface HitRef { ped?: Ped; player?: ServerPlayer; veh?: ServerVehicle }
 import { BALANCE, levelFromXp } from '../../../shared/src/balance';
 import { logTransaction } from '../services/Ledger';
 import type { PlayerProfile, PlayerStore } from '../services/PlayerStore';
-import { Pedestrians, type Ped } from '../sim/Pedestrians';
+import { isAnimal, Pedestrians, type Ped } from '../sim/Pedestrians';
+import { Countryside, SHERIFF_VARIANT } from '../sim/Countryside';
 import { Population } from '../sim/Population';
 import { NpcBrain } from '../sim/NpcBrain';
 import { Perception } from '../sim/Perception';
@@ -109,6 +111,8 @@ export class WorldRoom {
   private readonly gangs: Gangs;
   private readonly phones: PhoneDef[];
   private readonly police: Police;
+  /** Land: Höfe, Zäune, Tiere, County Sheriff, Straßensperren, Steinbruch. */
+  private readonly country: Countryside;
   private readonly races: Races;
   private readonly hunt: TaxiHunt;
   /** Fahrzeug-Minispiele (Sumo & Co., server/minigames). */
@@ -209,6 +213,12 @@ export class WorldRoom {
       event: (ev) => { const v = this.vehicles.get(ev[1] as number); if (v) this.emit(v.sim.car.x, v.sim.car.z, ev, v.id); },
     }, Math.round(44 * NPC_DENSITY), Math.round(9 * NPC_DENSITY)); // Stadt viel dichter als das Umland
     this.shops = generateShops(map);
+    this.country = new Countryside({
+      map, players: this.players, vehicles: this.vehicles, allocId: () => this.allocId(),
+      emit: (x, z, ev) => this.emit(x, z, ev),
+      notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
+      crime: (p, heat, x, z) => this.police.crime(p, heat, x, z),
+    });
     this.police = new Police({
       map, players: this.players, vehicles: this.vehicles, peds: this.peds,
       allocId: () => this.allocId(),
@@ -222,6 +232,7 @@ export class WorldRoom {
       arrest: (p) => this.arrest(p),
       witness: (ped, p, x, z) => this.perception.onWitness(ped, p, x, z),
       exempt: (p) => this.hunt?.role(p.id) != null,
+      isRural: (x, z) => this.country.isRural(x, z),
     });
     this.phones = payphones(map);
     this.gangs = new Gangs({
@@ -233,6 +244,7 @@ export class WorldRoom {
       notice: (p, text, kind) => p.conn.send({ t: 'notice', text, kind }),
     });
     this.quests = new QuestEngine({
+      driveVehicle: (v, ax, ay) => { if (v.driver < 0 || v.driver === DRIVER_NPC) { v.driver = DRIVER_NPC; v.kinematic = false; const n = Math.round(1 / SERVER_TICK_HZ / SIM_DT); for (let k = 0; k < n; k++) this.physicsStep(v, ax, ay, 0, null); } },
       players: this.players, vehicles: this.vehicles, peds: this.peds, map,
       locations: questLocations(map), soloOk: DEV, seed: 4242,
       positionOf: (p) => this.positionOf(p),
@@ -765,6 +777,15 @@ export class WorldRoom {
         kompakt: 0, compact: 0, limousine: 1, sedan: 1, kombi: 2, taxi: 3, sport: 4, muscle: 5, suv: 6, pickup: 7, truck: 8, lkw: 8, bike: 100, motorrad: 100, polizei: 1,
         coupe: 10, gt: 10, hornet: 11, jeep: 12, luxus: 13, van: 14, lieferwagen: 15, muellwagen: 16, kipper: 17, krankenwagen: 18, feuerwehr: 19, cab: 20, racer: 21,
       };
+      // Land & Berg (Varianten nach Name)
+      const farm: Record<string, string> = {
+        hoftraktor: 'Dirt Buddy', traktor: 'Field King 400', oldtimer: 'Rusty Ol\' Red', heuwagen: 'Heuwagen', viehanhaenger: 'Viehanhänger',
+        guellefass: 'Güllefass', pflug: 'Pflug', kisten: 'Orangenkisten-Anhänger', maehdrescher: 'Harvest Titan', farmpickup: 'Rusty Ranch Pick-up',
+        heupickup: 'Hay Hauler', quad: 'Mule ATV', buggy: 'Ridge Runner Buggy', milchlaster: 'Milchtanklaster', viehtransporter: 'Viehtransporter',
+        holzlaster: 'Holztransporter', muldenkipper: 'Muldenkipper', rasenmaeher: 'Lawn Boss', wohnmobil: 'Wanderlust RV', ranger: 'County Ranger',
+        sheriff: 'County Sheriff', rig: 'Dustline Rig',
+      };
+      for (const [k, n] of Object.entries(farm)) names[k] = variantByName(n);
       const variant = arg && arg in names ? names[arg] : Math.floor(Math.random() * CAR_VARIANTS.length);
       const kind = variant === 100 ? VehicleKind.Bike : VehicleKind.Car;
       const pos = this.positionOf(p);
@@ -857,8 +878,11 @@ export class WorldRoom {
         say(`${AIRPORT_NAME}: Vorfeld. Sunbird P1, Kolibri am Terminal-Helipad, Marlin im Hangar 1, Pelikan auf Hangar 2.`);
         return;
       }
+      // Norden: Okee Peak und Höfe
+      const north = northTarget(rest);
+      if (north) { this.teleport(p, north.x, north.z); say(north.name); return; }
       const d = rest ? this.map.districts.find((dd) => dd.name.toLowerCase().includes(rest)) : undefined;
-      if (!d) { say('/tp <flughafen|' + this.map.districts.map((dd) => dd.name).join('|') + '>'); return; }
+      if (!d) { say('/tp <flughafen|gipfel|switchback|stausee|steinbruch|camping|ranger|truckstop|holzplatz|<hof>|' + this.map.districts.map((dd) => dd.name).join('|') + '>'); return; }
       const [cx, cz] = centroid(d.poly);
       // nächster Punkt auf einer Straße, damit man nicht in einem Gebäude landet
       let bx = cx, bz = cz, bd = Infinity;
@@ -903,10 +927,19 @@ export class WorldRoom {
     } else if (cmd === 'story') {
       // Hauptgeschichte testen: /story info|reset|intro|rang <1-7>|skip|bis <nr>|tp <figur|wohnort|ort>
       this.story.devCommand(p, text.slice(1).toLowerCase().split(/\s+/).slice(1), say, () => this.quests.forceComplete(p));
+    } else if (cmd === 'sprengung' || cmd === 'blast') {
+      // Steinbruch-Sprengung auslösen (Ereignis E54)
+      this.country.quarryBlast();
+      say('Steinbruch: Sprengung!');
+    } else if (cmd === 'kolonne' || cmd === 'convoy') {
+      // Mähdrescher-Kolonne (E49): Harvest Titan auf der nächsten Landstraße, Verkehr staut sich dahinter
+      const pos = this.positionOf(p);
+      const n = this.traffic.spawnConvoy(pos.x, pos.z, variantByName('Harvest Titan'), 7);
+      say(n ? `Mähdrescher-Kolonne: ${n} Fahrzeuge.` : 'Keine Landstraße in der Nähe.');
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
+      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad|traktor|hoftraktor|oldtimer|maehdrescher|quad|buggy|muldenkipper|rasenmaeher|wohnmobil|…> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen|gipfel|stausee|steinbruch|camping|ranger|truckstop|hof> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
     }
   }
 
@@ -1270,7 +1303,8 @@ export class WorldRoom {
   // ------------------------------------------------------------------ Polizei, Festnahme, Läden
   /** Streifenwagen für die Verfolgung erzeugen (Limousine, helle Lackierung). */
   private createCopCar(x: number, z: number, a: number, target: number, tank = false): ServerVehicle | null {
-    const sim = createSimVehicle(this.map, VehicleKind.Car, tank ? TANK_VARIANT : 1, x, z, a);
+    // Land: County Sheriff im Pick-up statt Stadtstreife
+    const sim = createSimVehicle(this.map, VehicleKind.Car, tank ? TANK_VARIANT : this.country.isRural(x, z) ? SHERIFF_VARIANT : 1, x, z, a);
     const id = this.allocId();
     const v: ServerVehicle = { id, kind: VehicleKind.Car, color: tank ? 6 : 3, sim, driver: DRIVER_COP, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false, cop: target };
     this.vehicles.set(id, v);
@@ -1468,7 +1502,8 @@ export class WorldRoom {
       const ped = t.ref.ped;
       const defeated = this.peds.hit(ped, dmg, dx, dz);
       this.emit(t.x, t.z, ['hit', r2(t.x), r2(t.z), 0]);
-      this.blood(t.x, t.z, Math.min(1, dmg / 40) + (defeated ? 0.5 : 0), dx, dz, 0);
+      if (!isAnimal(ped)) this.blood(t.x, t.z, Math.min(1, dmg / 40) + (defeated ? 0.5 : 0), dx, dz, 0);
+      else this.country.animalHit(p, ped.x, ped.z);
       if (ped.gang) this.gangs.provoke(ped, p);
       if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
       if (ped.cop) this.police.raise(p, defeated ? 3 : 2, defeated ? HEAT.copKill : HEAT.copHit); // Polizisten angreifen: sofort bekannt
@@ -1748,6 +1783,7 @@ export class WorldRoom {
     this.hunt.update(dt);
     this.mg.update(dt);
     this.police.update(dt);
+    this.country.update(dt);
     this.copter.update(dt, steps, SIM_DT);
     t = this.lap('police+minigames', t);
     this.updatePullOut(dt);
@@ -1820,6 +1856,7 @@ export class WorldRoom {
             // Polizisten umfahren = Angriff; Passanten zählen erst bei echtem Tempo (kein Anrempeln)
             if (dp && ped.gang) this.gangs.provoke(ped, dp); // Gang angefahren: die ganze Gruppe wird wütend
             if (dp && ped.cop) this.police.raise(dp, 2, HEAT.copHit);
+            else if (dp && isAnimal(ped)) this.country.animalHit(dp, ped.x, ped.z); // Tier angefahren: Farmer rufen den Sheriff
             else if (dp && speed > 6) this.police.crime(dp, HEAT.runover, ped.x, ped.z);
           }
           else {
@@ -1830,8 +1867,8 @@ export class WorldRoom {
           const d = derive(v.sim.prof);
           applyImpulse(c, d, hit[3], c.y, hit[4], hit[0] * 80 * speed, 0, hit[1] * 80 * speed);
           this.emit(pawn.x, pawn.z, ['crash', v.id, r2(pawn.x), r2(c.y), r2(pawn.z), r2(hit[0]), r2(hit[1]), r2(Math.min(speed, 6)), -6], v.id);
-          this.blood(pawn.x, pawn.z, Math.min(1.5, speed / 14), c.vx / (speed || 1), c.vz / (speed || 1), 1);
-        } else if (pawn.rt > 0 && pawn.h < 0.5 && speed > 2.5) {
+          if (!ped || !isAnimal(ped)) this.blood(pawn.x, pawn.z, Math.min(1.5, speed / 14), c.vx / (speed || 1), c.vz / (speed || 1), 1);
+        } else if (pawn.rt > 0 && pawn.h < 0.5 && speed > 2.5 && !(ped && isAnimal(ped))) {
           // Liegende Figur wird überfahren: Blut (gedrosselt je Figur), Auto holpert leicht
           const last = this.runOver.get(pawn) ?? -1;
           if (this.clock - last > 0.35) {

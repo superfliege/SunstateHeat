@@ -105,4 +105,6 @@ export interface PoliceProfile {
   presence: Partial<Record<DistrictId, number>>;
   relations: Partial<Record<GangId, Relation>>;
   sampleLines: string[];
+  /** Ländliche Behörde (Norden): ersetzt dort die Stadtpolizei – weniger Streifen, hartnäckiger, Sperren aus Traktoren. */
+  county?: { name: string; sheriff: NamedNpc; deputies: NamedNpc[]; tactics: string[]; sampleLines: string[] };
 }

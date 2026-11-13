@@ -296,3 +296,24 @@ stärkerer Server senkt nur Tick-Zeit und Latenz:
 3. In Produktion starten (`npm start` bzw. `NODE_ENV=production`), Node 22 LTS.
 4. Den Server *nicht* auf demselben Laptop laufen lassen, auf dem gespielt wird – er nimmt dem Spiel
    einen CPU-Kern weg (Physik, NPCs ~8 ms je 50 ms).
+
+## 7. Ausbau Norden (Okee Peak, Höfe) – Messungen
+
+Gleiche Maschine (Cloud-Container, Node 22, ohne GPU):
+
+| Messung | Vorher | Nachher | Bemerkung |
+|---|---|---|---|
+| Server-Tick (`server-bench.ts`, 16 Spieler) | Ø 7,9–8,5 ms, p99 ~18 ms | Ø 8,7 ms, p50 8,2 ms, p99 21 ms, max 49 ms (Einzelspitze „pawns“, GC) | Ziel < 10 ms im Mittel weiter erfüllt; Verkehr 1,8 ms unverändert (Land: weniger Spawns) |
+| Weltgenerierung (`generateWorld`) | ~0,9 s | ~1,3 s | Berg-Höhenfeld + Straßen-Einschnitt; einmal beim Start (Client und Server) |
+| Snapshots | 4,0 KB je Spieler/Tick | 4,0 KB | Tiere laufen über das Passanten-System (keine neuen Nachrichtentypen außer Zaun/Sprengung) |
+
+Kostenbegrenzung im Client:
+- Felder, Zäune, Heuballen, Orangenbaum-Reihen, Zuckerrohr: Instancing über `PlantField` (Culling je Instanz);
+  Zuckerrohr/Gemüse als Bodendecker (Wind nah, jenseits der Bodendecker-Distanz gar nicht gezeichnet).
+- Hof- und Berggebäude schreiben in die bestehenden Chunk-Geometrien (keine zusätzlichen Draw-Calls je Gebäude).
+- Tiere: eine Geometrie je Gelenk, ohne Umrisse, Gliedanimation nur < 70 m (Animations-LOD wie Passanten).
+- `NorthView` (Wasser, Rauch, Wolken, Crop Hopper) nur aktiv, wenn der Fokus im Norden liegt.
+- `FarLod` (Insel + Berg-Silhouette, 1 Draw-Call je Teil) nur im Panorama (Fernrohr) oder ab 140 m Flughöhe.
+- Benchmark-Route: neue Abschnitte `peak` (Okee Peak Gipfel bei Sonnenuntergang) und `fields`
+  (Felder mit Mähdrescher-Kolonne via `/kolonne`). Die Browser-Messung auf dem T580 (Preset „Mittel“)
+  steht noch aus – im Container rendert Chromium per SwiftShader (~10 FPS), Zahlen dort nicht vergleichbar.

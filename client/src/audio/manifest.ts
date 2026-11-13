@@ -94,7 +94,7 @@ const kenney = (prefix: string, count: number, dir = K_IMPACT): SoundFile[] =>
 const ka = (asset: string): SoundFile => ({ asset, license: 'kenney-cc0' });
 
 /** Fahrzeug-Klangklassen (eigene Tabelle, damit z. B. Polizei wie ein V8 klingt). */
-export const ENGINE_SETS = ['compact', 'sedan', 'sport', 'muscle', 'suv', 'truck', 'bike', 'boat', 'airboat'] as const;
+export const ENGINE_SETS = ['compact', 'sedan', 'sport', 'muscle', 'suv', 'truck', 'bike', 'boat', 'airboat', 'tractor', 'quad', 'mower'] as const;
 export type EngineSet = (typeof ENGINE_SETS)[number];
 export const ENGINE_LAYERS = ['idle', 'low', 'mid', 'high'] as const;
 export type EngineLayer = (typeof ENGINE_LAYERS)[number];
@@ -108,6 +108,24 @@ const engineDefs: SoundDef[] = ENGINE_SETS.flatMap((set) =>
 
 // ------------------------------------------------------------------ Einträge
 export const SOUNDS: SoundDef[] = [
+  // ---------------- Radio (prozedurale Platzhalter-Loops je Sender; Tracks: spec 5.7)
+  { id: 'radio.swamp', bus: 'music', kind: 'loop', files: [], proc: 'radio:swamp', vol: -6, priority: 0.5, stereo: true },
+  { id: 'radio.coral', bus: 'music', kind: 'loop', files: [], proc: 'radio:coral', vol: -6, priority: 0.5, stereo: true },
+  { id: 'radio.static', bus: 'music', kind: 'loop', files: [], proc: 'radio:static', vol: -10, priority: 0.4 },
+  // ---------------- Land & Berg (Ambience, prozedural; Rohdateien können über assets-src/audio ersetzt werden)
+  { id: 'amb.crickets', bus: 'ambience', kind: 'loop', files: [], proc: 'amb:crickets', vol: -4, priority: 0.3, zones: ['dry-pine-country', 'pinecrest-highlands', 'cane-ridge', 'port-sabal'] },
+  { id: 'amb.wind', bus: 'ambience', kind: 'loop', files: [], proc: 'amb:wind', priority: 0.3, zones: ['dry-pine-country', 'pinecrest-highlands'] },
+  { id: 'amb.birds', bus: 'ambience', kind: 'loop', files: [], proc: 'amb:birds', vol: -3, priority: 0.25, zones: ['pinecrest-highlands', 'dry-pine-country'] },
+  { id: 'amb.waterfall', bus: 'ambience', kind: 'loop', files: [], proc: 'amb:waterfall', spatial: { ref: 10, max: 180, rolloff: 1.2, wet: 0.4 }, priority: 0.4, zones: ['pinecrest-highlands'] },
+  { id: 'amb.moo', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:moo', spatial: { ref: 8, max: 160, rolloff: 1.2, wet: 0.3 }, pitch: [0.9, 1.1], maxInst: 2, zones: ['dry-pine-country', 'cane-ridge'] },
+  { id: 'amb.cowbell', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:cowbell', spatial: SPATIAL.point, pitch: [0.95, 1.05], maxInst: 3, zones: ['dry-pine-country'] },
+  { id: 'amb.rooster', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:rooster', spatial: { ref: 10, max: 220, rolloff: 1.1, wet: 0.3 }, maxInst: 1, zones: ['dry-pine-country', 'cane-ridge'] },
+  { id: 'amb.dog', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:dog', spatial: { ref: 8, max: 180, rolloff: 1.2, wet: 0.3 }, pitch: [0.9, 1.1], maxInst: 2, zones: ['dry-pine-country', 'cane-ridge'] },
+  { id: 'amb.squeak', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:squeak', spatial: SPATIAL.point, pitch: [0.9, 1.1], maxInst: 2, zones: ['dry-pine-country'] },
+  { id: 'amb.churchbell', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:churchbell', spatial: { ref: 30, max: 900, rolloff: 0.8, wet: 0.6 }, maxInst: 1, zones: ['cane-ridge', 'port-sabal', 'dry-pine-country'] },
+  { id: 'amb.truckhorn', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:truckhorn', vol: -8, pitch: [0.92, 1.05], maxInst: 1, zones: ['dry-pine-country', 'pinecrest-highlands'] },
+  { id: 'amb.siren', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:siren', spatial: { ref: 30, max: 700, rolloff: 0.8, wet: 0.6 }, maxInst: 1, zones: ['pinecrest-highlands'] },
+  { id: 'amb.hawk', bus: 'ambience', kind: 'oneshot', files: [], proc: 'amb:hawk', vol: -6, pitch: [0.9, 1.1], maxInst: 1, zones: ['pinecrest-highlands'] },
   // ---------------- Fahrzeuge: Motor & Antrieb
   ...engineDefs,
   { id: 'veh.prop.airboat', bus: 'vehicles', kind: 'loop', files: [], proc: 'prop:airboat', spatial: SPATIAL.vehicle, priority: 0.9 },
