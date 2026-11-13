@@ -135,6 +135,7 @@ async function main() {
     simT += dt;
     airport.update(dt, sky.night, decoT0 !== null ? decoT0 + simT * 1000 : Date.now(), [], rig.target);
     rig.update(x, map.surfaceY(x, z), z, 0, 0, 0, zoom > 1, dt);
+    if (q.get("nofade") !== "1") U.uFocus.value.set(x, map.surfaceY(x, z) + 1, z); // Gebäude-Durchsicht wie im Spiel
     U.uTime.value += dt;
     sky.update(day, rig.target, 1);
     world.update(rig.target.x, rig.target.z);

@@ -22,6 +22,19 @@ export class GeoBuilder {
   private uvOverride: number[][] | null = null;
 
   get empty() { return this.pos.length === 0; }
+  get count() { return this.pos.length / 3; }
+
+  /** Gebäude-Grundriss je Vertex-Bereich (für das Durchsichtig-Werden ganzer Gebäude, #51). */
+  private bldRanges: number[][] = [];
+  private bldCur: number[] | null = null;
+  /** Ab jetzt hinzugefügte Vertices gehören zum Gebäude (Mitte, halbe Breite/Tiefe, Drehung, Dachhöhe). */
+  beginBuilding(cx: number, cz: number, hw: number, hd: number, rot: number, top: number) {
+    this.bldCur = [this.count, cx, cz, hw, hd, rot, top];
+  }
+  endBuilding() {
+    if (this.bldCur && this.count > this.bldCur[0]) this.bldRanges.push([...this.bldCur, this.count]);
+    this.bldCur = null;
+  }
 
   /** Material aus der Bibliothek wählen (Flags: zusätzlich zu den Toon-Flags des Materials). */
   use(name: string, extraFlags = 0) {
@@ -185,6 +198,14 @@ export class GeoBuilder {
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
     g.setAttribute('auv', new THREE.Float32BufferAttribute(this.auv, 2));
     g.setAttribute('surf', new THREE.Float32BufferAttribute(this.surf, 2));
+    if (this.bldRanges.length) {
+      const n = this.count, A = new Float32Array(n * 4), B = new Float32Array(n * 2);
+      for (const [s, cx, cz, hw, hd, rot, top, e] of this.bldRanges) {
+        for (let i = s; i < e; i++) { A.set([cx, cz, hw, hd], i * 4); B.set([rot, top], i * 2); }
+      }
+      g.setAttribute('bldA', new THREE.BufferAttribute(A, 4));
+      g.setAttribute('bldB', new THREE.BufferAttribute(B, 2));
+    }
     g.computeBoundingSphere();
     return g;
   }

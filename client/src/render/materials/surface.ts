@@ -7,7 +7,7 @@
 //   - Spiegelglas reflektiert die Himmelsfarbe (Env-Map-Fake), Hitzeflimmern auf Highways
 import * as THREE from 'three';
 import { ATLAS_GLSL, getAtlas } from './atlas';
-import { FADE_PARS, toonGradient, U } from './toon';
+import { FADE_PARS, FADE_VERT, toonGradient, U } from './toon';
 
 let noiseTex: THREE.DataTexture | null = null;
 /** Kachelbares Value-Noise (64 x 64, linear gefiltert) für Variation und Übergänge. */
@@ -189,6 +189,9 @@ export function surfaceMaterial(o: SurfaceOptions = {}): THREE.MeshToonMaterial 
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\n' + FADE_PARS)
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfadeDiscard(vWorldPos);');
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\n' + FADE_VERT)
+        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvBldFade = bldFade();');
     }
   };
   m.customProgramCacheKey = () => `surface:${o.decal ? 1 : 0}:${o.fade ? 1 : 0}`;

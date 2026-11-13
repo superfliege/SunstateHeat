@@ -684,7 +684,15 @@ export class WorldView {
   }
 
   // ------------------------------------------------------------------ Gebäude
+  /** Gebäude bauen; seine Geometrie wird als Einheit markiert, damit es als Ganzes durchsichtig werden kann (#51). */
   private buildBuilding(b: BuildingDef) {
+    const ch = this.chunkAt(b.x, b.z);
+    ch.solid.beginBuilding(b.x, b.z, b.w / 2, b.d / 2, b.rot, Math.max(0, this.map.terrainHeight(b.x, b.z)) + b.h);
+    this.buildBuildingGeo(b);
+    ch.solid.endBuilding();
+  }
+
+  private buildBuildingGeo(b: BuildingDef) {
     const ch = this.chunkAt(b.x, b.z);
     const ground = this.map.terrainHeight(b.x, b.z);
     const base = Math.max(0, ground);
