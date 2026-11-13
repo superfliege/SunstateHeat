@@ -376,6 +376,8 @@ export const CAR_VARIANTS: VehicleVariant[] = [
   { cls: 'pickup_farm', model: 'farm_pickup_ranger', name: 'County Ranger', weight: 0 },
   { cls: 'police', model: 'farm_pickup_sheriff', name: 'County Sheriff', weight: 0 },
   { cls: 'truck', model: 'farm_semi', name: 'Dustline Rig', weight: 0 },
+  // ---------------------------------------------------------------- weitere Stadtautos (Index 44 …)
+  { cls: 'muscle', model: 'proc_cabrio', name: 'Sunset Cabrio', weight: 0.6 },
 ];
 /** Index einer Variante nach Name (-1 = unbekannt). */
 export function variantByName(name: string): number { return CAR_VARIANTS.findIndex((v) => v.name === name); }
@@ -457,4 +459,15 @@ export function torqueCurve(x: number): number {
   if (x < 0.55) return 0.55 + ((x - 0.15) / 0.4) * 0.45;
   if (x < 0.8) return 1;
   return Math.max(0.55, 1 - ((x - 0.8) / 0.2) * 0.4);
+}
+
+/** Sitzplätze (inkl. Fahrer) für Landfahrzeuge/Boote – Mitfahren im Multiplayer (#46). */
+const SEATS: Partial<Record<HandlingClass, number>> = {
+  compact: 4, sedan: 4, sport: 2, muscle: 2, suv: 5, truck: 2, bike: 2, police: 4, boat: 4, airboat: 2, tank: 1,
+  tractor: 1, tractor_small: 1, tractor_old: 1, tractor_rig: 1, combine: 1, quad: 2, buggy: 2, mower: 1, dumper: 2, pickup_farm: 3, rv: 4,
+};
+export function seatsOf(variant: number): number {
+  const v = variantInfo(variant);
+  if (v.model === 'proc_cabrio') return 4;
+  return SEATS[v.cls] ?? 4;
 }

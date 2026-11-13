@@ -85,6 +85,9 @@ export interface Participant {
   lastHit: { by: number; t: number } | null;
 }
 
+/** Warteraum (#43): so lange bleibt die Anmeldung offen, wenn niemand vorher startet (s). */
+export const LOBBY_WAIT = 90;
+
 export type Phase = 'lobby' | 'grid' | 'run' | 'end';
 export const steps = (dt: number) => Math.max(1, Math.round(dt / (1 / 60)));
 
@@ -233,21 +236,28 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     if (this.members.length >= this.cfg.players.maxHumans) this.t = Math.min(this.t, 1);
   }
 
-  /** Lobby öffnen: Spieler in der Nähe des Telefons (at) einladen. */
+  /**
+   * Warteraum öffnen (#43): bleibt LOBBY_WAIT s offen, jeder Teilnehmer kann vorher mit E starten.
+   * Alle freien Spieler erfahren davon und können am Telefon oder per Handy (M) beitreten.
+   */
   open(first: ServerPlayer | null, at?: { x: number; z: number }) {
     if (this.opts.instant || this.opts.botsOnly || !first) { this.t = 0.5; if (first) this.members.push(first.id); return; }
     this.members.push(first.id);
-    const s = at ?? this.h.home(first.id), r = this.cfg.joinRange;
-    const nearby = [...this.h.players.values()].filter((o) => {
-      if (o === first || this.h.blocked(o)) return false;
-      const q = this.h.positionOf(o);
-      return dist2(q.x, q.z, s.x, s.z) < r * r;
-    });
-    if (nearby.length) {
-      this.t = this.cfg.lobbyTime;
-      for (const o of nearby) this.h.notice(o, `${first.name} startet ${this.title} – drück F am Arena-Telefon, um mitzuspielen (${this.cfg.lobbyTime} s)!`, 'info');
-      this.h.notice(first, `Anmeldung offen: ${nearby.length} Spieler in der Nähe können ${this.cfg.lobbyTime} s lang beitreten.`, 'info');
-    } else this.t = 1;
+    void at;
+    if (this.h.players.size <= 1) { this.t = 1; return; } // allein online: gleich los
+    this.t = LOBBY_WAIT;
+    for (const o of this.h.players.values()) {
+      if (o === first || this.h.blocked(o)) continue;
+      this.h.notice(o, `${first.name} wartet im Warteraum: ${this.title} – per Handy (M) beitreten!`, 'info');
+    }
+    this.h.notice(first, `Warteraum offen: Mitspieler können per Handy (M) oder am Telefon beitreten. E = Runde starten (sonst automatisch in ${LOBBY_WAIT} s).`, 'info');
+  }
+
+  /** Teilnehmer startet die Runde aus dem Warteraum (E). */
+  startNow(p: ServerPlayer): boolean {
+    if (this.phase !== 'lobby' || !this.members.includes(p.id)) return false;
+    if (this.t > 3) { this.t = 3; this.say(`${p.name} startet die Runde!`, 'good'); }
+    return true;
   }
 
   /** Spieler verlässt die Runde (Abbruch per Taste oder Disconnect). */
@@ -541,7 +551,12 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     const alive = this.phase === 'end' ? this.parts.filter((q) => q.place === 1).length : this.alive().length;
     const hud: MgHud = { mode: this.mode, alive, total: this.parts.length, me: 'alive', feed: this.feed };
     if (this.phase === 'lobby') {
-      return { ...base, stage: 'Anmeldung läuft – andere Spieler können am Arena-Telefon beitreten.', prog: `Spieler: ${this.members.length}/${this.cfg.players.maxHumans} · Start in ${Math.max(0, Math.ceil(this.t))} s`, timer: Math.max(0, Math.ceil(this.t)), mg: { ...hud, total: 0 } };
+      const names = this.humans().map((q) => q.name);
+      return {
+        ...base, stage: 'Warteraum – andere können per Handy (M) oder am Arena-Telefon beitreten. E = Runde starten.',
+        prog: `Dabei: ${names.join(', ')} (${this.members.length}/${this.cfg.players.maxHumans}) · Start in ${Math.max(0, Math.ceil(this.t))} s`,
+        timer: Math.max(0, Math.ceil(this.t)), mg: { ...hud, total: 0 }, lobby: { members: names, max: this.cfg.players.maxHumans },
+      };
     }
     const me = this.part(p.id);
     if (!me || !me.alive) hud.spectate = this.spectatePoint();

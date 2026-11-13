@@ -43,7 +43,7 @@ export type Objective =
   | { type: 'race'; points: LocRef | LocRef[]; count?: number; vehicleTag?: string; text?: string }
   | { type: 'groupAt'; at: LocRef; radius?: number; text?: string }
   | { type: 'interact'; at: LocRef; holdSeconds: number; text?: string }
-  /** Entscheidung an einem Ort (zu Fuß, F): Optionen stehen in shared/story/story.json unter choices[id]. */
+  /** Entscheidung an einem Ort (zu Fuß, E): Optionen stehen in shared/story/story.json unter choices[id]. */
   | { type: 'choice'; at: LocRef; id: string; radius?: number; text?: string }
   /** Markiertes Fahrzeug zerstören (Wrack). */
   | { type: 'destroy'; tag: string; text?: string }

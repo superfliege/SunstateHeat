@@ -76,7 +76,9 @@ async function main() {
   const zoom = Number(q.get('zoom') ?? 1);
   sky.setMood(moodFor(map.zoneAt(x, z), map.districtAt(x, z)?.style ?? null));
   // Fahrzeug-Vitrine: alle Klassen nebeneinander, eines mit Beulen + Teileschaden (?cars=1 = näher ran)
-  const lineup = [...CAR_VARIANTS.keys(), 100];
+  // ?only=<Variante> zeigt nur dieses Fahrzeug direkt vor der Kamera
+  const only = q.get('only');
+  const lineup = only !== null ? [Number(only)] : [...CAR_VARIANTS.keys(), 100];
   const props = new PropsView(map);
   const features = new FeaturesView(map);
   scene.add(props.group, features.group);
@@ -118,7 +120,7 @@ async function main() {
         views.setVehicle({ id: 300 + k, kind: d.type === 'heli' ? VehicleKind.Heli : VehicleKind.Plane, variant: d.variant, color: 0, driver: -1, x: vx, y: map.surfaceY(vx, vz) + (k % 2 ? alt : alt * 0.4), z: vz, q: qq, vx: 0, vz: 0, steer: 0, flags: 0, rpm: 5000 }, dt);
       });
     } else lineup.forEach((variant, k) => {
-      const vx = x - 28 + (k % 12) * 5, vz = z - 6 - Math.floor(k / 12) * 9;
+      const vx = only !== null ? x : x - 28 + (k % 12) * 5, vz = only !== null ? z - 3 : z - 6 - Math.floor(k / 12) * 9;
       const kind = variant === 100 ? 1 : 0;
       const prof = profileOf(variant);
       const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.5 + Math.sin(U.uTime.value * 0.4 + k) * 0.2);
@@ -133,6 +135,7 @@ async function main() {
     simT += dt;
     airport.update(dt, sky.night, decoT0 !== null ? decoT0 + simT * 1000 : Date.now(), [], rig.target);
     rig.update(x, map.surfaceY(x, z), z, 0, 0, 0, zoom > 1, dt);
+    if (q.get("nofade") !== "1") U.uFocus.value.set(x, map.surfaceY(x, z) + 1, z); // Gebäude-Durchsicht wie im Spiel
     U.uTime.value += dt;
     sky.update(day, rig.target, 1);
     world.update(rig.target.x, rig.target.z);

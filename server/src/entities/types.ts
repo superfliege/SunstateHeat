@@ -21,6 +21,8 @@ export interface ClientView {
   dmg: Map<number, number>; // Schadens-Version
   peds: Map<number, string>;
   props: Map<number, string>;
+  /** Gesendete Gegenstände am Boden */
+  pickups: Set<number>;
   /** Zuletzt gesendete Arena-Böden (JSON, Minispiele). */
   floors: string;
 }

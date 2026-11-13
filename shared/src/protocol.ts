@@ -52,15 +52,32 @@ export type ClientMsg =
   | { t: 'choice'; id: string; option: string }
   /** Am Wohnort: Garagenfahrzeug holen bzw. als Zuhause (Spawnpunkt) wählen. */
   | { t: 'home'; do: 'garage' | 'set'; id: string }
-  /** F gedrückt gehalten (Interaktion mit Haltedauer, z. B. Leuchtfeuer). */
+  /** E gedrückt gehalten (Interaktion mit Haltedauer, z. B. Leuchtfeuer). */
   | { t: 'hold'; on: boolean }
   /** Nur Dev-Modus: Handling-Werte live ändern (Server übernimmt sie, damit die Prediction passt). */
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }
   /** Nur Dev-Modus: NPC-Debugdaten (F3 → NPC-Tab) an-/abbestellen. */
-  | { t: 'npcDebug'; on: boolean };
+  | { t: 'npcDebug'; on: boolean }
+  /** Handy (#43): offene Warteräume abfragen, einem beitreten, den eigenen Warteraum starten. */
+  | { t: 'lobbies' }
+  | { t: 'lobbyJoin'; kind: LobbyKind; id: string }
+  | { t: 'lobbyStart' };
+
+/** Warteraum-Art: Minispiel, Straßenrennen, Koop-Auftrag. */
+export type LobbyKind = 'mg' | 'race' | 'quest';
+/** Offener Warteraum (Handy-Liste). */
+export interface LobbyInfo {
+  kind: LobbyKind; id: string; title: string;
+  /** Namen der Wartenden, Höchstzahl, Sekunden bis zum automatischen Start */
+  members: string[]; max: number; t: number;
+  /** Beitritt möglich (sonst Grund) */
+  ok: boolean; reason: string;
+  /** Bin ich schon drin? */
+  mine: boolean;
+}
 
 // ---------- Server -> Client ----------
-/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll), ragdoll 0/1, Waffenindex, Story-Rang] */
+/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll/Fallschirm), 0 / 1 = Ragdoll / 2 = Fallschirm, Waffenindex, Story-Rang] */
 export type PlayerTuple = [number, string, number, number, number, number, number, number, number, number, number, number];
 /**
  * Fahrzeug-Bewegung: [id, x, z, y, yaw, vx, vz, steer, flags, pitch, roll, vy, rpm/100]
@@ -75,6 +92,8 @@ export type VehicleInfoTuple = [number, number, number, number, number];
  */
 export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?, number?];
 /** Verschobenes Prop: [id, x, y, z, qx, qy, qz, qw, flags (1 ruht, 2 Wasserfontäne)] */
+/** Aufsammelbarer Gegenstand: [id, x, z, 'money' | Waffen-ID, Betrag/Munition] */
+export type PickupTuple = [number, number, number, string, number];
 export type PropTuple = [number, number, number, number, number, number, number, number, number];
 
 export const VehFlag = { BRAKE: 1, REVERSE: 2, HANDBRAKE: 4, BOOST: 8, HORN: 16, AIR: 32, STALL: 64 } as const;
@@ -153,6 +172,8 @@ export interface QuestState {
   hunt?: 'taxi' | 'hunter';
   /** Fahrzeug-Minispiel (shared/minigames): verbleibende Spieler, Feed, Ergebnis … */
   mg?: MgHud;
+  /** Warteraum (#43): wer wartet, Höchstzahl – jeder Teilnehmer kann mit E starten. */
+  lobby?: { members: string[]; max: number };
 }
 
 export interface PhoneQuest {
@@ -170,7 +191,7 @@ export interface SnapshotMsg {
   time: number; // Server-Zeit in ms
   day: number; // Tageszeit 0..1 (0 = Mitternacht, 0.5 = Mittag)
   ack: number; // letzte verarbeitete Eingabe-Sequenz DIESES Clients
-  /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt], Fahrzeug (packCar) oder null, Geld. */
+  /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt, Fallschirm 0/1], Fahrzeug (packCar) oder null, Geld. */
   me?: { pawn: number[]; veh: number[] | null; /** Mitfahrer in Luftfahrzeug (ID) */ ride?: number; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
   players: PlayerTuple[];
   /** Geänderte Fahrzeuge / Stammdaten / verschwundene IDs */
@@ -187,6 +208,9 @@ export interface SnapshotMsg {
   /** Props-Delta */
   pr?: PropTuple[];
   prg?: number[];
+  /** Aufsammelbare Gegenstände (Delta) */
+  pk?: PickupTuple[];
+  pkg?: number[];
   ev?: GameEvent[];
   /** Arena-Böden der Minispiele – nur bei Änderung (leere Liste = keine Böden mehr). */
   af?: FloorNet[];
@@ -211,6 +235,8 @@ export type ServerMsg =
   | { t: 'questLog'; done: string[]; cooldowns: Record<string, number> }
   | { t: 'bonus'; kind: string; points: number; money: number; info: string; total: number }
   | { t: 'tune'; cls: string; values: Record<string, number>; assists?: Record<string, number> }
+  /** Handy (#43): offene Warteräume */
+  | { t: 'lobbies'; list: LobbyInfo[] }
   | { t: 'error'; text: string }
   /** Nur Dev-Modus: NPCs um den Spieler (F3 → NPC-Tab). */
   | { t: 'npcDebug'; peds: NpcDebugPed[]; events: [number, number, number, number, number][]; pop: string };

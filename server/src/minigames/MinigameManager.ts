@@ -1,7 +1,7 @@
 // Verwaltet alle laufenden Minispiel-Runden (höchstens eine je Modus) und ist die einzige
 // Schnittstelle zu WorldRoom – analog zu Races/TaxiHunt: frozen/locked/mayEnter/damageScale,
 // Telefon-Liste, Anmeldung, Disconnect, HUD, Boden-Sync und Dev-Befehl /mg.
-import type { PhoneQuest, QuestState } from '../../../shared/src/protocol';
+import type { LobbyInfo, PhoneQuest, QuestState } from '../../../shared/src/protocol';
 import type { CarCollision } from '../../../shared/src/sim/car';
 import { isDifficulty, isMinigame, MG_PREFIX, MINIGAMES, type DifficultyId, type MinigameId } from '../../../shared/src/minigames';
 import { packFloor } from '../../../shared/src/world/arenaFloor';
@@ -105,6 +105,35 @@ export class MinigameManager {
     if (g) { g.join(p); return; }
     this.start(mode, p, {}, at);
   }
+
+  // ------------------------------------------------------------------ Warteräume (Handy, #43)
+  lobbies(p: ServerPlayer): LobbyInfo[] {
+    const out: LobbyInfo[] = [];
+    const blocked = this.h.blocked(p);
+    for (const [mode, g] of this.games) {
+      if (g.phase !== 'lobby' || g.debug) continue;
+      const m = MINIGAMES[mode], max = m.config.players.maxHumans;
+      const mine = g.members.includes(p.id);
+      const reason = mine ? '' : blocked || (this.has(p.id) ? 'Du bist bereits angemeldet.' : g.members.length >= max ? 'Alle Plätze sind belegt.' : '');
+      out.push({ kind: 'mg', id: mode, title: `${m.icon} ${m.name}`, members: g.members.map((id) => this.h.players.get(id)?.name ?? '?'), max, t: Math.ceil(g.t), ok: !reason && !mine, reason, mine });
+    }
+    return out;
+  }
+
+  /** Per Handy einem offenen Warteraum beitreten (Rückkehrpunkt = aktuelle Position). */
+  joinRemote(p: ServerPlayer, mode: string) {
+    if (!isMinigame(mode)) return;
+    const g = this.games.get(mode);
+    if (!g || g.phase !== 'lobby') { this.h.notice(p, 'Dieser Warteraum ist nicht mehr offen.', 'bad'); return; }
+    const why = this.h.blocked(p) || (this.has(p.id) ? 'Du bist bereits angemeldet.' : '');
+    if (why) { this.h.notice(p, why, 'bad'); return; }
+    const pos = this.h.positionOf(p);
+    this.homes.set(p.id, { x: pos.x, z: pos.z });
+    g.join(p);
+  }
+
+  /** E im Warteraum: Runde starten. */
+  startNow(p: ServerPlayer): boolean { return !!this.gameOf(p.id)?.startNow(p); }
 
   private start(mode: MinigameId, first: ServerPlayer | null, opts: MinigameOptions, at?: Spot): Minigame {
     const g = FACTORIES[mode](this.host, opts);

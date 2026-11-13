@@ -39,7 +39,7 @@ export const LITTLE_HAVANA_EVENTS: StreetEventDef[] = [
       }),
       phase('escape', [3, 4], { lines: [say('owner', "Er kommt zum Abendessen wieder. Das tun sie immer.")] }),
     ],
-    interventions: [{ id: 'catch', label: 'Hahn fangen (F halten, er weicht aus)', detect: { kind: 'catch', target: 'fernando', hold: 1.5, evasive: true }, phases: ['chase'], outcome: 'caught' }],
+    interventions: [{ id: 'catch', label: 'Hahn fangen (E halten, er weicht aus)', detect: { kind: 'catch', target: 'fernando', hold: 1.5, evasive: true }, phases: ['chase'], outcome: 'caught' }],
     outcomes: {
       caught: { label: 'Einladung zum Mittagessen', health: 'full', xp: 20, regular: { id: 'lh_pilar', delta: 8 },
         lines: [say('owner', "Mein Engel! Du kommst heute zum Essen. Keine Widerrede.")] },

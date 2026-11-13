@@ -4,7 +4,7 @@
 // KI-Fahrer → Countdown (Fahrzeuge stehen) → Rennen über Checkpoints → Preisgeld je Platz.
 // KI-Fahrer nutzen dieselbe Fahrphysik wie Spieler und folgen der Ideallinie.
 import { clamp, dist2, wrapAngle } from '../../../shared/src/math';
-import { Btn, type PhoneQuest, type QuestState } from '../../../shared/src/protocol';
+import { Btn, type LobbyInfo, type PhoneQuest, type QuestState } from '../../../shared/src/protocol';
 import { CHECKPOINT_RADIUS, RACE_FIELD, RACE_MAX_PLAYERS, raceTracks, trackPose, type RaceTrack } from '../../../shared/src/races';
 import { placeCar, upVector } from '../../../shared/src/sim/car';
 import { CAR_VARIANTS, variantInfo } from '../../../shared/src/sim/handling';
@@ -36,14 +36,19 @@ export interface RaceHost {
   finished?(p: ServerPlayer, raceId: string, place: number): void;
 }
 
-const LOBBY_TIME = 15;
+/** Warteraum (#43): bleibt so lange offen, wenn niemand vorher startet (s). */
+const LOBBY_TIME = 90;
 const JOIN_RANGE = 60;
 const GRID_TIME = 5;
 const COUNT_FROM = 3;
 const END_TIME = 8;
 const AI_NAMES = ['Rico „Turbo“ Vega', 'Candy Flash', 'Big Earl', 'Mila Nitro', 'Dex Sideways', 'Luz Overdrive', 'Junior Cruz', 'Tammy Twin-Cam'];
 
-interface Ai { skill: number; lane: number; stuck: number; reverse: number; flipT: number; offT: number; bestS: number; noProg: number }
+interface Ai {
+  skill: number; lane: number; stuck: number; reverse: number; flipT: number; offT: number; bestS: number; noProg: number;
+  /** Fahrfehler (#45): Restdauer, Art (0 = zu spät gebremst, 1 = verlenkt, 2 = Gas weg) und Zeit bis zum nächsten. */
+  err: number; errKind: number; nextErr: number; wobble: number;
+}
 interface Racer {
   /** Spieler-ID, -1 = KI */
   pid: number;
@@ -138,21 +143,44 @@ export class Races {
       if (run.members.length >= RACE_MAX_PLAYERS) run.t = Math.min(run.t, 1);
       return;
     }
-    const race: Race = { id: nextRace++, track, phase: 'lobby', t: 0, members: [p.id], racers: [], elapsed: 0, limit: 0, finished: 0 };
-    // Andere freie Spieler in der Nähe einladen – dann wartet die Anmeldung kurz
-    const ph = track.phone;
-    const nearby = [...this.h.players.values()].filter((o) => {
-      if (o === p || this.byPlayer.has(o.id) || this.h.blocked(o)) return false;
-      const q = this.h.positionOf(o);
-      return dist2(q.x, q.z, ph.x, ph.z) < JOIN_RANGE * JOIN_RANGE;
-    });
-    if (nearby.length) {
-      race.t = LOBBY_TIME;
-      for (const o of nearby) this.h.notice(o, `${p.name} startet das Straßenrennen „${track.def.name}“ – drück F am 🏁 Renntelefon, um mitzufahren (${LOBBY_TIME} s)!`, 'info');
-      this.h.notice(p, `Anmeldung offen: ${nearby.length} Spieler in der Nähe können ${LOBBY_TIME} s lang beitreten.`, 'info');
-    }
+    // Warteraum (#43): bleibt offen, bis jemand mit E startet oder die Zeit abläuft; alle freien Spieler erfahren davon
+    const race: Race = { id: nextRace++, track, phase: 'lobby', t: this.h.players.size > 1 ? LOBBY_TIME : 0, members: [p.id], racers: [], elapsed: 0, limit: 0, finished: 0 };
     this.races.set(race.id, race);
     this.byPlayer.set(p.id, race);
+    if (this.h.players.size <= 1) return; // allein online: gleich los
+    for (const o of this.h.players.values()) {
+      if (o === p || this.byPlayer.has(o.id) || this.h.blocked(o)) continue;
+      this.h.notice(o, `${p.name} wartet im Warteraum: Straßenrennen „${track.def.name}“ – per Handy (M) beitreten!`, 'info');
+    }
+    this.h.notice(p, `Warteraum offen: Mitfahrer können per Handy (M) oder am Renntelefon beitreten. E = Rennen starten (sonst automatisch in ${LOBBY_TIME} s).`, 'info');
+  }
+
+  // ------------------------------------------------------------------ Warteräume (Handy, #43)
+  lobbies(p: ServerPlayer): LobbyInfo[] {
+    const out: LobbyInfo[] = [];
+    const blocked = this.h.blocked(p);
+    for (const race of this.races.values()) {
+      if (race.phase !== 'lobby') continue;
+      const mine = race.members.includes(p.id);
+      const reason = mine ? '' : blocked || (this.byPlayer.has(p.id) ? 'Du bist bereits angemeldet.' : race.members.length >= RACE_MAX_PLAYERS ? 'Das Starterfeld ist voll.' : '');
+      out.push({ kind: 'race', id: race.track.def.id, title: `🏁 ${race.track.def.name}`, members: this.members(race).map((q) => q.name), max: RACE_MAX_PLAYERS, t: Math.ceil(race.t), ok: !reason && !mine, reason, mine });
+    }
+    return out;
+  }
+
+  /** Per Handy einem offenen Rennen beitreten (nur Warteräume, keine neuen Rennen). */
+  joinRemote(p: ServerPlayer, trackId: string) {
+    const run = this.active(trackId);
+    if (!run || run.phase !== 'lobby') { this.h.notice(p, 'Dieser Warteraum ist nicht mehr offen.', 'bad'); return; }
+    this.request(p, trackId);
+  }
+
+  /** E im Warteraum: Rennen starten. */
+  startNow(p: ServerPlayer): boolean {
+    const race = this.byPlayer.get(p.id);
+    if (!race || race.phase !== 'lobby') return false;
+    if (race.t > 3) { race.t = 3; for (const m of this.members(race)) this.h.notice(m, `${p.name} startet das Rennen!`, 'good'); }
+    return true;
   }
 
   abandon(p: ServerPlayer) {
@@ -223,7 +251,7 @@ export class Races {
     const keep = new Set<number>();
     for (const p of crew) if (p.vehicleId >= 0) keep.add(p.vehicleId);
     for (const g of track.grid) this.h.clearArea(g.x, g.z, 6, keep);
-    const variants = CAR_VARIANTS.map((v, i) => ({ v, i })).filter((x) => x.v.cls !== 'truck').map((x) => x.i);
+    const variants = CAR_VARIANTS.map((v, i) => ({ v, i })).filter((x) => x.v.cls !== 'truck' && x.v.weight > 0).map((x) => x.i);
     const names = [...AI_NAMES].sort(() => Math.random() - 0.5);
     const order = [...crew.map((p) => p as ServerPlayer | null)];
     while (order.length < RACE_FIELD) order.push(null);
@@ -239,7 +267,7 @@ export class Races {
       const lane = (i % 2 ? -1 : 1) * (0.8 + Math.random() * 0.9);
       race.racers.push({
         pid: p ? p.id : -1, name: p ? p.name : names[i % names.length], vid: v.id,
-        ai: p ? null : { skill: 0.94 + Math.random() * 0.09, lane, stuck: 0, reverse: 0, flipT: 0, offT: 0, bestS: 0, noProg: 0 },
+        ai: p ? null : { skill: 0.84 + Math.random() * 0.12, lane, stuck: 0, reverse: 0, flipT: 0, offT: 0, bestS: 0, noProg: 0, err: 0, errKind: 0, nextErr: 6 + Math.random() * 20, wobble: 0 },
         cp: 0, s: 0, seg: 0, place: 0, time: 0, dnf: false,
       });
       if (p) this.h.notice(p, `Dein Fahrzeug: ${variantInfo(variant).name}. Startplatz ${i + 1}.`, 'info');
@@ -378,7 +406,8 @@ export class Races {
     let skill = race.track.def.skill * ai.skill;
     if (lead > -Infinity && lead < 1e5) {
       const gap = r.s - lead;
-      if (gap > 60) skill *= 0.9; else if (gap < -60) skill *= 1.07;
+      // Gummiband: vorne deutlich nachlassen, hinten nur leicht aufholen
+      if (gap > 30) skill *= gap > 120 ? 0.78 : 0.86; else if (gap < -90) skill *= 1.04;
     }
     const DEC = 8, MU = 9.5;
     let want = 60;
@@ -390,6 +419,23 @@ export class Races {
       want = Math.min(want, Math.sqrt(vC * vC + 2 * DEC * d));
     }
     want *= skill;
+    // Fahrfehler: gelegentlich zu schnell in die Kurve, verlenkt oder kurz vom Gas – sorgt für Abflüge und Unfälle
+    if (race.phase === 'run' && !r.place) {
+      ai.nextErr -= dt;
+      if (ai.err <= 0 && ai.nextErr <= 0) {
+        // vor Kurven (muss bremsen) meist den Bremspunkt verpassen, sonst verlenken oder vom Gas gehen
+        ai.errKind = want < speed - 2 && Math.random() < 0.75 ? 0 : Math.random() < 0.6 ? 1 : 2;
+        ai.err = ai.errKind === 0 ? 1.6 : ai.errKind === 1 ? 0.9 : 1.2;
+        ai.wobble = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.4);
+        ai.nextErr = 10 + Math.random() * 22 * ai.skill; // bessere Fahrer patzen seltener
+      }
+    }
+    if (ai.err > 0) {
+      ai.err -= dt;
+      if (ai.errKind === 0) want = Math.max(want * 1.35, speed); // Bremspunkt verpasst
+      else if (ai.errKind === 1) ax = clamp(ax + ai.wobble, -1, 1); // verlenkt
+      else want *= 0.55; // vom Gas, schaltet zu früh
+    }
     const done = r.place > 0 || race.phase === 'end';
     if (done) want = Math.min(want, 9);
     if (r.s > end - 25) want = 0;
@@ -397,7 +443,7 @@ export class Races {
     let ay = speed < want - 0.5 ? 1 : speed > want + 1.5 ? -1 : 0.25;
     if (Math.abs(diff) > 0.9 && speed > 9) ay = -0.7;
     let buttons = want === 0 && speed < 2 ? Btn.BRAKE : 0;
-    if (!done && race.phase === 'run' && speed > 18 && ay > 0 && Math.abs(diff) < 0.08 && c.nitro > 0.3 && skill > 0.95) buttons |= Btn.SPRINT;
+    if (!done && race.phase === 'run' && speed > 18 && ay > 0 && Math.abs(diff) < 0.08 && c.nitro > 0.3 && skill > 0.93) buttons |= Btn.SPRINT;
 
     // Festgefahren: zurücksetzen; überschlagen/weit weg: auf die Strecke setzen
     if (want > 3 && speed < 1.5) ai.stuck += dt; else ai.stuck = Math.max(0, ai.stuck - dt * 2);
@@ -424,7 +470,12 @@ export class Races {
     const t = race.track, d = t.def;
     const base = { id: d.id, title: `🏁 ${d.name}`, stageIdx: 0, stageCount: 1, timer: -1, targets: [] as QuestState['targets'] };
     if (race.phase === 'lobby') {
-      return { ...base, stage: 'Anmeldung läuft – andere Spieler können am Renntelefon beitreten.', prog: `Fahrer: ${race.members.length}/${RACE_MAX_PLAYERS} · Start in ${Math.max(0, Math.ceil(race.t))} s`, timer: Math.max(0, Math.ceil(race.t)) };
+      const names = this.members(race).map((q) => q.name);
+      return {
+        ...base, stage: 'Warteraum – andere können per Handy (M) oder am Renntelefon beitreten. E = Rennen starten.',
+        prog: `Fahrer: ${names.join(', ')} (${race.members.length}/${RACE_MAX_PLAYERS}) · Start in ${Math.max(0, Math.ceil(race.t))} s`,
+        timer: Math.max(0, Math.ceil(race.t)), lobby: { members: names, max: RACE_MAX_PLAYERS },
+      };
     }
     const me = race.racers.find((r) => r.pid === p.id);
     if (!me) return null;

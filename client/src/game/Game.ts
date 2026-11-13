@@ -8,7 +8,7 @@ import { lerp, lerpAngle } from '../../../shared/src/math';
 import { Btn, DRIVER_COP_ID, VehFlag, type GameEvent, type ServerMsg, type SnapshotMsg, type VehicleInfoTuple, type VehicleTuple } from '../../../shared/src/protocol';
 import { createCar, groundHeight, setOrientation, type CarCollision, type CarState, type Impact } from '../../../shared/src/sim/car';
 import { enginePower, newDamage, partState, PART_COUNT, smokeStage, unpackDamage, Zone5, type CarDamage } from '../../../shared/src/sim/damage';
-import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, TANK_VARIANT, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
+import { AIRBOAT_VARIANT, ASSISTS, BIKE_VARIANT, BOAT_VARIANT, CAR_VARIANTS, TANK_VARIANT, seatsOf, variantInfo, type HandlingProfile } from '../../../shared/src/sim/handling';
 import { ARCHETYPES } from '../../../shared/src/npc/archetypes';
 import { PROP_INFO, PropType } from '../../../shared/src/world/features';
 import type { PropHit } from '../../../shared/src/sim/props';
@@ -63,6 +63,7 @@ import { WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { taxiProfile } from '../../../shared/src/taxiHunt';
 import { PostFX, type GfxPreset, type GfxSettings } from '../render/PostFX';
 import { PropsView } from '../render/PropsView';
+import { PickupsView } from '../render/PickupsView';
 import { SmartObjectsView } from '../render/SmartObjectsView';
 import { shadowExtentFor, Sky } from '../render/Sky';
 import { VehicleFx } from '../render/VehicleFx';
@@ -120,6 +121,8 @@ export class Game {
   private world: WorldView;
   private views: EntityViews;
   private props: PropsView;
+  /** Geld und Waffen am Boden */
+  private pickups: PickupsView;
   private features: FeaturesView;
   private smartObjects: SmartObjectsView;
   private fx: VehicleFx;
@@ -223,6 +226,7 @@ export class Game {
     this.world = new WorldView(this.map, generateVegetation(this.map, MAP_SEED));
     this.views = new EntityViews(this.map);
     this.props = new PropsView(this.map);
+    this.pickups = new PickupsView(this.map);
     this.features = new FeaturesView(this.map);
     this.smartObjects = new SmartObjectsView(this.map);
     this.fx = new VehicleFx(this.map, vehicleMat);
@@ -252,7 +256,7 @@ export class Game {
     this.features.group.name = 'features'; this.smartObjects.group.name = 'smartObjects'; this.fx.group.name = 'vehicleFx'; this.tracers.group.name = 'tracers';
     this.stores.group.name = 'stores'; this.phonesView.group.name = 'phones'; this.questMarkers.group.name = 'questMarkers'; this.arenas.group.name = 'arenas';
     this.storyDir.group.name = 'story'; this.airport.group.name = 'airport';
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group, this.pickups.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.post.attachTimer(this.prof.gpu);
@@ -296,7 +300,14 @@ export class Game {
     // UI-Verdrahtung
     this.input.onChatKey = () => this.chat.open();
     this.input.onMapKey = () => this.minimap.toggleBig();
+    this.input.onPhoneKey = () => this.panels.toggleHandy();
+    this.panels.onMap = () => this.minimap.toggleBig();
     this.input.onInteract = () => {
+      // E im umgekippten Fahrzeug: aufrichten (F bleibt ein-/aussteigen)
+      const flipped = this.predictor.sim?.car;
+      if (flipped && flipped.flip >= ASSISTS.unflipDelay) { this.unflipFrames = 6; return; }
+      // Warteraum (#43): E startet die Runde
+      if (this.questState?.lobby) { this.net.send({ t: 'lobbyStart' }); return; }
       if (this.joinOffer) { this.net.send({ t: 'questJoin' }); return; }
       const st = this.storyDir.nearest();
       if (st) { this.storyDir.interact(st); return; }
@@ -487,6 +498,7 @@ export class Game {
         if (msg.t === 'rankUp') this.sfx.ui('good', 0.8);
         break;
       case 'questLog': this.panels.setQuestLog(msg.done, msg.cooldowns); break;
+      case 'lobbies': this.panels.setLobbies(msg.list); break;
       case 'error':
         this.hud.toast(msg.text, 'bad');
         break;
@@ -576,6 +588,7 @@ export class Game {
     }
     for (const ev of snap.ev ?? []) this.onEvent(ev);
     this.props.apply(snap.pr, snap.prg);
+    this.pickups.apply(snap.pk, snap.pkg);
     for (const p of snap.p ?? []) { if (p[5] === 3) this.copDots.set(p[0], [p[1], p[2]]); else this.copDots.delete(p[0]); }
     for (const id of snap.pg ?? []) this.copDots.delete(id);
     // Arena-Böden zuerst übernehmen: Prediction und Rendering nutzen dieselbe Karte wie der Server
@@ -838,7 +851,7 @@ export class Game {
       if (this.questState?.freeze && this.predictor.inVehicle) { s.ax = 0; s.ay = 0; buttons = Btn.BRAKE; }
       else if (this.questState?.freeze && this.questState.mg) { s.ax = 0; s.ay = 0; buttons = 0; } // Minispiel zu Fuß: Countdown
       if (this.unflipFrames > 0) { buttons |= Btn.UNFLIP; this.unflipFrames--; }
-      if (this.ride >= 0) { s.ax = 0; s.ay = 0; buttons = 0; } // Mitfahrer: nur E zum Aussteigen
+      if (this.ride >= 0) { s.ax = 0; s.ay = 0; buttons = 0; } // Mitfahrer: nur F zum Aussteigen
       // Catch the Taxi: unendlich Nitro (Server setzt dasselbe)
       if (this.questState?.hunt === 'taxi' && this.predictor.sim) { const sim = this.predictor.sim; sim.prof = taxiProfile(sim.prof); sim.car.nitro = 1; }
       this.predictor.step(s.ax, s.ay, buttons, SIM_DT);
@@ -891,6 +904,10 @@ export class Game {
       const g = airGround(this.map, me.x, me.z, me.y, aircraftDef(variant).type === 'heli').y;
       alt = Math.max(0, me.y - g);
       myY = g + alt * 0.8; // Fokus leicht unter dem Luftfahrzeug: es erscheint mit der Höhe größer
+    } else if (!this.predictor.inVehicle && !rideState && this.predictor.pawn.pc) {
+      // Fallschirm: Kamera folgt in die Höhe und zoomt heraus wie im Luftfahrzeug
+      alt = this.predictor.pawn.h;
+      myY += alt * 0.8;
     }
     this.rig.altitude = alt;
     this.airport.update(dt, this.sky.night, this.buffer.serverNow, vehicleStates.values(), this.rig.target);
@@ -937,6 +954,7 @@ export class Game {
     this.world.updateWobble(dt);
     this.props.setNight(this.sky.night);
     this.props.update(dt);
+    this.pickups.update(dt);
     this.features.update(dt);
     this.views.setFocus(this.rig.target);
     this.views.setCamera(this.rig.camera); // Sichtfeld fürs nächste Bild (Animationen außerhalb sparen)
@@ -1149,10 +1167,10 @@ export class Game {
       const pa = a.players.get(pb[0]) ?? pb;
       const pw = this.predictor.pawn;
       const st: PlayerState = isMe
-        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0 }
+        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0, chute: !!pw.pc }
         : {
             id: pb[0], name: pb[1], x: lerp(pa[2], pb[2], t), z: lerp(pa[3], pb[3], t),
-            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
+            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, chute: pb[9] === 2, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
           };
       const seat = st.veh >= 0 ? vehicleStates.get(st.veh) ?? null : null;
       if (seat) { st.x = seat.x; st.z = seat.z; }
@@ -1326,7 +1344,8 @@ export class Game {
     let best: VehicleViewState | null = null;
     let bestD = Infinity;
     for (const v of vehicles.values()) {
-      if ((v.driver >= 0 && !isAircraft(v.kind)) || this.recs.get(v.id)?.dmg.wreck) continue;
+      // Fahrzeuge anderer Spieler: als Beifahrer (Plätze prüft der Server)
+      if ((v.driver >= 0 && !isAircraft(v.kind) && seatsOf(v.variant) < 2) || this.recs.get(v.id)?.dmg.wreck) continue;
       const reach = ENTER_RADIUS + (isAircraft(v.kind) ? aircraftDef(v.variant).radius * 0.8 : profileOf(v.variant).length / 2.4);
       const d = Math.hypot(v.x - x, v.z - z);
       if (d < reach && d < bestD) { best = v; bestD = d; }
@@ -1373,17 +1392,23 @@ export class Game {
     } else { this.drive.set(null); this.drive.drift(null, 1); }
 
     if (this.chat.isOpen || this.storyBlock) { this.hud.setHint(null); return; }
-    if (this.joinOffer) { this.hud.setHint(`<b>F</b> Bei „${this.joinOffer}“ mitmachen`); return; }
+    if (!this.predictor.inVehicle && this.predictor.pawn.pc) { this.hud.setHint(`Fallschirm · <b>WASD</b> lenken · ${Math.round(this.predictor.pawn.h)} m`); return; }
+    if (this.questState?.lobby) { this.hud.setHint(`Warteraum (${this.questState.lobby.members.length}/${this.questState.lobby.max}) · <b>E</b> Runde starten · <b>M</b> Handy`); return; }
+    if (this.joinOffer) { this.hud.setHint(`<b>E</b> Bei „${this.joinOffer}“ mitmachen`); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
-    if (this.ride >= 0) { this.hud.setHint('Mitfahrer · <b>E</b> Aussteigen (nach der Landung)'); return; }
+    if (this.ride >= 0) {
+      const rv = vehicles.get(this.ride);
+      this.hud.setHint(rv && isAircraft(rv.kind) ? 'Mitfahrer · <b>F</b> Aussteigen bzw. mit Fallschirm abspringen' : 'Beifahrer · <b>F</b> Aussteigen');
+      return;
+    }
     if (this.predictor.inVehicle && sim && sim.car.fly) {
       const f = sim.car.fly, d = aircraftDef(sim.variant);
       const fuelNear = Math.hypot(sim.car.x - AIR_FUEL.x, sim.car.z - AIR_FUEL.z) < AIR_FUEL.r;
-      if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>E</b> Aussteigen');
+      if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>F</b> Aussteigen');
       else if (fuelNear && f.ground && AIR_SETTINGS.fuelEnabled && f.fuel < 0.999) this.hud.setHint(`Tankstelle: stehen bleiben zum Tanken (${Math.round(f.fuel * 100)} %)`);
-      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>E</b> Aussteigen (am Boden)');
-      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>E</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken');
+      else if (d.type === 'heli') this.hud.setHint(f.rotor < 0.97 ? `Rotor läuft hoch … ${Math.round(f.rotor * 100)} %` : '<b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>A/D</b> Drehen · <b>Q/R</b> Seitwärts · <b>F</b> Aussteigen / Abspringen');
+      else this.hud.setHint(f.ground ? `<b>W</b> Schub · <b>Shift</b> Abheben ab ${Math.round((d.takeoffSpeed ?? 20) * 3.6)} km/h · <b>Leertaste</b> Bremse · <b>F</b> Aussteigen` : '<b>W/S</b> Schub · <b>A/D</b> Kurve · <b>Shift</b> Steigen · <b>Leertaste</b> Sinken · <b>F</b> Abspringen (Fallschirm)');
       return;
     }
     if (this.predictor.inVehicle && sim) {
@@ -1393,21 +1418,21 @@ export class Game {
       if (c.flip >= ASSISTS.unflipDelay) this.hud.setHint('<b>E</b> Fahrzeug aufrichten');
       else if (c.flip > 0.5) this.hud.setHint(`Überschlagen … aufrichten in ${Math.ceil(ASSISTS.unflipDelay - c.flip)} s`);
       else if (ws && (sim.dmg.hp < 1000 || sim.dmg.parts)) this.hud.setHint('Werkstatt: kurz <b>anhalten</b> zum Reparieren');
-      else if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>E</b> Aussteigen');
-      else if (mech) this.hud.setHint(`<b>F</b> Mit ${mech.keeper.name} sprechen (${mech.name}) · <b>E</b> Aussteigen`);
-      else this.hud.setHint(`<b>E</b> Aussteigen · <b>Leertaste</b> Handbremse${sim.prof.nitroForce > 0 ? ' · <b>Shift</b> Nitro' : ''}`);
+      else if (sim.dmg.wreck) this.hud.setHint('Wrack! <b>F</b> Aussteigen');
+      else if (mech) this.hud.setHint(`<b>E</b> Mit ${mech.keeper.name} sprechen (${mech.name}) · <b>F</b> Aussteigen`);
+      else this.hud.setHint(`<b>F</b> Aussteigen · <b>Leertaste</b> Handbremse${sim.prof.nitroForce > 0 ? ' · <b>Shift</b> Nitro' : ''}`);
     } else {
       const v = this.nearestEnterable(vehicles, me.x, me.z);
       if (v) {
         const air = isAircraft(v.kind) ? aircraftDef(v.variant) : null;
-        const verb = v.driver === -2 ? 'Übernehmen' : air ? (v.driver >= 0 ? 'Mitfliegen' : 'Einsteigen') : 'Einsteigen';
+        const verb = v.driver === -2 ? 'Übernehmen' : air ? (v.driver >= 0 ? 'Mitfliegen' : 'Einsteigen') : v.driver >= 0 ? 'Mitfahren' : 'Einsteigen';
         const name = air ? `${air.name}, ${air.seats} Sitze` : v.kind === VehicleKind.Car || v.kind === VehicleKind.Bike ? variantInfo(v.variant).name : VEHICLE_DEFS[v.kind as VehicleKindId].name;
         const shop = this.shopNearMe();
-        this.hud.setHint(`<b>E</b> ${verb} (${name})${shop ? ` · <b>F</b> Mit ${shop.keeper.name} sprechen` : ''}`);
+        this.hud.setHint(`<b>F</b> ${verb} (${name})${shop ? ` · <b>E</b> Mit ${shop.keeper.name} sprechen` : ''}`);
       } else {
         const shop = this.shopNearMe();
         const ph = this.phoneNearMe();
-        this.hud.setHint(shop ? `<b>F</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.mg ? `<b>F</b> Arena-Telefon (${MINIGAMES[ph.mg].icon} ${MINIGAMES[ph.mg].name})` : ph.taxi ? '<b>F</b> Catch the Taxi' : ph.race ? '<b>F</b> Renntelefon (Straßenrennen)' : '<b>F</b> Missionstelefon') : null);
+        this.hud.setHint(shop ? `<b>E</b> Mit ${shop.keeper.name} sprechen (${shop.name})` : ph ? (ph.mg ? `<b>E</b> Arena-Telefon (${MINIGAMES[ph.mg].icon} ${MINIGAMES[ph.mg].name})` : ph.taxi ? '<b>E</b> Catch the Taxi' : ph.race ? '<b>E</b> Renntelefon (Straßenrennen)' : '<b>E</b> Missionstelefon') : null);
       }
     }
   }

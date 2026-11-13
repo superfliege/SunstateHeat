@@ -1,5 +1,5 @@
 // Luftfahrt-Rauchtest mit echtem WorldRoom (ohne Browser): Flotte, Rangsperre, Einsteigen,
-// Mitfahrer, Flug, Aussteigen in der Luft verboten, Tanken, Absturz + Respawn, Netz-Sichtweite.
+// Mitfahrer, Flug, Absprung mit Fallschirm, Tanken, Absturz + Respawn, Netz-Sichtweite.
 // Aufruf: npx tsx scripts/air-room-smoke.ts (wird von npm run air-test mit ausgeführt)
 import { MAP_SEED, SIM_DT } from '../shared/src/constants';
 import { Btn, type ServerMsg } from '../shared/src/protocol';
@@ -73,10 +73,8 @@ const y1 = kol.sim.car.y;
 check(kol.sim.car.fly!.ground === 0 && y1 > 8, `Kolibri steigt (${y1.toFixed(1)} m)`);
 const pos = room.positionOf(B.p);
 check(Math.hypot(pos.x - kol.sim.car.x, pos.z - kol.sim.car.z) < 0.5, 'Mitfahrer-Position folgt dem Helikopter (Eingaben des Mitfahrers ignoriert)');
-use(A.p);
-check(A.p.vehicleId === kol.id, `Aussteigen in der Luft verboten: ${lastNotice(A.msgs)?.text}`);
 use(B.p);
-check(B.p.ride === kol.id, 'Mitfahrer kann in der Luft nicht aussteigen');
+check(B.p.ride < 0 && B.p.pawn.pc === 1 && B.p.pawn.h > 5 && !kol.riders?.includes(B.p.id), `Mitfahrer springt mit Fallschirm ab (${B.p.pawn.h.toFixed(1)} m): ${lastNotice(B.msgs)?.text}`);
 // Snapshot enthält Höhe und ride
 const snap = JSON.parse(B.raw[B.raw.length - 1]);
 check(snap.me?.ride === kol.id, 'Snapshot meldet dem Mitfahrer sein Luftfahrzeug');
@@ -90,10 +88,9 @@ const seen = C.p.view.veh.has(kol.id);
 check(seen, 'Luftfahrzeug ist in 300 m Entfernung im Netz sichtbar');
 
 // --- Landen auf dem Vorfeld, aussteigen
-run(6, [[A.p, 0, 0, Btn.BRAKE]]);
+run(6, [[A.p, 0, 0, Btn.BRAKE], [B.p, 0, 1, 0]]);
 check(kol.sim.car.fly!.ground === 1, `Kolibri gelandet (Schaden ${(1000 - kol.sim.dmg.hp).toFixed(0)})`);
-use(B.p);
-check(B.p.ride < 0, 'Mitfahrer steigt nach der Landung aus');
+check(!B.p.pawn.pc && B.p.pawn.h === 0 && B.p.ride < 0, 'Fallschirmspringer ist gelandet');
 
 // --- Tanken
 kol.sim.car.fly!.fuel = 0.4;

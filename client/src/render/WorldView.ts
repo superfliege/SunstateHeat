@@ -26,6 +26,7 @@ import { addOutline, computeOutlineNormals, LINE } from './materials/toon';
 import { buildWaterInfo, waterMaterial } from './materials/water';
 import { MINIMAP_GROUND, palmaraize } from './palette';
 import { buildFarmBuilding, buildNorth, type NorthCtx } from './NorthBuilder';
+import { buildLandmark } from './LandmarkBuilder';
 import type { CoverKind } from './plants';
 import { coverVariants, treeVariants, type PlantVariant } from './Vegetation';
 import { PlantField, type PlantKind } from './PlantField';
@@ -165,6 +166,8 @@ function pastel(hex: number, amount: number): THREE.Color {
 
 export class WorldView {
   readonly group = new THREE.Group();
+  /** Schriftzüge der Wahrzeichen (Krankenhaus, Revier, Garage) */
+  private landmarkSigns = new THREE.Group();
   readonly waterMaterial: THREE.ShaderMaterial;
   private surface = (() => { const m = surfaceMaterial(); m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; return m; })(); // Straßen/Gehwege gewinnen sicher gegen das Gelände darunter (kein Z-Fighting)
   private solidMat = surfaceMaterial({ fade: true });
@@ -233,7 +236,9 @@ export class WorldView {
 
   /** Höhe der Fahrbahn (Brücken über Wasser auf Deckhöhe). */
   private roadY(x: number, z: number) {
-    return this.map.groundAt(x, z) === Tile.WATER ? BRIDGE_DECK : Math.max(0.05, this.map.terrainHeight(x, z)) + 0.04;
+    if (this.map.groundAt(x, z) === Tile.WATER) return BRIDGE_DECK;
+    const ramp = this.map.rampY(x, z); // Brückenauffahrt: dieselbe Rampe wie in der Physik
+    return Math.max(ramp ?? 0, Math.max(0.05, this.map.terrainHeight(x, z)) + 0.04);
   }
 
   /** Gleichmäßige Abtastung einer Kante zwischen s0 und s1. */
@@ -469,8 +474,6 @@ export class WorldView {
     const hw = e.width / 2;
     const ys = S.map((p) => this.roadY(p.x, p.z));
     const water = S.map((p) => this.map.groundAt(p.x, p.z) === Tile.WATER);
-    // Rampen zur Brücke weich überblenden
-    for (let pass = 0; pass < 3; pass++) for (let i = 1; i < ys.length - 1; i++) if (!water[i]) ys[i] = Math.max(ys[i], (ys[i - 1] + ys[i + 1]) / 2 - 0.02);
     const line = (off: number) => S.map((p): Vec2 => [p.x - p.dz * off, p.z + p.dx * off]);
     const yAt = (i: number) => ys[i];
 
@@ -684,13 +687,29 @@ export class WorldView {
   }
 
   // ------------------------------------------------------------------ Gebäude
+  /** Gebäude bauen; seine Geometrie wird als Einheit markiert, damit es als Ganzes durchsichtig werden kann (#51). */
   private buildBuilding(b: BuildingDef) {
+    const ch = this.chunkAt(b.x, b.z);
+    ch.solid.beginBuilding(b.x, b.z, b.w / 2, b.d / 2, b.rot, Math.max(0, this.map.terrainHeight(b.x, b.z)) + b.h);
+    this.buildBuildingGeo(b);
+    ch.solid.endBuilding();
+  }
+
+  private buildBuildingGeo(b: BuildingDef) {
     const ch = this.chunkAt(b.x, b.z);
     const ground = this.map.terrainHeight(b.x, b.z);
     const base = Math.max(0, ground);
     if (b.style === BuildingStyle.Store) { this.buildStore(b, ch, base); return; }
     if (b.style === BuildingStyle.Airport) { buildAirportBuilding(this.airportCtx, b, base); return; }
     if (b.style === BuildingStyle.Farm) { buildFarmBuilding(this.northCtx, b, base); return; }
+    if (b.style === BuildingStyle.Landmark) {
+      buildLandmark({
+        solid: ch.solid, flat: ch.flat, neon: ch.neon,
+        facade: (x, z, w, d, rot, y0, h, mat, color, roof) => this.facadeBox(ch, x, z, w, d, rot, y0, h, mat, color, roof),
+        sign: (m) => this.landmarkSigns.add(m),
+      }, b, base);
+      return;
+    }
     if (b.style === BuildingStyle.Container && this.containerYard(b, ch, base)) return;
     if (this.kitBuilding(b, ch, base)) return;
     const rnd = this.rnd;
@@ -1326,7 +1345,6 @@ export class WorldView {
 
   // ------------------------------------------------------------------ Zusammenbau
   private assemble() {
-    const pool = new THREE.PlaneGeometry(10, 10).rotateX(-Math.PI / 2);
     const bulb = new THREE.BoxGeometry(0.7, 0.25, 0.7);
     for (let cz = 0; cz < RC; cz++) {
       for (let cx = 0; cx < RC; cx++) {
@@ -1367,10 +1385,7 @@ export class WorldView {
           const b = instanced(bulb, this.lampMaterial, ch.lamps);
           b.name = 'lamps';
           grp.add(b);
-          const p = instanced(pool, this.lampPoolMaterial, ch.pools);
-          p.name = 'lampPools';
-          p.renderOrder = 2;
-          grp.add(p);
+          // Bodenlichtkegel der Laternen bewusst weggelassen (Issue #49) – die Leuchte selbst genügt.
         }
         this.chunkGroups.push(grp);
         this.group.add(grp);
@@ -1378,6 +1393,8 @@ export class WorldView {
     }
     for (const entry of this.plantLists.values()) entry.kind = this.plants.add(entry.variant, entry.cover, entry.mats) ?? undefined;
     this.group.add(this.plants.group);
+    this.landmarkSigns.name = 'landmarkSigns';
+    this.group.add(this.landmarkSigns);
     this.chunks = [];
     void this.trees;
   }

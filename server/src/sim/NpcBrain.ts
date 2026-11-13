@@ -545,8 +545,9 @@ export class NpcBrain implements PedBrain {
     const dx = g.x - p.x, dz = g.z - p.z, d = Math.hypot(dx, dz);
     if (d < 0.4 || (g.t > 20 && d < 2.5)) { this.arrive(p); return; }
     const stuck = stepPawn(this.h.map, p, dx / d, -dz / d, 0, dt, p.spd);
+    p.stk = stuck ? (p.stk ?? 0) + dt : 0;
     if (stuck && d < 2.5) this.arrive(p);
-    else if (g.t > 60) this.abortGoal(p, false);
+    else if (g.t > 60 || p.stk > 5) { p.stk = 0; this.abortGoal(p, false); } // Ziel hinter einer Wand: aufgeben (#37)
   }
 
   private arrive(p: Ped) {

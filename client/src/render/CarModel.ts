@@ -45,6 +45,7 @@ interface Shape {
   bumper: number; // Farbe
   paintOverride?: number;
   hatch?: boolean; // Heckklappe statt Kofferraumdeckel
+  open?: boolean; // Cabrio: kein Dach, nur Frontscheibe, Sitze sichtbar, Fahrer zu sehen
 }
 
 const SHAPES: Record<string, Shape> = {
@@ -57,6 +58,7 @@ const SHAPES: Record<string, Shape> = {
   truck_red: { deckY: 1.2, beltY: 1.25, hoodY: 1.2, roofY: 1.95, cab: [0.36, 0.42, 0.64, 0.72], sillY: 0.45, roofW: 0.84, noseDrop: 0.08, tailDrop: 0.02, bumper: CHROME, bed: true },
   truck_yellow: { deckY: 1.2, beltY: 1.25, hoodY: 1.2, roofY: 1.95, cab: [0.36, 0.42, 0.64, 0.72], sillY: 0.45, roofW: 0.84, noseDrop: 0.08, tailDrop: 0.02, bumper: PLASTIC, bed: true },
   proc_boxtruck: { deckY: 1.25, beltY: 1.45, hoodY: 1.35, roofY: 2.75, cab: [0.66, 0.72, 0.86, 0.92], sillY: 0.5, roofW: 0.86, noseDrop: 0.15, tailDrop: 0, bumper: PLASTIC, box: [0.0, 0.64, 3.2] },
+  proc_cabrio: { deckY: 0.86, beltY: 0.84, hoodY: 0.86, roofY: 1.3, cab: [0.24, 0.3, 0.56, 0.64], sillY: 0.24, roofW: 0.76, noseDrop: 0.08, tailDrop: 0.05, bumper: CHROME, open: true },
   police: { deckY: 0.97, beltY: 0.98, hoodY: 0.92, roofY: 1.47, cab: [0.22, 0.32, 0.6, 0.7], sillY: 0.27, roofW: 0.78, noseDrop: 0.1, tailDrop: 0.06, bumper: PLASTIC, lightbar: true, paintOverride: 0x1d1d26 },
 };
 
@@ -131,6 +133,8 @@ export interface CarTemplate {
   wheelBaseY: number;
   /** Motorraum (Rauch/Feuer), Auspuff, Sitz für sichtbare Fahrer */
   engine: THREE.Vector3; exhaust: THREE.Vector3[]; seatY: number;
+  /** Sitzposition seitlich/längs (Cabrio: Fahrer links); fehlt = mittig, leicht hinten */
+  seatX?: number; seatZ?: number;
   /** Fahrgastzelle (geschützt): z-Bereich und Sockelhöhe (lokal) */
   cell: [number, number, number];
   bike: boolean;
@@ -286,7 +290,37 @@ function buildCar(p: HandlingProfile, s: Shape, paint: number): CarTemplate {
   };
   const cr = cabSt.map(cabRing);
   const glass: Range[][] = [[], [], [], []];
-  for (let i = 0; i < cabSt.length - 1; i++) {
+  let seatX: number | undefined, seatZ: number | undefined, openSeatY = 0;
+  if (s.open) {
+    // ---- Cabrio: offener Innenraum, Sitze, niedrige Frontscheibe, gefaltetes Verdeck
+    const yTop = (z: number) => shoulder(z) + crown * 1.3 + g0;
+    const iw = halfW((c0 + c3) / 2) * 0.8, y0 = yTop((c0 + c3) / 2) + 0.012;
+    b.quad([iw, y0, c0 + 0.05], [-iw, y0, c0 + 0.05], [-iw, y0, c3 - 0.05], [iw, y0, c3 - 0.05], INTERIOR, SHINE.rubber);
+    const SEAT = 0xd8c6a8, sw = iw * 0.42;
+    const zf = c0 + (c3 - c0) * 0.58, zr = c0 + (c3 - c0) * 0.18;
+    for (const sx of [1, -1]) {
+      const x = sx * iw * 0.5;
+      b.box(x - sw, x + sw, y0, y0 + 0.12, zf - 0.22, zf + 0.22, [1, 1, 1], SEAT, SHINE.paint); // Sitzfläche
+      b.box(x - sw, x + sw, y0, y0 + 0.55, zf - 0.32, zf - 0.2, [1, 1, 1], SEAT, SHINE.paint); // Lehne
+    }
+    b.box(-iw * 0.95, iw * 0.95, y0, y0 + 0.12, zr - 0.2, zr + 0.2, [2, 1, 1], SEAT, SHINE.paint); // Rückbank
+    b.box(-iw * 0.95, iw * 0.95, y0, y0 + 0.42, zr - 0.3, zr - 0.18, [2, 1, 1], SEAT, SHINE.paint);
+    // Armaturenbrett und Lenkrad (Fahrer links, +x)
+    b.box(-iw, iw, y0, y0 + 0.16, c3 - 0.28, c3 - 0.05, [2, 1, 1], DARK, SHINE.rubber);
+    b.box(iw * 0.5 - 0.17, iw * 0.5 + 0.17, y0 + 0.2, y0 + 0.36, c3 - 0.36, c3 - 0.32, [1, 1, 1], DARK, SHINE.rubber);
+    // Gefaltetes Verdeck hinter der Rückbank
+    b.box(-iw * 0.95, iw * 0.95, y0, y0 + 0.16, c0 + 0.02, c0 + 0.3, [3, 1, 1], 0x2a2630, SHINE.rubber);
+    // Frontscheibe (beidseitig sichtbar) mit Rahmen
+    const wy0 = shoulder(c3) + g0 + 0.02, wy1 = wy0 + 0.4, wz0 = c3 - 0.04, wz1 = c3 - 0.3, ww = halfW(c3) * 0.88;
+    const start = b.count;
+    b.quad([ww, wy0, wz0], [ww, wy1, wz1], [-ww, wy1, wz1], [-ww, wy0, wz0], GLASS, SHINE.glass);
+    b.quad([-ww, wy0, wz0], [-ww, wy1, wz1], [ww, wy1, wz1], [ww, wy0, wz0], GLASS, SHINE.glass);
+    glass[0].push({ start, count: b.count - start });
+    b.box(-ww, ww, wy1, wy1 + 0.04, wz1 - 0.03, wz1 + 0.03, [2, 1, 1], CHROME, SHINE.chrome);
+    for (const sx of [1, -1]) b.box(sx * ww - 0.025, sx * ww + 0.025, wy0, wy1 + 0.04, wz1, wz0, [1, 1, 1], CHROME, SHINE.chrome);
+    seatX = iw * 0.5; seatZ = zf; openSeatY = y0 - g0;
+  }
+  for (let i = 0; i < cabSt.length - 1 && !s.open; i++) {
     for (let k = 0; k < 5; k++) {
       const side = k === 0 || k === 4;
       let color = paint, sh: number = SHINE.paint, zone = -1;
@@ -301,7 +335,7 @@ function buildCar(p: HandlingProfile, s: Shape, paint: number): CarTemplate {
   }
   // Dach-Extras
   const roofY = s.roofY + g0 + 0.05, roofZ = (c1 + c2) / 2;
-  if (s.taxi) b.box(-0.3, 0.3, roofY, roofY + 0.22, roofZ - 0.15, roofZ + 0.15, [1, 1, 1], 0xfff3b0, SHINE.paint);
+  if (s.taxi && !s.open) b.box(-0.3, 0.3, roofY, roofY + 0.22, roofZ - 0.15, roofZ + 0.15, [1, 1, 1], 0xfff3b0, SHINE.paint);
   if (s.lightbar) {
     b.box(-0.55, -0.05, roofY, roofY + 0.14, roofZ - 0.12, roofZ + 0.12, [1, 1, 1], 0x3a6bff, SHINE.glass);
     b.box(0.05, 0.55, roofY, roofY + 0.14, roofZ - 0.12, roofZ + 0.12, [1, 1, 1], 0xff3a4a, SHINE.glass);
@@ -396,7 +430,7 @@ function buildCar(p: HandlingProfile, s: Shape, paint: number): CarTemplate {
     wheelBaseY: d.mountY - d.rest,
     engine: new THREE.Vector3(0, s.hoodY + g0 + 0.1, s.box ? L / 2 - 0.6 : c3 + (L / 2 - c3) * 0.5),
     exhaust: [new THREE.Vector3(hw * 0.5, s.sillY + g0 + 0.05, -L / 2 - 0.1), ...(p.cylinders >= 8 ? [new THREE.Vector3(-hw * 0.5, s.sillY + g0 + 0.05, -L / 2 - 0.1)] : [])],
-    seatY: 0,
+    seatY: openSeatY, seatX, seatZ,
     cell: [c0, c3, s.sillY + g0 + 0.1],
     bike: false,
   };

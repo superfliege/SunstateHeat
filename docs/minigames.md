@@ -17,7 +17,7 @@ oder gemischt. Alle Werte stehen in `shared/src/minigames/config/<modus>.json`.
 ## Starten / Testen
 - **Im Spiel:** Jeder Modus hat 2–5 eigene Arena-Telefone, über die Viertel verteilt (Anzahl: `phones` in der Modus-Config,
   Orte: `minigamePhones()` in `shared/src/questLocations.ts`, deterministisch). Je Modus steht eins nahe dem Spawn.
-  Auf der großen Karte (M) sind sie als pinke Symbole mit Modus-Emoji markiert; Maus drüber (Touch: antippen) zeigt einen
+  Auf der großen Karte (K) sind sie als pinke Symbole mit Modus-Emoji markiert; Maus drüber (Touch: antippen) zeigt einen
   Tooltip mit Modus, Viertel, Beschreibung, Teilnehmern, Preisgeld und den anderen Standorten. F am Telefon meldet an.
   Spieler im Umkreis (`joinRange`) des Telefons können `lobbyTime` Sekunden lang beitreten; fehlende Plätze füllen NPCs auf.
   Nach der Runde kehrt jeder zu dem Telefon zurück, an dem er sich angemeldet hat.

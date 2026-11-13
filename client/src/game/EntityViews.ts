@@ -35,7 +35,7 @@ import { rankOf } from '../../../shared/src/story';
 import type { KenneyRole } from '../render/kenneyCharacters';
 
 /** rank: Story-Rang (Kleidung/Look und Symbol am Namensschild, siehe shared/story/ranks.json). */
-export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number; rank?: number }
+export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number; rank?: number; /** Fallschirm offen (#41) */ chute?: boolean }
 export interface VehicleViewState {
   id: number; kind: number; variant: number; color: number; driver: number;
   x: number; y: number; z: number; q: THREE.Quaternion;
@@ -89,6 +89,8 @@ interface CharView {
   arch: number;
   /** Spieler: Story-Rang, mit dem die Figur gebaut wurde (Wechsel = neue Kleidung). */
   rank?: number;
+  /** Fallschirm über der Figur (nur beim Absprung) */
+  chute?: THREE.Group;
 }
 /** Abstand, der für Figuren außerhalb des Bildes an die Animation gemeldet wird (seltene Updates, keine Details). */
 const OFFSCREEN_DIST = 1000;
@@ -558,7 +560,7 @@ export class EntityViews {
       root.visible = seatY > 0;
       if (veh && root.visible) {
         const back = seatedOn.kind === VehicleKind.Airboat ? -0.6 : seatedOn.kind === VehicleKind.Boat ? -0.8 : -0.3;
-        tmpPos.set(0, tpl ? -veh.prof.cgHeight + seatY - 0.35 : seatY - veh.prof.cgHeight + 0.15, back).applyMatrix4(veh.root.matrixWorld);
+        tmpPos.set(tpl?.seatX ?? 0, tpl ? -veh.prof.cgHeight + seatY - 0.35 : seatY - veh.prof.cgHeight + 0.15, tpl?.seatZ ?? back).applyMatrix4(veh.root.matrixWorld);
         root.position.copy(tmpPos);
         root.quaternion.copy(veh.root.quaternion);
       }
@@ -804,6 +806,16 @@ export class EntityViews {
       const p = c.anchor;
       c.label.position.set(p.x, p.y + (seatedOn && !c.model.root.visible ? 4 : 3.6), p.z);
     }
+    // Fallschirm
+    if (s.chute && !c.chute) { c.chute = makeChute(s.color); this.group.add(c.chute); }
+    if (c.chute) {
+      c.chute.visible = !!s.chute;
+      if (s.chute) {
+        c.chute.position.copy(c.anchor);
+        c.chute.rotation.y = s.a;
+        c.chute.rotation.z = Math.sin(performance.now() / 700 + s.id) * 0.06;
+      }
+    }
   }
 
   setPed(s: PedState, dt: number) {
@@ -1003,4 +1015,28 @@ export class EntityViews {
     this.foam.count = this.foamCount;
     this.foam.instanceMatrix.needsUpdate = true;
   }
+}
+
+/** Fallschirm: gewölbte, gestreifte Kappe mit Fangleinen (lokal: Füße der Figur bei y = 0). */
+function makeChute(color: number): THREE.Group {
+  const g = new THREE.Group();
+  const cols = [OUTFIT_COLORS[color % OUTFIT_COLORS.length], 0xf4efe6];
+  const segs = 8;
+  for (let i = 0; i < segs; i++) {
+    const geo = new THREE.SphereGeometry(3.2, 3, 6, (i / segs) * Math.PI * 2, (Math.PI * 2) / segs, 0, Math.PI * 0.36);
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: cols[i % 2], side: THREE.DoubleSide }));
+    m.scale.set(1, 0.55, 1);
+    m.position.y = 4.2;
+    g.add(m);
+  }
+  const pts: number[] = [];
+  const r = 3.2 * Math.sin(Math.PI * 0.36), y = 4.2 + 3.2 * Math.cos(Math.PI * 0.36) * 0.55;
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    pts.push(0, 1.4, 0, Math.sin(a) * r, y, Math.cos(a) * r);
+  }
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x333333 })));
+  return g;
 }

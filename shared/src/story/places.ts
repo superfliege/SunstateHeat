@@ -6,6 +6,7 @@
 //   Landebahn = Flugfeld Port Sabal · Abnehmer = Cane Ridge über den Okee Trail
 //   Umschlagplatz = Trailerpark Sunny Acres · Lou-Rettung = Highway 9 · Konvoi = Route 41
 //   Gus' Anwesen = Villa in Brickell Hills
+import { landmark } from '../world/landmarks';
 import type { Vec2 } from '../world/geometry';
 import { RoadType, type WorldMap } from '../world/WorldMap';
 
@@ -196,8 +197,10 @@ export function storyPlaces(map: WorldMap, foot: (x: number, z: number) => Point
     const t = 0.35; // ein Stück auf den Ankunftsort zu
     L.louBus = foot(door.x + (base.busStation.x - door.x) * t, door.z + (base.busStation.z - door.z) * t);
   }
-  L.carWash = side(1290, 812);
-  L.carWashRoad = road(1290, 812);
+  // Lous Waschanlage mit Garage (echtes Gebäude, landmarks.ts): Treffpunkt vor der Front (#38)
+  const garage = landmark(map, 'garage');
+  L.carWash = garage ? foot(garage.door.x, garage.door.z) : side(1290, 812);
+  L.carWashRoad = garage ? road(garage.door.x + Math.sin(garage.rot) * 4, garage.door.z + Math.cos(garage.rot) * 4) : road(1290, 812);
   alongRoute(roadRoute(map, L.introCar, L.carWashRoad), 3).forEach((p, i) => { L[`tut${i + 1}`] = p; });
   L.addr1 = road(1200, 806);
   L.addr2 = road(1160, 1000);

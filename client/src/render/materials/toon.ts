@@ -38,12 +38,40 @@ export const FADE_PARS = /* glsl */ `
     float front = smoothstep(L - 1.0, L - 4.0, t) * step(1.0, t); // nur zwischen Kamera und Spieler
     return front * (1.0 - smoothstep(3.0, 6.5, d)); // Radius um die Sichtlinie
   }
+  varying float vBldFade;
   void fadeDiscard(vec3 wp) {
-    float a = fadeAmount(wp) * 0.55;
+    // Gebäude (#51): das ganze Haus wird gleichmäßig durchsichtig, sobald es die Sicht auf den Spieler verdeckt
+    float a = vBldFade >= 0.0 ? vBldFade * 0.78 : fadeAmount(wp) * 0.55;
     if (a <= 0.0) return;
     // Interleaved-Gradient-Noise als Bildschirm-Dither
     float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     if (n < a) discard;
+  }
+`;
+
+/**
+ * Vertex-Teil der Gebäude-Durchsicht: Grundriss (Attribut bldA = Mitte xz, halbe Breite/Tiefe; bldB = Drehung,
+ * Dachhöhe) gegen die Sichtlinie Spieler -> Kamera (nur der Teil unter dem Dach) prüfen. -1 = kein Gebäude.
+ */
+export const FADE_VERT = /* glsl */ `
+  attribute vec4 bldA;
+  attribute vec2 bldB;
+  uniform vec3 uFocus;
+  varying float vBldFade;
+  float bldFade() {
+    if (bldA.z <= 0.0) return -1.0;
+    vec3 f = uFocus;
+    vec3 d = cameraPosition - f;
+    float tTop = d.y > 0.01 ? clamp((bldB.y + 0.5 - f.y) / d.y, 0.0, 1.0) : 1.0;
+    float cs = cos(bldB.x), sn = sin(bldB.x);
+    float best = 1e9;
+    for (int i = 0; i <= 10; i++) {
+      vec2 p = f.xz + d.xz * (tTop * float(i) / 10.0) - bldA.xy;
+      vec2 l = vec2(p.x * cs - p.y * sn, p.x * sn + p.y * cs);
+      vec2 q = abs(l) - bldA.zw;
+      best = min(best, length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));
+    }
+    return 1.0 - smoothstep(-0.5, 1.0, best); // Rand klein: Gebäude direkt neben dem Spieler bleiben sichtbar
   }
 `;
 
@@ -224,8 +252,8 @@ export function outlineMaterial(widthPx: number, opts: { wind?: boolean; color?:
     if (opts.fade) {
       shader.uniforms.uFocus = U.uFocus;
       vs = vs
-        .replace('#include <common>', '#include <common>\nvarying vec3 vFadePos;')
-        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFadePos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+        .replace('#include <common>', '#include <common>\nvarying vec3 vFadePos;\n' + FADE_VERT)
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFadePos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvBldFade = bldFade();');
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vFadePos;\n' + FADE_PARS)
         .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nfadeDiscard(vFadePos);');

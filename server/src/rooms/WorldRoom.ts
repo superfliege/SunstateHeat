@@ -16,7 +16,7 @@ import {
   type CarCollision, type Impact,
 } from '../../../shared/src/sim/car';
 import { applyImpact, burstTire, BURN_TIME, EXPLOSION_RADIUS, packDamage, resetDamage } from '../../../shared/src/sim/damage';
-import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, TANK_VARIANT, variantByName, variantInfo } from '../../../shared/src/sim/handling';
+import { ASSISTS, CAR_VARIANTS, derive, HANDLING, invalidateHandling, pickCarVariant, seatsOf, TANK_VARIANT, variantByName, variantInfo } from '../../../shared/src/sim/handling';
 import { northTarget } from '../../../shared/src/world/north';
 import { carBody, findFootSpot, findSwimSpot, footFree, knockPawn, newPawn, stepPawn, PAWN_RADIUS } from '../../../shared/src/sim/movement';
 import type { Box } from '../../../shared/src/world/collision';
@@ -59,6 +59,8 @@ import type { PlayerProfile, PlayerStore } from '../services/PlayerStore';
 import { isAnimal, Pedestrians, type Ped } from '../sim/Pedestrians';
 import { Countryside, SHERIFF_VARIANT } from '../sim/Countryside';
 import { Population } from '../sim/Population';
+import { Pickups } from '../sim/Pickups';
+import { landmark } from '../../../shared/src/world/landmarks';
 import { NpcBrain } from '../sim/NpcBrain';
 import { Perception } from '../sim/Perception';
 import { NpcEv } from '../../../shared/src/npc/reactions';
@@ -101,6 +103,25 @@ export class WorldRoom {
   private readonly traffic: Traffic;
   private readonly peds: Pedestrians;
   private readonly pop: Population;
+  /** Geld und Waffen am Boden (von besiegten NPCs) */
+  private readonly pickups = new Pickups({
+    addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
+    notice: (p, text, kind) => this.noticeTo(p, text, kind),
+    footPos: (p) => (p.vehicleId >= 0 || p.ride >= 0 || p.downT > 0 || p.pawn.rt > 0 || p.pawn.pc ? null : { x: p.pawn.x, z: p.pawn.z }),
+    giveWeapon: (p, id, ammo) => {
+      // Aufgehobene Waffe ersetzt keine eigene Waffe derselben Klasse – dann gibt es nur deren Munition
+      const def = WEAPONS[id];
+      const same = this.ownedWeapons(p).find((o) => o !== 'fists' && o !== id && WEAPONS[o].slot === def.slot);
+      if (same) {
+        if (WEAPONS[same].ammoPack > 0 && ammo > 0) {
+          p.profile.weapons[same] = (p.profile.weapons[same] ?? 0) + ammo;
+          this.noticeTo(p, `${def.name}: ${ammo} Schuss Munition für deine ${WEAPONS[same].name} übernommen.`, 'good');
+        } else this.noticeTo(p, `${def.name} liegen gelassen – du hast schon eine ${WEAPONS[same].name}.`, 'info');
+        return;
+      }
+      this.giveWeapon(p, id, ammo);
+    },
+  });
   private readonly brain: NpcBrain;
   private readonly perception: Perception;
   /** Spieler, die den NPC-Debug-Tab offen haben (nur Dev) */
@@ -193,6 +214,7 @@ export class WorldRoom {
     });
     this.peds.brain = this.brain;
     this.peds.avoid = (ped, dx, dz) => this.avoidVehicles(ped, dx, dz);
+    this.peds.playerNear = (x, z, r) => { for (const q of this.players.values()) { const pos = this.positionOf(q); if (dist2(pos.x, pos.z, x, z) < r * r) return true; } return false; };
     this.pop = new Population(map, this.peds, this.brain, () => this.dayPhase(), playerPos);
     this.perception = new Perception({
       map, peds: this.peds, vehicles: this.vehicles, players: this.players,
@@ -281,6 +303,7 @@ export class WorldRoom {
       dialog: (p, lines, kind) => this.story.dialog(p, lines, kind),
       offerChoice: (p, id) => this.story.offerChoice(p, id),
       applyChoice: (p, id, opt) => this.story.applyChoice(p, id, opt),
+      teleport: (p, x, z) => this.teleport(p, x, z),
     });
     this.story = new Story({
       map, locations: questLocations(map),
@@ -465,6 +488,30 @@ export class WorldRoom {
   /** Zähler für seltenere Updates entfernter Luftfahrzeuge */
   private snapNo = 0;
 
+  /**
+   * Absprung aus einem Luftfahrzeug mit automatisch öffnendem Fallschirm. false = zu niedrig
+   * (dann gelten die normalen Ausstiegsregeln).
+   */
+  private bailOut(p: ServerPlayer, v: ServerVehicle): boolean {
+    const c = v.sim.car;
+    const alt = c.y - Math.max(this.map.surfaceY(c.x, c.z), 0);
+    if (alt < 8) return false;
+    const rx = Math.cos(c.a), rz = -Math.sin(c.a); // seitlich raus
+    p.pawn = newPawn(c.x + rx * 2.5, c.z + rz * 2.5, c.a);
+    p.pawn.h = alt - 1.5;
+    p.pawn.pc = 1;
+    p.pawn.vx = c.vx * 0.3; p.pawn.vz = c.vz * 0.3;
+    this.noticeTo(p, 'Fallschirm offen! WASD = lenken.', 'info');
+    return true;
+  }
+
+  /** Freie Mitfahrer-Plätze (ohne Fahrer). Luftfahrzeuge: Flotte; Landfahrzeuge/Boote: Sitzplätze je Klasse. */
+  private freeSeats(v: ServerVehicle): number {
+    if (isAircraft(v.kind)) return this.air.freeSeats(v);
+    if (v.driver < 0 || v.race !== undefined) return 0; // nur bei Spielern, nicht in Rennen/Minispielen
+    return seatsOf(v.sim.variant) - 1 - (v.riders?.length ?? 0);
+  }
+
   /** Spieler steigt als Mitfahrer aus (Spot = Ausstiegsort, sonst neben dem Fahrzeug). */
   private leaveRide(p: ServerPlayer, power = 0) {
     const v = p.ride >= 0 ? this.vehicles.get(p.ride) : undefined;
@@ -522,7 +569,7 @@ export class WorldRoom {
     // Startausrüstung: neue (und bisher unbewaffnete) Spieler bekommen eine Pistole zum Testen
     if (Object.keys(profile.weapons).length === 0) profile.weapons.pistol = 48;
     if (!profile.inventory || Array.isArray(profile.inventory)) profile.inventory = {};
-    const view: ClientView = { veh: new Map(), info: new Map(), dmg: new Map(), peds: new Map(), props: new Map(), floors: '[]' };
+    const view: ClientView = { veh: new Map(), info: new Map(), dmg: new Map(), peds: new Map(), props: new Map(), pickups: new Set(), floors: '[]' };
     const player: ServerPlayer = {
       id: this.allocId(), name, color, conn,
       pawn: newPawn(start.x, start.z, Math.PI),
@@ -583,6 +630,10 @@ export class WorldRoom {
       case 'home': if (typeof msg.id === 'string') { if (msg.do === 'garage') this.story.garageVehicle(player, msg.id); else if (msg.do === 'set') this.story.setHome(player, msg.id); } break;
       case 'phone': if (typeof msg.id === 'string') this.openPhone(player, msg.id); break;
       case 'questAccept': if (typeof msg.id === 'string') this.acceptQuest(player, msg.id); break;
+      // Handy (#43): Warteräume
+      case 'lobbies': this.sendLobbies(player); break;
+      case 'lobbyJoin': this.joinLobby(player, msg.kind, String(msg.id)); break;
+      case 'lobbyStart': if (!this.mg.startNow(player) && !this.races.startNow(player)) this.quests.startNow(player); break;
       case 'questAbandon': if (!this.races.abandon(player) && !this.hunt.abandon(player) && !this.mg.abandon(player)) this.quests.abandon(player); break;
       case 'shop': if (typeof msg.shop === 'string' && typeof msg.item === 'string') this.buy(player, msg.shop, msg.item); break;
       case 'useItem': if (typeof msg.id === 'string') this.useItem(player, msg.id); break;
@@ -642,18 +693,30 @@ export class WorldRoom {
     }
   }
 
-  /** E-Taste: aussteigen, oder ins nächste freie Fahrzeug einsteigen. */
+  /** F-Taste: aussteigen, oder ins nächste freie Fahrzeug einsteigen. */
   private toggleVehicle(p: ServerPlayer) {
     if (p.downT > 0) return;
     // Mitfahrer: aussteigen (nur am Boden bzw. Helikopter knapp darüber)
     if (p.ride >= 0) {
       const rv = this.vehicles.get(p.ride);
-      if (rv && !canExitAircraft(this.map, rv.sim)) { this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return; }
-      this.leaveRide(p);
+      if (rv && isAircraft(rv.kind) && !canExitAircraft(this.map, rv.sim)) {
+        // In der Luft: mit Fallschirm abspringen (#41)
+        if (this.bailOut(p, rv)) { rv.riders = (rv.riders ?? []).filter((id) => id !== p.id); p.ride = -1; return; }
+        this.noticeTo(p, 'Aussteigen erst nach der Landung.', 'bad'); return;
+      }
+      // Aus fahrendem Auto springen: man fliegt ein Stück mit
+      const sp = rv ? Math.hypot(rv.sim.car.vx, rv.sim.car.vz) : 0;
+      this.leaveRide(p, rv && !isAircraft(rv.kind) && sp > 6 ? 0.6 : 0);
       return;
     }
     const current = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
     if (current && isAircraft(current.kind) && !canExitAircraft(this.map, current.sim)) {
+      // In der Luft: Pilot springt mit Fallschirm ab, die Maschine fliegt führerlos weiter (#41)
+      if (this.bailOut(p, current)) {
+        current.driver = DRIVER_NONE; current.idleTime = 0; current.buttons = 0;
+        p.vehicleId = -1;
+        return;
+      }
       this.noticeTo(p, aircraftDef(current.sim.variant).type === 'heli' ? 'Aussteigen nur knapp über dem Boden – erst runter!' : 'Aussteigen erst, wenn das Flugzeug am Boden steht.', 'bad');
       return;
     }
@@ -694,13 +757,23 @@ export class WorldRoom {
     for (const v of this.vehicles.values()) {
       const air = isAircraft(v.kind);
       if (air && v.copHeli !== undefined) continue;
-      if ((v.driver >= 0 && !(air && this.air.freeSeats(v) > 0)) || v.driver === DRIVER_COP || v.sim.dmg.wreck || !this.races.mayEnter(p.id, v) || !this.hunt.mayEnter(p.id, v) || !this.mg.mayEnter(p.id, v)) continue;
+      if ((v.driver >= 0 && this.freeSeats(v) <= 0) || v.driver === DRIVER_COP || v.sim.dmg.wreck || !this.races.mayEnter(p.id, v) || !this.hunt.mayEnter(p.id, v) || !this.mg.mayEnter(p.id, v)) continue;
       if (air && (v.sim.car.fly?.ground !== 1 && !canExitAircraft(this.map, v.sim))) continue; // fliegt
       const reach = ENTER_RADIUS + (air ? aircraftDef(v.sim.variant).radius * 0.8 : v.sim.prof.length / 2.4);
       const d = dist2(v.sim.car.x, v.sim.car.z, p.pawn.x, p.pawn.z);
       if (d < reach * reach && d < bestD) { best = v; bestD = d; }
     }
     if (!best) return;
+    if (!isAircraft(best.kind) && best.driver >= 0) {
+      // Ein anderer Spieler fährt: als Beifahrer einsteigen (#46)
+      const seats = seatsOf(best.sim.variant);
+      best.riders = [...(best.riders ?? []), p.id];
+      p.ride = best.id;
+      const drv = this.players.get(best.driver);
+      this.noticeTo(p, `Du fährst bei ${drv?.name ?? 'jemandem'} mit (${best.riders.length + 1}/${seats}). F = aussteigen.`, 'info');
+      if (drv) this.noticeTo(drv, `${p.name} fährt bei dir mit.`, 'info');
+      return;
+    }
     if (isAircraft(best.kind)) {
       const d = aircraftDef(best.sim.variant);
       if (best.driver >= 0) {
@@ -708,7 +781,7 @@ export class WorldRoom {
         if (this.air.freeSeats(best) <= 0) { this.noticeTo(p, `${d.name}: Alle ${d.seats} Plätze belegt.`, 'bad'); return; }
         best.riders = [...(best.riders ?? []), p.id];
         p.ride = best.id;
-        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). E = aussteigen nach der Landung.`, 'info');
+        this.noticeTo(p, `Du fliegst bei ${d.name} mit (${best.riders.length + 1}/${d.seats}). F = aussteigen nach der Landung.`, 'info');
         return;
       }
       if (best.driver !== DRIVER_NONE) return;
@@ -783,7 +856,7 @@ export class WorldRoom {
         guellefass: 'Güllefass', pflug: 'Pflug', kisten: 'Orangenkisten-Anhänger', maehdrescher: 'Harvest Titan', farmpickup: 'Rusty Ranch Pick-up',
         heupickup: 'Hay Hauler', quad: 'Mule ATV', buggy: 'Ridge Runner Buggy', milchlaster: 'Milchtanklaster', viehtransporter: 'Viehtransporter',
         holzlaster: 'Holztransporter', muldenkipper: 'Muldenkipper', rasenmaeher: 'Lawn Boss', wohnmobil: 'Wanderlust RV', ranger: 'County Ranger',
-        sheriff: 'County Sheriff', rig: 'Dustline Rig',
+        sheriff: 'County Sheriff', rig: 'Dustline Rig', cabrio: 'Sunset Cabrio',
       };
       for (const [k, n] of Object.entries(farm)) names[k] = variantByName(n);
       const variant = arg && arg in names ? names[arg] : Math.floor(Math.random() * CAR_VARIANTS.length);
@@ -840,7 +913,7 @@ export class WorldRoom {
       if (!ph || this.races.has(p.id)) return;
       if (current) { current.driver = DRIVER_NONE; current.buttons = 0; p.vehicleId = -1; }
       p.pawn = newPawn(ph.x, ph.z, 0);
-      say(`${ph.name} – F drücken zum Starten.`);
+      say(`${ph.name} – E drücken zum Starten.`);
     } else if (cmd === 'mg' || cmd === 'minispiel') {
       // Minispiele: /mg <modus> [anzahl|mit] [leicht|normal|schwer] · /mg stop
       this.mg.devCommand(p, text.slice(1).toLowerCase().split(/\s+/).slice(1), say);
@@ -850,7 +923,7 @@ export class WorldRoom {
       if (!ph || this.hunt.has(p.id)) return;
       if (current) { current.driver = DRIVER_NONE; current.buttons = 0; p.vehicleId = -1; }
       p.pawn = newPawn(ph.x, ph.z, 0);
-      say(`${ph.name} – F drücken zum Starten.`);
+      say(`${ph.name} – E drücken zum Starten.`);
     } else if (cmd === 'hurt') {
       this.hurtPlayer(p, Number(arg) || 30);
     } else if (cmd === 'xp') {
@@ -878,6 +951,10 @@ export class WorldRoom {
         say(`${AIRPORT_NAME}: Vorfeld. Sunbird P1, Kolibri am Terminal-Helipad, Marlin im Hangar 1, Pelikan auf Hangar 2.`);
         return;
       }
+      // Wahrzeichen: Krankenhaus, Polizeirevier, Lous Garage
+      const lmId = ({ krankenhaus: 'hospital', hospital: 'hospital', revier: 'police', polizei: 'police', garage: 'garage', waschanlage: 'garage' } as const)[rest as 'garage'];
+      const lm = lmId ? landmark(this.map, lmId) : undefined;
+      if (lm) { this.teleport(p, lm.door.x + Math.sin(lm.rot) * 3, lm.door.z + Math.cos(lm.rot) * 3); say(lm.name); return; }
       // Norden: Okee Peak und Höfe
       const north = northTarget(rest);
       if (north) { this.teleport(p, north.x, north.z); say(north.name); return; }
@@ -939,7 +1016,7 @@ export class WorldRoom {
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad|traktor|hoftraktor|oldtimer|maehdrescher|quad|buggy|muldenkipper|rasenmaeher|wohnmobil|…> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen|gipfel|stausee|steinbruch|camping|ranger|truckstop|hof> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
+      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad|traktor|hoftraktor|oldtimer|maehdrescher|quad|buggy|muldenkipper|rasenmaeher|wohnmobil|…> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen|krankenhaus|revier|garage|gipfel|stausee|steinbruch|camping|ranger|truckstop|hof> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
     }
   }
 
@@ -1167,9 +1244,13 @@ export class WorldRoom {
     if (cost > 0) this.addMoney(p, -cost, 'respawn');
     const ang = Math.random() * Math.PI * 2;
     const home = this.story.spawnPoint(p);
-    const base = home ?? this.map.spawn;
-    const spot = findFootSpot(this.map, base.x + Math.cos(ang) * 5, base.z + Math.sin(ang) * 5, 10) ?? base;
-    p.pawn = newPawn(spot.x, spot.z, Math.PI);
+    // Ohne Zuhause: vor der Notaufnahme des Krankenhauses aufwachen (#39)
+    const hosp = home ? undefined : landmark(this.map, 'hospital');
+    const base = home ?? (hosp ? hosp.door : this.map.spawn);
+    const spot = hosp
+      ? findFootSpot(this.map, hosp.door.x + Math.sin(hosp.rot) * 1.5 + Math.cos(hosp.rot) * (Math.random() * 4 - 2), hosp.door.z + Math.cos(hosp.rot) * 1.5 - Math.sin(hosp.rot) * (Math.random() * 4 - 2), 8) ?? base
+      : findFootSpot(this.map, base.x + Math.cos(ang) * 5, base.z + Math.sin(ang) * 5, 10) ?? base;
+    p.pawn = newPawn(spot.x, spot.z, hosp ? hosp.rot : Math.PI);
     p.downT = 0;
     p.health = BALANCE.player.maxHealth;
     p.armor = 0;
@@ -1248,6 +1329,25 @@ export class WorldRoom {
     if (!ph || p.downT > 0) return;
     const quests = ph.mg ? this.mg.listing(p, ph.mg).map((q) => (q.ok && this.quests.isActive(p.id) ? { ...q, intro: [...q.intro, { who: 'Arenaleiter', text: 'Achtung: Dein laufender Auftrag wird abgebrochen, wenn du mitmachst.' }] } : q)) : ph.taxi ? this.hunt.listing(p) : ph.race ? this.races.listing(p, ph.id) : this.quests.listing(p, ph.id, levelFromXp(p.profile.xp).level).map((q) => ({ ...q, intro: this.story.lines(p, q.intro) }));
     p.conn.send({ t: 'phone', id: ph.id, name: ph.name, quests });
+  }
+
+  /** Per Handy einem Warteraum beitreten (#43). */
+  private joinLobby(p: ServerPlayer, kind: string, id: string) {
+    if (p.downT > 0) return;
+    if (kind === 'quest') {
+      if (this.races.has(p.id) || this.hunt.has(p.id) || this.mg.has(p.id)) { this.noticeTo(p, 'Du bist gerade anderweitig angemeldet.', 'bad'); return; }
+      if (this.quests.joinLobby(p, Number(id))) this.sendLobbies(p);
+    } else if (kind === 'mg') {
+      if (this.quests.isActive(p.id) && !this.mg.has(p.id)) this.quests.abandon(p); // Minispiel geht vor
+      this.mg.joinRemote(p, id);
+      this.sendLobbies(p);
+    } else if (kind === 'race') {
+      this.races.joinRemote(p, id);
+      this.sendLobbies(p);
+    }
+  }
+  private sendLobbies(p: ServerPlayer) {
+    p.conn.send({ t: 'lobbies', list: [...this.mg.lobbies(p), ...this.races.lobbies(p), ...this.quests.lobbies(p)] });
   }
 
   private acceptQuest(p: ServerPlayer, id: string) {
@@ -1357,17 +1457,21 @@ export class WorldRoom {
     }
   }
 
-  /** Festnahme (Spec 7.3): 15 % Bargeld und illegale Gegenstände weg, Respawn beim Revier (= Spawn). */
+  /** Festnahme (Spec 7.3): 15 % Bargeld und illegale Gegenstände weg, Respawn vor dem Polizeirevier. */
   private arrest(p: ServerPlayer) {
     const cost = Math.floor(p.profile.money * BALANCE.player.arrestCostShare);
     if (cost > 0) this.addMoney(p, -cost, 'arrest');
     for (const id of Object.keys(p.profile.inventory)) if (ITEMS[id]?.kind === 'illegal') delete p.profile.inventory[id];
     this.police.clear(p);
+    // Entlassung vor dem Polizeirevier (#40)
+    const pol = landmark(this.map, 'police');
     const ang = Math.random() * Math.PI * 2;
-    const spot = findFootSpot(this.map, this.map.spawn.x + Math.cos(ang) * 5, this.map.spawn.z + Math.sin(ang) * 5, 10) ?? this.map.spawn;
-    p.pawn = newPawn(spot.x, spot.z, Math.PI);
+    const spot = pol
+      ? findFootSpot(this.map, pol.door.x + Math.sin(pol.rot) * 1.5 + Math.cos(pol.rot) * (Math.random() * 4 - 2), pol.door.z + Math.cos(pol.rot) * 1.5 - Math.sin(pol.rot) * (Math.random() * 4 - 2), 8) ?? pol.door
+      : findFootSpot(this.map, this.map.spawn.x + Math.cos(ang) * 5, this.map.spawn.z + Math.sin(ang) * 5, 10) ?? this.map.spawn;
+    p.pawn = newPawn(spot.x, spot.z, pol ? pol.rot : Math.PI);
     p.invuln = BALANCE.player.spawnProtection;
-    p.conn.send({ t: 'notice', text: `Festgenommen! Du verlierst ${cost} $ und illegale Ware.`, kind: 'bad' });
+    p.conn.send({ t: 'notice', text: `Festgenommen! Nach einer Nacht im ${pol?.name ?? 'Revier'} bist du wieder draußen – ${cost} $ und illegale Ware sind weg.`, kind: 'bad' });
     this.persist(p);
   }
 
@@ -1508,7 +1612,6 @@ export class WorldRoom {
       if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
       if (ped.cop) this.police.raise(p, defeated ? 3 : 2, defeated ? HEAT.copKill : HEAT.copHit); // Polizisten angreifen: sofort bekannt
       else this.police.crime(p, defeated ? HEAT.kill : HEAT.punch, ped.x, ped.z);
-      if (defeated && !ped.cop) this.addMoney(p, 5 + Math.floor(Math.random() * 36), 'loot');
     } else if (t.ref.veh) {
       const v = t.ref.veh, d = v.sim.dmg;
       d.hp = Math.max(0, d.hp - dmg * 5);
@@ -1685,7 +1788,7 @@ export class WorldRoom {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       if (!v || isWaterVehicle(v.kind) || !carInWater(this.map, v.sim.car) || this.sinkNote.has(p.id) || this.mg.has(p.id)) continue;
       this.sinkNote.set(p.id, 12);
-      this.noticeTo(p, 'Dein Auto säuft ab! Steig aus (E) und schwimm ans Ufer.', 'info');
+      this.noticeTo(p, 'Dein Auto säuft ab! Steig aus (F) und schwimm ans Ufer.', 'info');
     }
   }
 
@@ -1773,7 +1876,10 @@ export class WorldRoom {
       const c = v.sim.car;
       if (Math.abs(c.s) >= 5) threats.push({ x: c.x, z: c.z, speed: c.s, vx: c.vx, vz: c.vz });
     }
+    // Besiegte NPCs lassen Geld bzw. ihre Waffe fallen (#35, #36) – vor dem Aufräumen der Leichen
+    for (const ped of this.peds.peds.values()) if (ped.hp <= 0 && !isAnimal(ped)) this.pickups.dropFor(ped);
     this.peds.update(dt, threats);
+    this.pickups.update(dt, this.players.values());
     t = this.lap('peds', t);
     this.updateProps(dt);
     this.updateFire(dt);
@@ -2147,7 +2253,7 @@ export class WorldRoom {
     const AIR_R2 = AIR_SETTINGS.airInterest ** 2;
     const players: PlayerTuple[] = [...this.players.values()].map((p) => [
       p.id, p.name, r2(p.pawn.x), r2(p.pawn.z), r3(p.pawn.a), p.vehicleId >= 0 ? p.vehicleId : p.ride, p.color, this.quests.isCarrying(p.id) ? 1 : 0,
-      r2(p.pawn.h), p.pawn.rt > 0 ? 1 : 0, p.vehicleId >= 0 || p.downT > 0 ? 0 : Math.max(0, weaponNames.indexOf(p.weapon)),
+      r2(p.pawn.h), p.pawn.pc ? 2 : p.pawn.rt > 0 ? 1 : 0, p.vehicleId >= 0 || p.downT > 0 ? 0 : Math.max(0, weaponNames.indexOf(p.weapon)),
       p.profile.story?.rank ?? 0,
     ]);
     const floorsJson = this.mg.floorsJson();
@@ -2236,6 +2342,18 @@ export class WorldRoom {
       }
       if (pr.length) parts.push(`"pr":[${pr.join(',')}]`);
       if (prg.length) parts.push(`"prg":${JSON.stringify(prg)}`);
+      // Gegenstände am Boden
+      const pk = [], pkg: number[] = [];
+      for (const it of this.pickups.items.values()) {
+        if (view.pickups.has(it.id) || !nearPed(it.x, it.z)) continue;
+        pk.push(this.pickups.tuple(it)); view.pickups.add(it.id);
+      }
+      for (const id of view.pickups) {
+        const it = this.pickups.items.get(id);
+        if (!it || !nearPed(it.x, it.z)) { pkg.push(id); view.pickups.delete(id); }
+      }
+      if (pk.length) parts.push(`"pk":${JSON.stringify(pk)}`);
+      if (pkg.length) parts.push(`"pkg":${JSON.stringify(pkg)}`);
       // Ereignisse im Umkreis
       const ev = this.events.filter((e) => e.vid === p.vehicleId && e.vid >= 0 || dist2(e.x, e.z, pos.x, pos.z) < (INTEREST + 20) ** 2).map((e) => e.ev);
       if (ev.length) parts.push(`"ev":${JSON.stringify(ev)}`);
@@ -2244,7 +2362,7 @@ export class WorldRoom {
       // Eigener Zustand
       const myV = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       const pw = p.pawn;
-      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt)], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
+      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt), pw.pc ? 1 : 0], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
       parts.push(`"me":${JSON.stringify(me)}`);
       p.conn.sendRaw(`{"t":"snap","ack":${p.lastSeq},${common},${parts.join(',')}}`);
     }

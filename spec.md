@@ -709,7 +709,7 @@ Fahrzeug	unten Mitte (nur im Fahrzeug)	Fahrzeugname, Zustand, Tacho, Radiosender
 Chat	links Mitte	Einblendung, verblasst nach 10 s
 Benachrichtigungen	rechts Mitte	Gruppeneinladungen, Anrufe, Belohnungen
 17.3 Menüs
-Karte (M): Vollbildkarte mit Zoom, Legende, Filter, Wegpunkt per Klick.
+Karte (K): Vollbildkarte mit Zoom, Legende, Filter, Wegpunkt per Klick.
 Inventar (I): Waffenslots, Rucksack, Ausrüsten/Benutzen/Weitergeben.
 Quest-Log (J): Aktive Quest, verfügbare Quests, abgeschlossene Quests, Story-Fortschritt.
 Gang-Übersicht: Rufbalken pro Gang, Boss-Infos, Revierkarte (M3).

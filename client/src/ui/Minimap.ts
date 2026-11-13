@@ -1,5 +1,5 @@
 // Minimap im Stil eines zweiten DS-Bildschirms: pixelige Karte, Norden oben,
-// zentriert auf den Spieler. M schaltet eine große Gesamtkarte ein; dort zeigt ein Tooltip
+// zentriert auf den Spieler. K schaltet eine große Gesamtkarte ein; dort zeigt ein Tooltip
 // beim Überfahren (Maus) bzw. Antippen (Touch) eines Punkts, was sich dahinter verbirgt.
 import { CELL, GRID_SIZE, OUTFIT_COLORS, WORLD_SIZE } from '../../../shared/src/constants';
 import { Tile } from '../../../shared/src/world/tiles';
