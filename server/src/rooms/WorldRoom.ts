@@ -60,6 +60,7 @@ import { isAnimal, Pedestrians, type Ped } from '../sim/Pedestrians';
 import { Countryside, SHERIFF_VARIANT } from '../sim/Countryside';
 import { Population } from '../sim/Population';
 import { Pickups } from '../sim/Pickups';
+import { landmark } from '../../../shared/src/world/landmarks';
 import { NpcBrain } from '../sim/NpcBrain';
 import { Perception } from '../sim/Perception';
 import { NpcEv } from '../../../shared/src/npc/reactions';
@@ -945,6 +946,10 @@ export class WorldRoom {
         say(`${AIRPORT_NAME}: Vorfeld. Sunbird P1, Kolibri am Terminal-Helipad, Marlin im Hangar 1, Pelikan auf Hangar 2.`);
         return;
       }
+      // Wahrzeichen: Krankenhaus, Polizeirevier, Lous Garage
+      const lmId = ({ krankenhaus: 'hospital', hospital: 'hospital', revier: 'police', polizei: 'police', garage: 'garage', waschanlage: 'garage' } as const)[rest as 'garage'];
+      const lm = lmId ? landmark(this.map, lmId) : undefined;
+      if (lm) { this.teleport(p, lm.door.x + Math.sin(lm.rot) * 3, lm.door.z + Math.cos(lm.rot) * 3); say(lm.name); return; }
       // Norden: Okee Peak und Höfe
       const north = northTarget(rest);
       if (north) { this.teleport(p, north.x, north.z); say(north.name); return; }
@@ -1006,7 +1011,7 @@ export class WorldRoom {
     } else if ((cmd === 'feuer' || cmd === 'fire') && current) {
       current.sim.dmg.hp = 0; current.sim.dmg.burn = 0.001; current.dmgVer++;
     } else {
-      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad|traktor|hoftraktor|oldtimer|maehdrescher|quad|buggy|muldenkipper|rasenmaeher|wohnmobil|…> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen|gipfel|stausee|steinbruch|camping|ranger|truckstop|hof> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
+      say('Dev-Befehle: /story <info|reset|intro|rang|skip|bis|tp> · /test · /laden <sunmart|gas|ammo|paint> · /auto <kompakt|limousine|kombi|taxi|sport|muscle|suv|pickup|lkw|coupe|hornet|jeep|luxus|van|lieferwagen|muellwagen|kipper|krankenwagen|feuerwehr|cab|racer|motorrad|traktor|hoftraktor|oldtimer|maehdrescher|quad|buggy|muldenkipper|rasenmaeher|wohnmobil|…> · /rennen <1-3> · /reparieren · /feuer · /zeit <0-24> · /ort <x> <z> · /pop <tageszeit|auto> · /wetter <klar|regen|hitze> · /tp <viertel|flughafen|krankenhaus|revier|garage|gipfel|stausee|steinbruch|camping|ranger|truckstop|hof> · /flug <sunbird|marlin|kolibri|pelikan> · /tanken · /flotte · /hoehe');
     }
   }
 
@@ -1234,9 +1239,13 @@ export class WorldRoom {
     if (cost > 0) this.addMoney(p, -cost, 'respawn');
     const ang = Math.random() * Math.PI * 2;
     const home = this.story.spawnPoint(p);
-    const base = home ?? this.map.spawn;
-    const spot = findFootSpot(this.map, base.x + Math.cos(ang) * 5, base.z + Math.sin(ang) * 5, 10) ?? base;
-    p.pawn = newPawn(spot.x, spot.z, Math.PI);
+    // Ohne Zuhause: vor der Notaufnahme des Krankenhauses aufwachen (#39)
+    const hosp = home ? undefined : landmark(this.map, 'hospital');
+    const base = home ?? (hosp ? hosp.door : this.map.spawn);
+    const spot = hosp
+      ? findFootSpot(this.map, hosp.door.x + Math.sin(hosp.rot) * 1.5 + Math.cos(hosp.rot) * (Math.random() * 4 - 2), hosp.door.z + Math.cos(hosp.rot) * 1.5 - Math.sin(hosp.rot) * (Math.random() * 4 - 2), 8) ?? base
+      : findFootSpot(this.map, base.x + Math.cos(ang) * 5, base.z + Math.sin(ang) * 5, 10) ?? base;
+    p.pawn = newPawn(spot.x, spot.z, hosp ? hosp.rot : Math.PI);
     p.downT = 0;
     p.health = BALANCE.player.maxHealth;
     p.armor = 0;
@@ -1424,17 +1433,21 @@ export class WorldRoom {
     }
   }
 
-  /** Festnahme (Spec 7.3): 15 % Bargeld und illegale Gegenstände weg, Respawn beim Revier (= Spawn). */
+  /** Festnahme (Spec 7.3): 15 % Bargeld und illegale Gegenstände weg, Respawn vor dem Polizeirevier. */
   private arrest(p: ServerPlayer) {
     const cost = Math.floor(p.profile.money * BALANCE.player.arrestCostShare);
     if (cost > 0) this.addMoney(p, -cost, 'arrest');
     for (const id of Object.keys(p.profile.inventory)) if (ITEMS[id]?.kind === 'illegal') delete p.profile.inventory[id];
     this.police.clear(p);
+    // Entlassung vor dem Polizeirevier (#40)
+    const pol = landmark(this.map, 'police');
     const ang = Math.random() * Math.PI * 2;
-    const spot = findFootSpot(this.map, this.map.spawn.x + Math.cos(ang) * 5, this.map.spawn.z + Math.sin(ang) * 5, 10) ?? this.map.spawn;
-    p.pawn = newPawn(spot.x, spot.z, Math.PI);
+    const spot = pol
+      ? findFootSpot(this.map, pol.door.x + Math.sin(pol.rot) * 1.5 + Math.cos(pol.rot) * (Math.random() * 4 - 2), pol.door.z + Math.cos(pol.rot) * 1.5 - Math.sin(pol.rot) * (Math.random() * 4 - 2), 8) ?? pol.door
+      : findFootSpot(this.map, this.map.spawn.x + Math.cos(ang) * 5, this.map.spawn.z + Math.sin(ang) * 5, 10) ?? this.map.spawn;
+    p.pawn = newPawn(spot.x, spot.z, pol ? pol.rot : Math.PI);
     p.invuln = BALANCE.player.spawnProtection;
-    p.conn.send({ t: 'notice', text: `Festgenommen! Du verlierst ${cost} $ und illegale Ware.`, kind: 'bad' });
+    p.conn.send({ t: 'notice', text: `Festgenommen! Nach einer Nacht im ${pol?.name ?? 'Revier'} bist du wieder draußen – ${cost} $ und illegale Ware sind weg.`, kind: 'bad' });
     this.persist(p);
   }
 

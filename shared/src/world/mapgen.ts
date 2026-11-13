@@ -21,6 +21,7 @@ import { placeFarmBuildings, placeFarmVehicles } from './farms';
 import { placeOkeeFeatures, placeOkeeVehicles } from './okeeFeatures';
 import { buildTestTrack, inTestTrack, placeRamps, TEST_TRACK, TRACK_WORKSHOP } from './features';
 import { Tile } from './tiles';
+import { placeLandmarks } from './landmarks';
 import { LotUse, RoadType, WorldMap, type ChunkContent } from './WorldMap';
 
 const N = GRID_SIZE;
@@ -61,6 +62,8 @@ export function generateWorld(seed: number): WorldMap {
     map.workshops.push({ x: c[0], z: c[1], r: 7 });
   }
   map.workshops.push({ ...TRACK_WORKSHOP, r: 7 });
+  // Krankenhaus, Polizeirevier, Story-Garage (vor den Läden, damit diese nicht den Platz belegen)
+  placeLandmarks(map);
   // Läden als echte Gebäude (nach Werkstätten, da sie daran hängen); danach Chunk-Index neu
   placeShops(map);
   prepareCollision(map); // exakte Gebäude-Kollision auf dem fertigen Raster aufbauen

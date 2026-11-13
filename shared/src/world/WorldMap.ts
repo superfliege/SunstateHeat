@@ -6,6 +6,7 @@ import type { Poly, Vec2 } from './geometry';
 import { pointInPolygon } from './geometry';
 import { Tile } from './tiles';
 import type { Ramp } from './features';
+import type { Landmark } from './landmarks';
 import type { ShopDef } from '../shops';
 import { floorHeight, floorSolid, floorWall, type ArenaFloor } from './arenaFloor';
 
@@ -23,6 +24,7 @@ export const BuildingStyle = {
   Store: 10, // begehbarer Laden (Hohlgebäude mit Tür, shops.ts)
   Airport: 11, // Flughafengebäude und -zaun (Optik nach tag, AirportView)
   Farm: 12, // Hofgebäude (Scheune, Silo, Melkstall … nach tag, NorthBuilder) und Bauten am Okee Peak
+  Landmark: 13, // Krankenhaus, Polizeirevier, Story-Garage (tag = LandmarkId, landmarks.ts)
 } as const;
 
 /** Gedrehtes Rechteck: [Mitte x, Mitte z, halbe Breite, halbe Tiefe, cos rot, sin rot]. */
@@ -168,6 +170,8 @@ export class WorldMap {
    * Zellmitten wird bilinear interpoliert – Physik und Darstellung sehen dieselbe glatte Rampe.
    */
   bridgeRamp = new Map<number, number>();
+  /** Krankenhaus, Polizeirevier, Story-Garage (landmarks.ts) */
+  landmarks: Landmark[] = [];
   spawn = { x: 0, z: 0 };
   questStart = { x: 0, z: 0 };
   questDest = { x: 0, z: 0 };

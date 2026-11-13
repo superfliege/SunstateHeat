@@ -26,6 +26,7 @@ import { addOutline, computeOutlineNormals, LINE } from './materials/toon';
 import { buildWaterInfo, waterMaterial } from './materials/water';
 import { MINIMAP_GROUND, palmaraize } from './palette';
 import { buildFarmBuilding, buildNorth, type NorthCtx } from './NorthBuilder';
+import { buildLandmark } from './LandmarkBuilder';
 import type { CoverKind } from './plants';
 import { coverVariants, treeVariants, type PlantVariant } from './Vegetation';
 import { PlantField, type PlantKind } from './PlantField';
@@ -165,6 +166,8 @@ function pastel(hex: number, amount: number): THREE.Color {
 
 export class WorldView {
   readonly group = new THREE.Group();
+  /** Schriftzüge der Wahrzeichen (Krankenhaus, Revier, Garage) */
+  private landmarkSigns = new THREE.Group();
   readonly waterMaterial: THREE.ShaderMaterial;
   private surface = (() => { const m = surfaceMaterial(); m.polygonOffset = true; m.polygonOffsetFactor = -1; m.polygonOffsetUnits = -2; return m; })(); // Straßen/Gehwege gewinnen sicher gegen das Gelände darunter (kein Z-Fighting)
   private solidMat = surfaceMaterial({ fade: true });
@@ -699,6 +702,14 @@ export class WorldView {
     if (b.style === BuildingStyle.Store) { this.buildStore(b, ch, base); return; }
     if (b.style === BuildingStyle.Airport) { buildAirportBuilding(this.airportCtx, b, base); return; }
     if (b.style === BuildingStyle.Farm) { buildFarmBuilding(this.northCtx, b, base); return; }
+    if (b.style === BuildingStyle.Landmark) {
+      buildLandmark({
+        solid: ch.solid, flat: ch.flat, neon: ch.neon,
+        facade: (x, z, w, d, rot, y0, h, mat, color, roof) => this.facadeBox(ch, x, z, w, d, rot, y0, h, mat, color, roof),
+        sign: (m) => this.landmarkSigns.add(m),
+      }, b, base);
+      return;
+    }
     if (b.style === BuildingStyle.Container && this.containerYard(b, ch, base)) return;
     if (this.kitBuilding(b, ch, base)) return;
     const rnd = this.rnd;
@@ -1382,6 +1393,8 @@ export class WorldView {
     }
     for (const entry of this.plantLists.values()) entry.kind = this.plants.add(entry.variant, entry.cover, entry.mats) ?? undefined;
     this.group.add(this.plants.group);
+    this.landmarkSigns.name = 'landmarkSigns';
+    this.group.add(this.landmarkSigns);
     this.chunks = [];
     void this.trees;
   }
