@@ -227,7 +227,7 @@ export class Races {
     const keep = new Set<number>();
     for (const p of crew) if (p.vehicleId >= 0) keep.add(p.vehicleId);
     for (const g of track.grid) this.h.clearArea(g.x, g.z, 6, keep);
-    const variants = CAR_VARIANTS.map((v, i) => ({ v, i })).filter((x) => x.v.cls !== 'truck').map((x) => x.i);
+    const variants = CAR_VARIANTS.map((v, i) => ({ v, i })).filter((x) => x.v.cls !== 'truck' && x.v.weight > 0).map((x) => x.i);
     const names = [...AI_NAMES].sort(() => Math.random() - 0.5);
     const order = [...crew.map((p) => p as ServerPlayer | null)];
     while (order.length < RACE_FIELD) order.push(null);

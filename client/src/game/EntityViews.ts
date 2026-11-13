@@ -558,7 +558,7 @@ export class EntityViews {
       root.visible = seatY > 0;
       if (veh && root.visible) {
         const back = seatedOn.kind === VehicleKind.Airboat ? -0.6 : seatedOn.kind === VehicleKind.Boat ? -0.8 : -0.3;
-        tmpPos.set(0, tpl ? -veh.prof.cgHeight + seatY - 0.35 : seatY - veh.prof.cgHeight + 0.15, back).applyMatrix4(veh.root.matrixWorld);
+        tmpPos.set(tpl?.seatX ?? 0, tpl ? -veh.prof.cgHeight + seatY - 0.35 : seatY - veh.prof.cgHeight + 0.15, tpl?.seatZ ?? back).applyMatrix4(veh.root.matrixWorld);
         root.position.copy(tmpPos);
         root.quaternion.copy(veh.root.quaternion);
       }

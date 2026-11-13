@@ -783,7 +783,7 @@ export class WorldRoom {
         guellefass: 'Güllefass', pflug: 'Pflug', kisten: 'Orangenkisten-Anhänger', maehdrescher: 'Harvest Titan', farmpickup: 'Rusty Ranch Pick-up',
         heupickup: 'Hay Hauler', quad: 'Mule ATV', buggy: 'Ridge Runner Buggy', milchlaster: 'Milchtanklaster', viehtransporter: 'Viehtransporter',
         holzlaster: 'Holztransporter', muldenkipper: 'Muldenkipper', rasenmaeher: 'Lawn Boss', wohnmobil: 'Wanderlust RV', ranger: 'County Ranger',
-        sheriff: 'County Sheriff', rig: 'Dustline Rig',
+        sheriff: 'County Sheriff', rig: 'Dustline Rig', cabrio: 'Sunset Cabrio',
       };
       for (const [k, n] of Object.entries(farm)) names[k] = variantByName(n);
       const variant = arg && arg in names ? names[arg] : Math.floor(Math.random() * CAR_VARIANTS.length);

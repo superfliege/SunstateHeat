@@ -4,7 +4,7 @@
     "giver": { "type": "npc", "id": "lou" }, "minLevel": 1, "coop": { "min": 1, "max": 1 }, "repeatable": false, "intro": [],
     "stages": [
       { "id": "enter", "description": "Steig in Lous Cabrio (F).",
-        "onStart": [{ "do": "spawnVehicle", "tag": "cabrio", "kind": "car", "model": "proc_muscle", "color": 2, "at": "introCar", "pose": "road" }],
+        "onStart": [{ "do": "spawnVehicle", "tag": "cabrio", "kind": "car", "model": "proc_cabrio", "color": 2, "at": "introCar", "pose": "road" }],
         "objectives": [{ "type": "enterVehicle", "tag": "cabrio" }] },
       { "id": "learn", "description": "Fahrschule bei Lou: W/S = Gas/Bremse, A/D = Lenken, Leertaste = Handbremse. Fahr durch die Wegpunkte.",
         "objectives": [{ "type": "race", "points": ["tut1", "tut2", "tut3"], "vehicleTag": "cabrio" }] },

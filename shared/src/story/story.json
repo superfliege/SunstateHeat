@@ -15,7 +15,7 @@
     "title": "Zwölf Dollar. Ein Rucksack. Eine Stadt voller Möglichkeiten.",
     "startCash": 12,
     "day": 0.745,
-    "car": { "model": "proc_muscle", "color": 2, "name": "Lous Cabrio" },
+    "car": { "model": "proc_cabrio", "color": 2, "name": "Lous Cabrio" },
     "lines": [
       { "who": "lou", "text": "Da bist du ja! Hab dich am Rucksack erkannt. Jeder hier fängt mit so einem an." },
       { "who": "lou", "text": "Lou. Lou Navarro. Autowäsche, Kurierdienste, Geschäftliches. Hauptsächlich Autowäsche." },

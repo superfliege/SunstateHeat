@@ -376,6 +376,8 @@ export const CAR_VARIANTS: VehicleVariant[] = [
   { cls: 'pickup_farm', model: 'farm_pickup_ranger', name: 'County Ranger', weight: 0 },
   { cls: 'police', model: 'farm_pickup_sheriff', name: 'County Sheriff', weight: 0 },
   { cls: 'truck', model: 'farm_semi', name: 'Dustline Rig', weight: 0 },
+  // ---------------------------------------------------------------- weitere Stadtautos (Index 44 …)
+  { cls: 'muscle', model: 'proc_cabrio', name: 'Sunset Cabrio', weight: 0.6 },
 ];
 /** Index einer Variante nach Name (-1 = unbekannt). */
 export function variantByName(name: string): number { return CAR_VARIANTS.findIndex((v) => v.name === name); }
