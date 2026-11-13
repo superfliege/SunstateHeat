@@ -63,6 +63,7 @@ import { WEAPONS, type WeaponId } from '../../../shared/src/weapons';
 import { taxiProfile } from '../../../shared/src/taxiHunt';
 import { PostFX, type GfxPreset, type GfxSettings } from '../render/PostFX';
 import { PropsView } from '../render/PropsView';
+import { PickupsView } from '../render/PickupsView';
 import { SmartObjectsView } from '../render/SmartObjectsView';
 import { shadowExtentFor, Sky } from '../render/Sky';
 import { VehicleFx } from '../render/VehicleFx';
@@ -120,6 +121,8 @@ export class Game {
   private world: WorldView;
   private views: EntityViews;
   private props: PropsView;
+  /** Geld und Waffen am Boden */
+  private pickups: PickupsView;
   private features: FeaturesView;
   private smartObjects: SmartObjectsView;
   private fx: VehicleFx;
@@ -223,6 +226,7 @@ export class Game {
     this.world = new WorldView(this.map, generateVegetation(this.map, MAP_SEED));
     this.views = new EntityViews(this.map);
     this.props = new PropsView(this.map);
+    this.pickups = new PickupsView(this.map);
     this.features = new FeaturesView(this.map);
     this.smartObjects = new SmartObjectsView(this.map);
     this.fx = new VehicleFx(this.map, vehicleMat);
@@ -252,7 +256,7 @@ export class Game {
     this.features.group.name = 'features'; this.smartObjects.group.name = 'smartObjects'; this.fx.group.name = 'vehicleFx'; this.tracers.group.name = 'tracers';
     this.stores.group.name = 'stores'; this.phonesView.group.name = 'phones'; this.questMarkers.group.name = 'questMarkers'; this.arenas.group.name = 'arenas';
     this.storyDir.group.name = 'story'; this.airport.group.name = 'airport';
-    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group);
+    this.scene.add(this.world.group, this.views.group, this.particles.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.tracers.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group, this.pickups.group);
     this.views.hooks.debris = (d, vx, vz) => this.fx.spawnDebris(d.geo, d.matrix, vx, 1, vz);
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.post.attachTimer(this.prof.gpu);
@@ -579,6 +583,7 @@ export class Game {
     }
     for (const ev of snap.ev ?? []) this.onEvent(ev);
     this.props.apply(snap.pr, snap.prg);
+    this.pickups.apply(snap.pk, snap.pkg);
     for (const p of snap.p ?? []) { if (p[5] === 3) this.copDots.set(p[0], [p[1], p[2]]); else this.copDots.delete(p[0]); }
     for (const id of snap.pg ?? []) this.copDots.delete(id);
     // Arena-Böden zuerst übernehmen: Prediction und Rendering nutzen dieselbe Karte wie der Server
@@ -940,6 +945,7 @@ export class Game {
     this.world.updateWobble(dt);
     this.props.setNight(this.sky.night);
     this.props.update(dt);
+    this.pickups.update(dt);
     this.features.update(dt);
     this.views.setFocus(this.rig.target);
     this.views.setCamera(this.rig.camera); // Sichtfeld fürs nächste Bild (Animationen außerhalb sparen)

@@ -59,6 +59,7 @@ import type { PlayerProfile, PlayerStore } from '../services/PlayerStore';
 import { isAnimal, Pedestrians, type Ped } from '../sim/Pedestrians';
 import { Countryside, SHERIFF_VARIANT } from '../sim/Countryside';
 import { Population } from '../sim/Population';
+import { Pickups } from '../sim/Pickups';
 import { NpcBrain } from '../sim/NpcBrain';
 import { Perception } from '../sim/Perception';
 import { NpcEv } from '../../../shared/src/npc/reactions';
@@ -101,6 +102,25 @@ export class WorldRoom {
   private readonly traffic: Traffic;
   private readonly peds: Pedestrians;
   private readonly pop: Population;
+  /** Geld und Waffen am Boden (von besiegten NPCs) */
+  private readonly pickups = new Pickups({
+    addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
+    notice: (p, text, kind) => this.noticeTo(p, text, kind),
+    footPos: (p) => (p.vehicleId >= 0 || p.ride >= 0 || p.downT > 0 || p.pawn.rt > 0 ? null : { x: p.pawn.x, z: p.pawn.z }),
+    giveWeapon: (p, id, ammo) => {
+      // Aufgehobene Waffe ersetzt keine eigene Waffe derselben Klasse – dann gibt es nur deren Munition
+      const def = WEAPONS[id];
+      const same = this.ownedWeapons(p).find((o) => o !== 'fists' && o !== id && WEAPONS[o].slot === def.slot);
+      if (same) {
+        if (WEAPONS[same].ammoPack > 0 && ammo > 0) {
+          p.profile.weapons[same] = (p.profile.weapons[same] ?? 0) + ammo;
+          this.noticeTo(p, `${def.name}: ${ammo} Schuss Munition für deine ${WEAPONS[same].name} übernommen.`, 'good');
+        } else this.noticeTo(p, `${def.name} liegen gelassen – du hast schon eine ${WEAPONS[same].name}.`, 'info');
+        return;
+      }
+      this.giveWeapon(p, id, ammo);
+    },
+  });
   private readonly brain: NpcBrain;
   private readonly perception: Perception;
   /** Spieler, die den NPC-Debug-Tab offen haben (nur Dev) */
@@ -522,7 +542,7 @@ export class WorldRoom {
     // Startausrüstung: neue (und bisher unbewaffnete) Spieler bekommen eine Pistole zum Testen
     if (Object.keys(profile.weapons).length === 0) profile.weapons.pistol = 48;
     if (!profile.inventory || Array.isArray(profile.inventory)) profile.inventory = {};
-    const view: ClientView = { veh: new Map(), info: new Map(), dmg: new Map(), peds: new Map(), props: new Map(), floors: '[]' };
+    const view: ClientView = { veh: new Map(), info: new Map(), dmg: new Map(), peds: new Map(), props: new Map(), pickups: new Set(), floors: '[]' };
     const player: ServerPlayer = {
       id: this.allocId(), name, color, conn,
       pawn: newPawn(start.x, start.z, Math.PI),
@@ -1508,7 +1528,6 @@ export class WorldRoom {
       if (!ped.cop && !ped.gang) this.perception.event(NpcEv.Fight, ped.x, ped.z, p.id);
       if (ped.cop) this.police.raise(p, defeated ? 3 : 2, defeated ? HEAT.copKill : HEAT.copHit); // Polizisten angreifen: sofort bekannt
       else this.police.crime(p, defeated ? HEAT.kill : HEAT.punch, ped.x, ped.z);
-      if (defeated && !ped.cop) this.addMoney(p, 5 + Math.floor(Math.random() * 36), 'loot');
     } else if (t.ref.veh) {
       const v = t.ref.veh, d = v.sim.dmg;
       d.hp = Math.max(0, d.hp - dmg * 5);
@@ -1773,7 +1792,10 @@ export class WorldRoom {
       const c = v.sim.car;
       if (Math.abs(c.s) >= 5) threats.push({ x: c.x, z: c.z, speed: c.s, vx: c.vx, vz: c.vz });
     }
+    // Besiegte NPCs lassen Geld bzw. ihre Waffe fallen (#35, #36) – vor dem Aufräumen der Leichen
+    for (const ped of this.peds.peds.values()) if (ped.hp <= 0 && !isAnimal(ped)) this.pickups.dropFor(ped);
     this.peds.update(dt, threats);
+    this.pickups.update(dt, this.players.values());
     t = this.lap('peds', t);
     this.updateProps(dt);
     this.updateFire(dt);
@@ -2236,6 +2258,18 @@ export class WorldRoom {
       }
       if (pr.length) parts.push(`"pr":[${pr.join(',')}]`);
       if (prg.length) parts.push(`"prg":${JSON.stringify(prg)}`);
+      // Gegenstände am Boden
+      const pk = [], pkg: number[] = [];
+      for (const it of this.pickups.items.values()) {
+        if (view.pickups.has(it.id) || !nearPed(it.x, it.z)) continue;
+        pk.push(this.pickups.tuple(it)); view.pickups.add(it.id);
+      }
+      for (const id of view.pickups) {
+        const it = this.pickups.items.get(id);
+        if (!it || !nearPed(it.x, it.z)) { pkg.push(id); view.pickups.delete(id); }
+      }
+      if (pk.length) parts.push(`"pk":${JSON.stringify(pk)}`);
+      if (pkg.length) parts.push(`"pkg":${JSON.stringify(pkg)}`);
       // Ereignisse im Umkreis
       const ev = this.events.filter((e) => e.vid === p.vehicleId && e.vid >= 0 || dist2(e.x, e.z, pos.x, pos.z) < (INTEREST + 20) ** 2).map((e) => e.ev);
       if (ev.length) parts.push(`"ev":${JSON.stringify(ev)}`);

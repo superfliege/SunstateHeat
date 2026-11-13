@@ -75,6 +75,8 @@ export type VehicleInfoTuple = [number, number, number, number, number];
  */
 export type PedTuple = [number, number, number, number, number, number, number, number, number?, number?, number?];
 /** Verschobenes Prop: [id, x, y, z, qx, qy, qz, qw, flags (1 ruht, 2 Wasserfontäne)] */
+/** Aufsammelbarer Gegenstand: [id, x, z, 'money' | Waffen-ID, Betrag/Munition] */
+export type PickupTuple = [number, number, number, string, number];
 export type PropTuple = [number, number, number, number, number, number, number, number, number];
 
 export const VehFlag = { BRAKE: 1, REVERSE: 2, HANDBRAKE: 4, BOOST: 8, HORN: 16, AIR: 32, STALL: 64 } as const;
@@ -187,6 +189,9 @@ export interface SnapshotMsg {
   /** Props-Delta */
   pr?: PropTuple[];
   prg?: number[];
+  /** Aufsammelbare Gegenstände (Delta) */
+  pk?: PickupTuple[];
+  pkg?: number[];
   ev?: GameEvent[];
   /** Arena-Böden der Minispiele – nur bei Änderung (leere Liste = keine Böden mehr). */
   af?: FloorNet[];
