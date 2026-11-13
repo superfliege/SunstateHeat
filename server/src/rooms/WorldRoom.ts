@@ -213,6 +213,7 @@ export class WorldRoom {
     });
     this.peds.brain = this.brain;
     this.peds.avoid = (ped, dx, dz) => this.avoidVehicles(ped, dx, dz);
+    this.peds.playerNear = (x, z, r) => { for (const q of this.players.values()) { const pos = this.positionOf(q); if (dist2(pos.x, pos.z, x, z) < r * r) return true; } return false; };
     this.pop = new Population(map, this.peds, this.brain, () => this.dayPhase(), playerPos);
     this.perception = new Perception({
       map, peds: this.peds, vehicles: this.vehicles, players: this.players,

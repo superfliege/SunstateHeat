@@ -6,7 +6,7 @@ import { dist2 } from '../../../shared/src/math';
 import { archetypeOf, ARCH_INDEX } from '../../../shared/src/npc/archetypes';
 import { Act, type ScenarioId } from '../../../shared/src/npc/scenarios';
 import { hasPopTable } from '../../../shared/src/npc/population';
-import { knockPawn, stepPawn } from '../../../shared/src/sim/movement';
+import { findFootSpot, footFree, knockPawn, stepPawn } from '../../../shared/src/sim/movement';
 import { offsetPolyline, type Vec2 } from '../../../shared/src/world/geometry';
 import { drivablePath } from '../../../shared/src/world/roads';
 import { RoadType, Zone, type RoadEdge, type WorldMap } from '../../../shared/src/world/WorldMap';
@@ -62,6 +62,8 @@ export interface Ped {
   wx: number; wz: number;
   /** Sekunden, die der Passant beim Gehen festhängt (vor dem Umdrehen) */
   blk: number;
+  /** Sekunden ohne erreichten Wegpunkt bei blockierter Bewegung (Langzeit-Festhänger, #37) */
+  stk?: number;
   /** Archetyp (Index in ARCHETYPES, -1 = klassischer Passant ohne Archetyp) und Animations-ID (Act). */
   arch: number;
   act: number;
@@ -97,6 +99,8 @@ export class Pedestrians {
    * Bekommt die gewünschte Laufrichtung (Welt, normiert) und liefert eine Ersatzrichtung oder null.
    */
   avoid: ((p: Ped, dx: number, dz: number) => [number, number] | null) | null = null;
+  /** Ist ein Spieler in der Nähe (dann nicht sichtbar umsetzen)? Von WorldRoom gesetzt. */
+  playerNear: ((x: number, z: number, r: number) => boolean) | null = null;
 
   constructor(private map: WorldMap, private allocId: () => number) {
     for (const e of map.edges) {
@@ -375,6 +379,7 @@ export class Pedestrians {
     const target = w.pts[p.idx];
     const dx = target[0] - p.x, dz = target[1] - p.z;
     if (dx * dx + dz * dz < 1.2) {
+      p.stk = 0;
       p.idx += p.dir;
       if (p.idx < 0 || p.idx >= w.pts.length) {
         this.nextWalkway(p);
@@ -388,6 +393,11 @@ export class Pedestrians {
       const ap = this.avoidPeds(p, mx, mz);
       if (ap) [mx, mz] = ap;
       const stuck = stepPawn(this.map, p, mx, -mz, 0, dt, p.spd * speed);
+      if (stuck) {
+        // Langzeit-Festhänger (Wegpunkt hinter einem Gebäude, in eine Wand geschleudert …): befreien (#37)
+        p.stk = (p.stk ?? 0) + dt;
+        if (p.stk > 12 || (p.stk > 4 && !this.playerNear?.(p.x, p.z, 45))) { this.unstick(p); return; }
+      }
       if (stuck && !av) {
         // Festgelaufen: erst seitlich versuchen, erst nach längerer Blockade umdrehen
         p.blk += dt;
@@ -395,6 +405,30 @@ export class Pedestrians {
         else stepPawn(this.map, p, -mz * (p.id % 2 ? 1 : -1), -mx * (p.id % 2 ? -1 : 1), 0, dt, p.spd * speed * 0.7);
       } else p.blk = Math.max(0, p.blk - dt);
     }
+  }
+
+  /**
+   * Festhängenden Passanten befreien: steckt er in einem Hindernis, an die nächste freie Stelle; sonst auf
+   * den nächsten freien Wegpunkt seines Gehwegs, der nicht hinter derselben Wand liegt (Sichtlinie frei).
+   */
+  unstick(p: Ped) {
+    p.stk = 0; p.blk = 0;
+    if (!footFree(this.map, p.x, p.z)) {
+      const s = findFootSpot(this.map, p.x, p.z, 9);
+      if (s) { p.x = s.x; p.z = s.z; return; }
+    }
+    const w = p.walk;
+    if (!w) return;
+    // Wegpunkt in Laufrichtung, der frei begehbar ist – dorthin umsetzen
+    for (let k = 0; k < w.pts.length; k++) {
+      const i = p.idx + p.dir * k;
+      if (i < 0 || i >= w.pts.length) break;
+      const [x, z] = w.pts[i];
+      if (!footFree(this.map, x, z)) continue;
+      p.x = x; p.z = z; p.idx = i;
+      return;
+    }
+    p.dir = (p.dir * -1) as 1 | -1;
   }
 
   /** Anderen Fußgängern/Spielern auf dem Weg seitlich ausweichen (Rechtsverkehr bei Gegenverkehr). */
