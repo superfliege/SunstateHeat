@@ -233,7 +233,9 @@ export class WorldView {
 
   /** Höhe der Fahrbahn (Brücken über Wasser auf Deckhöhe). */
   private roadY(x: number, z: number) {
-    return this.map.groundAt(x, z) === Tile.WATER ? BRIDGE_DECK : Math.max(0.05, this.map.terrainHeight(x, z)) + 0.04;
+    if (this.map.groundAt(x, z) === Tile.WATER) return BRIDGE_DECK;
+    const ramp = this.map.rampY(x, z); // Brückenauffahrt: dieselbe Rampe wie in der Physik
+    return Math.max(ramp ?? 0, Math.max(0.05, this.map.terrainHeight(x, z)) + 0.04);
   }
 
   /** Gleichmäßige Abtastung einer Kante zwischen s0 und s1. */
@@ -469,8 +471,6 @@ export class WorldView {
     const hw = e.width / 2;
     const ys = S.map((p) => this.roadY(p.x, p.z));
     const water = S.map((p) => this.map.groundAt(p.x, p.z) === Tile.WATER);
-    // Rampen zur Brücke weich überblenden
-    for (let pass = 0; pass < 3; pass++) for (let i = 1; i < ys.length - 1; i++) if (!water[i]) ys[i] = Math.max(ys[i], (ys[i - 1] + ys[i + 1]) / 2 - 0.02);
     const line = (off: number) => S.map((p): Vec2 => [p.x - p.dz * off, p.z + p.dx * off]);
     const yAt = (i: number) => ys[i];
 

@@ -138,7 +138,8 @@ export function carInWater(map: WorldMap, c: { x: number; z: number }): boolean 
 /** Glatte Höhe (ohne Bordsteinstufen) für die Bodennormale. */
 function smoothHeight(map: WorldMap, x: number, z: number): number {
   const t = map.tileAt(x, z);
-  const base = t === Tile.BRIDGE ? 0.6 : t === Tile.SWAMP ? -0.45 : Math.max(0, map.terrainHeight(x, z));
+  const r = t === Tile.SIDEWALK ? null : map.rampY(x, z); // Brücke und Auffahrt
+  const base = r !== null ? r : t === Tile.SWAMP ? -0.45 : Math.max(0, map.terrainHeight(x, z));
   return base + rampAt(map, x, z);
 }
 

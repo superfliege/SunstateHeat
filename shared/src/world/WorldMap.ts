@@ -162,6 +162,12 @@ export class WorldMap {
    * Auf einem tragenden Boden gilt Straßenbelag in Bodenhöhe – auch über Wasser.
    */
   floors: ArenaFloor[] = [];
+  /**
+   * Auffahrten zu den Brücken (#44): Zellindex -> Fahrbahnhöhe in der Zellmitte. Enthält alle Brückenzellen
+   * und die Straßen-/Gehwegzellen davor, die zur Deckhöhe ansteigen (buildBridgeRamps). Zwischen den
+   * Zellmitten wird bilinear interpoliert – Physik und Darstellung sehen dieselbe glatte Rampe.
+   */
+  bridgeRamp = new Map<number, number>();
   spawn = { x: 0, z: 0 };
   questStart = { x: 0, z: 0 };
   questDest = { x: 0, z: 0 };
@@ -271,6 +277,103 @@ export class WorldMap {
   /** Höhe, auf der Figuren und Landfahrzeuge stehen (Brücken, Stege, Sumpf beachtet). */
   surfaceY(x: number, z: number): number {
     if (this.floors.length) { const h = floorHeight(this.floors, x, z); if (h !== null) return h; }
+    if (this.bridgeRamp.size) { const r = this.rampY(x, z); if (r !== null) return r; }
+    return this.plainSurfaceY(x, z);
+  }
+
+  /**
+   * Fahrbahnhöhe auf einer Brücke oder deren Auffahrt (null = keine Rampe hier). Gehwegzellen werden nur
+   * mit Gehwegzellen interpoliert, Fahrbahn nur mit Fahrbahn – der Bordstein bleibt eine Kante.
+   */
+  rampY(x: number, z: number): number | null {
+    const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
+    const own = this.bridgeRamp.get(cz * GRID_SIZE + cx);
+    if (own === undefined) return null;
+    const ownSw = this.tile(cx, cz) === Tile.SIDEWALK;
+    const fx = x / CELL - 0.5, fz = z / CELL - 0.5;
+    const ix = Math.floor(fx), iz = Math.floor(fz), tx = fx - ix, tz = fz - iz;
+    const at = (gx: number, gz: number) => {
+      const v = this.bridgeRamp.get(gz * GRID_SIZE + gx);
+      return v === undefined || (this.tile(gx, gz) === Tile.SIDEWALK) !== ownSw ? own : v;
+    };
+    const a = at(ix, iz) + (at(ix + 1, iz) - at(ix, iz)) * tx;
+    const b = at(ix, iz + 1) + (at(ix + 1, iz + 1) - at(ix, iz + 1)) * tx;
+    return a + (b - a) * tz;
+  }
+
+  /** Auffahrten zu den Brücken berechnen (nach dem Rastern): Steigung BRIDGE_RAMP_SLOPE entlang des Straßennetzes. */
+  buildBridgeRamps() {
+    this.bridgeRamp.clear();
+    const N = GRID_SIZE;
+    const dist = new Map<number, number>();
+    const queue: number[] = [];
+    const maxGap = 40; // m
+    for (let i = 0; i < this.tiles.length; i++) {
+      if (this.tiles[i] !== Tile.BRIDGE) continue;
+      this.bridgeRamp.set(i, BRIDGE_DECK);
+      dist.set(i, 0);
+      queue.push(i);
+    }
+    // Kurze Landstücke zwischen zwei Brückenteilen derselben Straße (Sandbank, Inselchen) auf Deckhöhe
+    // halten – sonst gäbe es mitten auf der Brücke eine Senke
+    for (const e of this.edges) {
+      const hw = e.width / 2 + e.sidewalk;
+      const pts: [number, number, boolean][] = [];
+      for (let k = 0; k < e.pts.length - 1; k++) {
+        const [ax, az] = e.pts[k], [bx, bz] = e.pts[k + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        for (let t = 0; t < L; t += 1) { const x = ax + (bx - ax) * t / L, z = az + (bz - az) * t / L; pts.push([x, z, this.tileAt(x, z) === Tile.BRIDGE]); }
+      }
+      let lastB = -1;
+      for (let i = 0; i < pts.length; i++) {
+        if (!pts[i][2]) continue;
+        if (lastB >= 0 && i - lastB > 1 && i - lastB <= maxGap) {
+          for (let k = lastB + 1; k < i; k++) {
+            const [x, z] = pts[k];
+            const nx = -(pts[i][1] - pts[lastB][1]), nz = pts[i][0] - pts[lastB][0], nl = Math.hypot(nx, nz) || 1;
+            for (let o = -hw; o <= hw; o += 1) {
+              const cx = Math.floor((x + nx / nl * o) / CELL), cz = Math.floor((z + nz / nl * o) / CELL);
+              if (cx < 0 || cz < 0 || cx >= N || cz >= N) continue;
+              const j = cz * N + cx, tt = this.tiles[j];
+              if ((tt !== Tile.ROAD && tt !== Tile.SIDEWALK) || dist.has(j)) continue;
+              this.bridgeRamp.set(j, BRIDGE_DECK + (tt === Tile.SIDEWALK ? CURB_TOP : 0));
+              dist.set(j, 0);
+              queue.push(j);
+            }
+          }
+        }
+        lastB = i;
+      }
+    }
+    const maxD = BRIDGE_DECK / BRIDGE_RAMP_SLOPE;
+    const NB: [number, number, number][] = [[1, 0, CELL], [-1, 0, CELL], [0, 1, CELL], [0, -1, CELL], [1, 1, CELL * Math.SQRT2], [1, -1, CELL * Math.SQRT2], [-1, 1, CELL * Math.SQRT2], [-1, -1, CELL * Math.SQRT2]];
+    // Kürzeste Wege über Fahrbahn-/Gehwegzellen (kleiner Radius: einfache Relaxation genügt)
+    while (queue.length) {
+      const i = queue.pop()!;
+      const d0 = dist.get(i)!;
+      const cx = i % N, cz = (i / N) | 0;
+      for (const [dx, dz, w] of NB) {
+        const nx = cx + dx, nz = cz + dz;
+        if (nx < 0 || nz < 0 || nx >= N || nz >= N) continue;
+        const j = nz * N + nx, t = this.tiles[j];
+        if (t !== Tile.ROAD && t !== Tile.SIDEWALK && t !== Tile.DIRT && t !== Tile.DOCK && t !== Tile.PLAZA) continue;
+        const d = d0 + w;
+        if (d >= maxD || d >= (dist.get(j) ?? Infinity)) continue;
+        dist.set(j, d);
+        queue.push(j);
+      }
+    }
+    for (const [i, d] of dist) {
+      if (d === 0) continue;
+      const cx = i % N, cz = (i / N) | 0;
+      const x = cx * CELL + CELL / 2, z = cz * CELL + CELL / 2;
+      const base = this.plainSurfaceY(x, z);
+      const y = BRIDGE_DECK - d * BRIDGE_RAMP_SLOPE + (this.tiles[i] === Tile.SIDEWALK ? CURB_TOP : 0);
+      if (y > base + 0.005) this.bridgeRamp.set(i, y);
+    }
+  }
+
+  private plainSurfaceY(x: number, z: number): number {
     if (this.storeTileAt(x, z)) return Math.max(0.05, this.terrainHeight(x, z)) + CURB_TOP; // Ladenboden
     switch (this.tileAt(x, z)) {
       case Tile.BRIDGE: return BRIDGE_DECK;
@@ -292,5 +395,7 @@ export class WorldMap {
 
 /** Höhe der Brückenfahrbahn über dem Meeresspiegel. */
 export const BRIDGE_DECK = 0.6;
+/** Steigung der Brückenauffahrten (0,06 = 6 % → 10 m Anlauf). */
+export const BRIDGE_RAMP_SLOPE = 0.06;
 /** Oberkante von Gehweg und Blockflächen über dem Gelände (Fahrbahn + Bordstein). */
 export const CURB_TOP = 0.18;

@@ -64,6 +64,7 @@ export function generateWorld(seed: number): WorldMap {
   // Läden als echte Gebäude (nach Werkstätten, da sie daran hängen); danach Chunk-Index neu
   placeShops(map);
   prepareCollision(map); // exakte Gebäude-Kollision auf dem fertigen Raster aufbauen
+  map.buildBridgeRamps(); // glatte Auffahrten statt einer Stufe auf Deckhöhe
   buildChunks(map);
   return map;
 }
