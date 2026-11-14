@@ -176,7 +176,6 @@ export class BombBus extends Minigame<BombBusConfig> {
       const dead = !v || v.sim.dmg.wreck > 0 || v.sim.dmg.burn > 0 || (carInWater(this.h.map, v.sim.car) && v.sim.car.y < 1) || p.flipT > 4;
       const lost = !!v && !!p.bot && Math.hypot(v.sim.car.x - bc.x, v.sim.car.z - bc.z) > this.cfg.lostDistance;
       if (!dead && !lost) { ai.deadT = 0; continue; }
-      if (dead && ai.deadT === 0) this.tell(p, `Fahrzeug weg – neues in ${this.cfg.hunterRespawn} s.`, 'bad');
       ai.deadT += dt;
       if (dead && ai.deadT < this.cfg.hunterRespawn) continue;
       const sp = Math.hypot(bc.vx, bc.vz) || 1;

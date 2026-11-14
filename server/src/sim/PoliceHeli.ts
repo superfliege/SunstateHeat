@@ -85,7 +85,6 @@ export class PoliceHeli {
     f.ground = 0; f.rotor = 1; sim.car.y = 90;
     const id = this.h.allocId();
     this.h.vehicles.set(id, { id, kind: VehicleKind.Heli, color, sim, driver: DRIVER_COP, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false, copHeli: p.id });
-    this.h.notice(p, '🚁 Polizeihubschrauber im Anflug!', 'bad');
   }
 
   /** Einfacher Autopilot: zum Ziel drehen, vorwärts, Höhe halten; Blick zum Spieler, wenn nah. */

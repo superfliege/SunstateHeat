@@ -59,7 +59,6 @@ export class Drift extends Minigame<DriftConfig> {
       }
       const m = this.meter(p);
       const pts = stepDrift(m, c, dt, this.inZone(c.x, c.z), this.cfg);
-      if (pts >= 150) this.tell(p, `Drift +${pts}${m.mult > 1 ? ` (×${m.mult})` : ''}`, 'good');
       if (pts >= 1500) this.log(`🌀 ${p.name}: Monster-Drift +${pts}`);
     }
   }
@@ -67,8 +66,7 @@ export class Drift extends Minigame<DriftConfig> {
   private contact(p: Participant) {
     if (p.bot) return;
     const m = this.meter(p);
-    const lost = Math.round(m.cur * m.mult);
-    if (breakDrift(m) && lost > 50) this.tell(p, `Kontakt! Drift verloren (−${lost})`, 'bad');
+    breakDrift(m);
   }
 
   protected onCollide(a: Participant, b: Participant, col: { vn: number }) {

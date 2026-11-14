@@ -150,7 +150,6 @@ export class QuestEngine {
     this.runs.set(run.id, run);
     for (const c of crew) {
       this.byPlayer.set(c.id, run);
-      this.h.notice(c, `Auftrag gestartet: ${def.title}${crew.length > 1 ? ` (${crew.length} Spieler)` : ''}`, 'info');
     }
     this.beginStage(run, 0);
   }
@@ -182,7 +181,6 @@ export class QuestEngine {
     if (!this.h.canJoin(p, l.def)) { this.h.notice(p, 'Bei diesem Auftrag kannst du (noch) nicht mitmachen.', 'bad'); return false; }
     l.members.push(p.id);
     this.lobbyOf.set(p.id, l);
-    for (const m of this.lobbyMembers(l)) this.h.notice(m, `${p.name} ist bei „${l.def.title}“ dabei! (${l.members.length}/${l.def.coop.max})`, 'good');
     return true;
   }
 
@@ -276,7 +274,6 @@ export class QuestEngine {
     if (!run) return false;
     run.participants.add(p.id);
     this.byPlayer.set(p.id, run);
-    this.notifyAll(run, `${p.name} macht bei „${run.def.title}“ mit!`, 'good');
     this.h.notice(p, run.def.stages[run.stage].description, 'info');
     return true;
   }
@@ -313,11 +310,10 @@ export class QuestEngine {
   }
 
   abandon(p: ServerPlayer) {
-    if (this.lobbyOf.has(p.id)) { this.leaveLobby(p.id); this.h.notice(p, 'Warteraum verlassen.', 'info'); return; }
+    if (this.lobbyOf.has(p.id)) { this.leaveLobby(p.id); return; }
     const run = this.byPlayer.get(p.id);
     if (!run || run.ending > 0) return;
     this.leave(run, p.id);
-    this.h.notice(p, 'Auftrag abgebrochen.', 'info');
   }
 
   onPlayerLeave(id: number) {
@@ -365,7 +361,7 @@ export class QuestEngine {
         if (d.cooldownMinutes) p.profile.questCooldowns[d.id] = Date.now() + d.cooldownMinutes * 60000;
         const place1 = r.byPlace ? ` (Platz ${place + 1})` : '';
         this.h.notice(p, `Auftrag erfüllt: ${d.title}${place1}! +$${money} · +${r.xp} XP${r.reputation ? ` · ${GANGS[r.reputation.gang].name} +${r.reputation.gain}` : ''}`, 'good');
-        if (bonus) { this.h.addMoney(p, bonus, `quest:${d.id}:bonus`); this.h.notice(p, `Bonus: kaum Kratzer! +$${bonus}`, 'good'); }
+        if (bonus) this.h.addMoney(p, bonus, `quest:${d.id}:bonus`);
         this.h.completed(p, d, firstTime);
         this.h.persist(p);
         this.h.sendLog(p);
@@ -626,7 +622,6 @@ export class QuestEngine {
           if (k.tag !== d.tag) continue;
           if (crew.some((p) => { const q = at(p); return dist2(q.x, q.z, k.x, k.z) < 3 * 3; })) {
             run.pickups.splice(i, 1);
-            for (const p of crew) this.h.notice(p, 'Eingesammelt!', 'good');
           }
         }
         if (!run.pickups.some((k) => k.tag === d.tag)) o.done = true;
@@ -679,7 +674,7 @@ export class QuestEngine {
           const q = at(p);
           if (dist2(q.x, q.z, pts[i].x, pts[i].z) < 16 * 16) {
             o.idx.set(p.id, i + 1);
-            if (i + 1 >= pts.length) { run.places.push(p.id); finished++; this.h.notice(p, `Ziel erreicht – Platz ${run.places.length}!`, 'good'); }
+            if (i + 1 >= pts.length) { run.places.push(p.id); finished++; }
           }
         }
         const byPlace = !!run.def.rewards.byPlace;

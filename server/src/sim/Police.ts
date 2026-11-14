@@ -125,7 +125,6 @@ export class Police {
     if (lvl > p.wanted) {
       p.wanted = lvl;
       p.searchT = 0;
-      this.h.notice(p, lvl >= 4 ? 'Fahndungsstufe 4 – das Militär rückt an!' : `Fahndungsstufe ${lvl}!`, 'bad');
     }
   }
 
@@ -262,7 +261,6 @@ export class Police {
       // der Sheriff gibt so schnell nicht auf
       if (p.searchT >= SHAKE_TIME[p.wanted - 1] * (rural ? 1.6 : 1)) {
         this.clear(p);
-        this.h.notice(p, rural ? 'Der County Sheriff hat deine Spur verloren. Fürs Erste.' : 'Du hast die Polizei abgeschüttelt.', 'good');
       }
     } else p.searchT = 0;
   }

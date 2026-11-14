@@ -115,8 +115,7 @@ export class WorldRoom {
       if (same) {
         if (WEAPONS[same].ammoPack > 0 && ammo > 0) {
           p.profile.weapons[same] = (p.profile.weapons[same] ?? 0) + ammo;
-          this.noticeTo(p, `${def.name}: ${ammo} Schuss Munition für deine ${WEAPONS[same].name} übernommen.`, 'good');
-        } else this.noticeTo(p, `${def.name} liegen gelassen – du hast schon eine ${WEAPONS[same].name}.`, 'info');
+        }
         return;
       }
       this.giveWeapon(p, id, ammo);
@@ -771,7 +770,6 @@ export class WorldRoom {
       p.ride = best.id;
       const drv = this.players.get(best.driver);
       this.noticeTo(p, `Du fährst bei ${drv?.name ?? 'jemandem'} mit (${best.riders.length + 1}/${seats}). F = aussteigen.`, 'info');
-      if (drv) this.noticeTo(drv, `${p.name} fährt bei dir mit.`, 'info');
       return;
     }
     if (isAircraft(best.kind)) {
@@ -1235,7 +1233,6 @@ export class WorldRoom {
     if (v) this.eject(p, v, 0.3);
     if (p.ride >= 0) this.leaveRide(p);
     p.pawn.rt = Math.max(p.pawn.rt, 1); // liegt am Boden (wird solange gehalten, wie er ausgeknockt ist)
-    p.conn.send({ t: 'notice', text: 'Du wurdest ausgeknockt!', kind: 'bad' });
   }
 
   /** Respawn am Zuhause aus der Story (sonst Krankenhaus = Standard-Spawn): kostet 10 % des Bargelds, max. 1.000 $; setzt die Fahndung zurück. */
@@ -1256,7 +1253,6 @@ export class WorldRoom {
     p.armor = 0;
     this.police.clear(p); // Fahndungslevel zurücksetzen
     p.invuln = BALANCE.player.spawnProtection;
-    p.conn.send({ t: 'notice', text: cost > 0 ? `${home ? 'Zu Hause' : 'Im Krankenhaus'} aufgewacht. Behandlung: −$${cost}` : `${home ? 'Zu Hause' : 'Im Krankenhaus'} aufgewacht.`, kind: 'info' });
     this.persist(p);
   }
 
@@ -1273,10 +1269,7 @@ export class WorldRoom {
     if (amount <= 0) return;
     p.profile.xp += amount;
     const lvl = levelFromXp(p.profile.xp).level;
-    if (lvl > p.level) {
-      p.level = lvl;
-      p.conn.send({ t: 'notice', text: `Stufe ${lvl} erreicht!`, kind: 'good' });
-    }
+    if (lvl > p.level) p.level = lvl;
   }
 
   /** Pro Tick: Regeneration, Knockout-Zähler, Respawn, Autosave. */
@@ -1500,7 +1493,6 @@ export class WorldRoom {
       p.armor = Math.max(p.armor, def.armor ?? 0);
     } else return;
     if (--inv[id] <= 0) delete inv[id];
-    p.conn.send({ t: 'notice', text: `${def.name} benutzt.`, kind: 'good' });
   }
 
   /** Einkauf im Laden. Alles wird serverseitig geprüft (Entfernung, Stufe, Geld, Platz). */
@@ -1517,38 +1509,31 @@ export class WorldRoom {
     if (levelFromXp(p.profile.xp).level < entry.minLevel) return bad(`${entry.name} gibt es erst ab Stufe ${entry.minLevel}.`);
     if (p.profile.money < entry.price) return bad('Nicht genug Geld.');
     const [kind, arg] = key.split(':');
-    let done = false;
     if (kind === 'w' && arg in WEAPONS) {
       if (arg in p.profile.weapons) return bad('Die Waffe besitzt du schon – kauf Munition.');
       this.addMoney(p, -entry.price, `shop:${key}`);
       this.giveWeapon(p, arg as WeaponId, WEAPONS[arg as WeaponId].ammoPack);
-      done = true;
     } else if (kind === 'a' && arg in WEAPONS) {
       const w = WEAPONS[arg as WeaponId];
       if (!(arg in p.profile.weapons)) return bad('Du besitzt diese Waffe nicht.');
       if ((p.profile.weapons[arg] ?? 0) >= w.ammoPack * 6) return bad('Mehr Munition kannst du nicht tragen.');
       this.addMoney(p, -entry.price, `shop:${key}`);
       p.profile.weapons[arg] += w.ammoPack;
-      done = true;
     } else if (kind === 'i') {
       if (!this.addItem(p, arg)) return bad('Dein Rucksack ist voll.');
       this.addMoney(p, -entry.price, `shop:${key}`);
-      done = true;
     } else if (key === 'repair') {
       const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       if (!v) return bad('Du brauchst ein Fahrzeug in der Nähe.');
       this.addMoney(p, -entry.price, 'shop:repair');
       this.repair(v);
-      done = true;
     } else if (key === 'respray') {
       if (p.wanted === 0) return bad('Du wirst nicht gesucht.');
       if (p.wanted > 2) return bad('Ab Stufe 3 hilft kein Lack mehr.');
       if (this.police.copInSight(p)) return bad('Nicht bei Sichtkontakt zur Polizei!');
       this.addMoney(p, -RESPRAY_PRICE, 'shop:respray');
       this.police.clear(p);
-      done = true;
     }
-    if (done) p.conn.send({ t: 'notice', text: `${entry.name} gekauft (−$${entry.price}).`, kind: 'good' });
   }
 
   // ------------------------------------------------------------------ Waffen & Kampf
@@ -1565,7 +1550,6 @@ export class WorldRoom {
     }
     p.profile.weapons[id] = (p.profile.weapons[id] ?? 0) + ammo;
     p.weapon = id;
-    p.conn.send({ t: 'notice', text: `${def.name} erhalten${def.ammoPack ? ` (${p.profile.weapons[id]} Schuss)` : ''}.`, kind: 'good' });
   }
 
   private equip(p: ServerPlayer, slot?: number, dir?: number) {
@@ -1777,7 +1761,6 @@ export class WorldRoom {
       puller.angry = 0; puller.wait = 0;
       puller.flee = 3; puller.fdx = -dx / d; puller.fdz = -dz / d;
       this.perception.bark(puller, 'scold');
-      this.noticeTo(p, 'Ein wütender Passant hat dich aus dem Auto gezerrt!', 'bad');
     }
   }
 
@@ -2163,7 +2146,6 @@ export class WorldRoom {
       if (p.repairT > 1) {
         this.repair(v);
         p.repairT = -1;
-        p.conn.send({ t: 'notice', text: 'Werkstatt: Fahrzeug repariert – wie neu!', kind: 'good' });
       }
     }
   }

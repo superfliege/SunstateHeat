@@ -26,7 +26,7 @@ export class Sumo extends Minigame<SumoConfig> {
     const k = clamp((this.elapsed - s.after) / Math.max(1, s.duration), 0, 1);
     const r = this.r0 + (s.minRadius - this.r0) * k;
     if (Math.abs(r - f.r) > 0.02) f.r = r;
-    if (k > 0 && this.elapsed - _dt < s.after) { this.log('⚠ Die Plattform schrumpft!'); this.say('Die Plattform schrumpft!', 'bad'); }
+    if (k > 0 && this.elapsed - _dt < s.after) { this.log('⚠ Die Plattform schrumpft!'); }
   }
 
   damageScale(victim: ServerVehicle) {

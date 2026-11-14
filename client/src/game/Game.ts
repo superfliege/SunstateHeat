@@ -987,8 +987,7 @@ export class Game {
     const honkNow = this.predictor.inVehicle && (this.buttons & Btn.HORN) !== 0;
     if (honkNow && !this.honkWas) this.country.honk(me.x, myY, me.z);
     this.honkWas = honkNow;
-    const radioToast = this.country.update(rawDt, me.x, myY, me.z, this.predictor.inVehicle, this.viewDay(), this.sky.night, U.uWind.value, weekdayAt(Date.now()) === 0);
-    if (radioToast) this.hud.toast(radioToast, 'info');
+    this.country.update(rawDt, me.x, myY, me.z, this.predictor.inVehicle, this.viewDay(), this.sky.night, U.uWind.value, weekdayAt(Date.now()) === 0);
     P.end('audio');
 
     P.begin('ui');

@@ -84,7 +84,6 @@ export class Pickups {
         this.items.delete(it.id);
         if (it.kind === 'money') {
           this.h.addMoney(p, it.amount, 'loot');
-          this.h.notice(p, `+$${it.amount} aufgesammelt.`, 'good');
         } else this.h.giveWeapon(p, it.kind, it.amount);
       }
     }

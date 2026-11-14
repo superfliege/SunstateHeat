@@ -163,7 +163,6 @@ export class AirFleet {
         const bill = Math.round(p.fuelBill);
         p.fuelBill = 0;
         if (bill > 0) this.h.addMoney(p, -bill, 'fuel');
-        this.h.notice(p, `Vollgetankt${bill > 0 ? ` (−$${bill})` : ''}.`, 'good');
       }
     }
   }

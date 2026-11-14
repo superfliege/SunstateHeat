@@ -168,7 +168,6 @@ export class TaxiHunt {
       if (m.phase !== 'lobby') { this.h.notice(p, 'Gerade läuft eine Runde „Catch the Taxi“ – gleich wieder frei.', 'bad'); return; }
       if (m.members.length >= TAXI_HUNT_MAX_PLAYERS) { this.h.notice(p, 'Alle Plätze sind belegt.', 'bad'); return; }
       m.members.push(p.id);
-      for (const o of this.members(m)) this.h.notice(o, `${p.name} ist dabei! (${m.members.length}/${TAXI_HUNT_MAX_PLAYERS})`, 'good');
       if (m.members.length >= TAXI_HUNT_MAX_PLAYERS) m.t = Math.min(m.t, 1);
       return;
     }
@@ -399,7 +398,6 @@ export class TaxiHunt {
       if (!dead && !lost) { d.respawn = 0; continue; }
       if (dead && d.respawn <= 0) {
         d.respawn = RESPAWN_TIME;
-        if (p) this.h.notice(p, `LKW zerstört – neuer LKW in ${RESPAWN_TIME} s.`, 'bad');
         continue;
       }
       if (dead) { d.respawn -= dt; if (d.respawn > 0) continue; }

@@ -77,7 +77,6 @@ export class HotPotato extends Minigame<HotPotatoConfig> {
     this.passes.set(from.key, (this.passes.get(from.key) ?? 0) + 1);
     this.log(`💣 ${from.name} → ${to.name}`);
     this.tell(to, 'DU HAST DIE BOMBE!', 'bad');
-    this.tell(from, `Bombe an ${to.name} weitergegeben!`, 'good');
   }
 
   protected botThink(p: Participant, v: ServerVehicle, bot: BotDriver) {

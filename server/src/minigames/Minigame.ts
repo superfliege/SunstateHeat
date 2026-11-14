@@ -232,7 +232,6 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     }
     if (this.members.length >= this.cfg.players.maxHumans) { this.h.notice(p, 'Alle Plätze sind belegt.', 'bad'); return; }
     this.members.push(p.id);
-    this.say(`${p.name} ist dabei! (${this.members.length}/${this.cfg.players.maxHumans})`, 'good');
     if (this.members.length >= this.cfg.players.maxHumans) this.t = Math.min(this.t, 1);
   }
 
@@ -256,7 +255,7 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
   /** Teilnehmer startet die Runde aus dem Warteraum (E). */
   startNow(p: ServerPlayer): boolean {
     if (this.phase !== 'lobby' || !this.members.includes(p.id)) return false;
-    if (this.t > 3) { this.t = 3; this.say(`${p.name} startet die Runde!`, 'good'); }
+    if (this.t > 3) this.t = 3;
     return true;
   }
 
@@ -270,7 +269,6 @@ export abstract class Minigame<C extends BaseModeConfig = BaseModeConfig> {
     // Position merken, bevor der Spieler nach Hause geschickt wird (NPC zu Fuß übernimmt dort)
     const at = part ? this.pos(part) : null;
     if (p && !disconnected && this.phase !== 'lobby') this.sendHome(p);
-    if (p && !disconnected) this.h.notice(p, `${this.meta.name} verlassen.`, 'info');
     if (part && (this.phase === 'grid' || this.phase === 'run')) {
       const v = this.vehicle(part);
       const name = part.name;

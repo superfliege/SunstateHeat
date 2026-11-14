@@ -7,7 +7,7 @@ import { clamp, dist2, wrapAngle } from '../../../shared/src/math';
 import { Btn, type LobbyInfo, type PhoneQuest, type QuestState } from '../../../shared/src/protocol';
 import { CHECKPOINT_RADIUS, RACE_FIELD, RACE_MAX_PLAYERS, raceTracks, trackPose, type RaceTrack } from '../../../shared/src/races';
 import { placeCar, upVector } from '../../../shared/src/sim/car';
-import { CAR_VARIANTS, variantInfo } from '../../../shared/src/sim/handling';
+import { CAR_VARIANTS } from '../../../shared/src/sim/handling';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import type { ServerPlayer, ServerVehicle } from '../entities/types';
 
@@ -139,7 +139,6 @@ export class Races {
       if (run.members.length >= RACE_MAX_PLAYERS) { this.h.notice(p, 'Das Starterfeld ist voll.', 'bad'); return; }
       run.members.push(p.id);
       this.byPlayer.set(p.id, run);
-      for (const m of this.members(run)) this.h.notice(m, `${p.name} fährt mit! (${run.members.length}/${RACE_MAX_PLAYERS})`, 'good');
       if (run.members.length >= RACE_MAX_PLAYERS) run.t = Math.min(run.t, 1);
       return;
     }
@@ -179,7 +178,7 @@ export class Races {
   startNow(p: ServerPlayer): boolean {
     const race = this.byPlayer.get(p.id);
     if (!race || race.phase !== 'lobby') return false;
-    if (race.t > 3) { race.t = 3; for (const m of this.members(race)) this.h.notice(m, `${p.name} startet das Rennen!`, 'good'); }
+    if (race.t > 3) race.t = 3;
     return true;
   }
 
@@ -270,14 +269,11 @@ export class Races {
         ai: p ? null : { skill: 0.84 + Math.random() * 0.12, lane, stuck: 0, reverse: 0, flipT: 0, offT: 0, bestS: 0, noProg: 0, err: 0, errKind: 0, nextErr: 6 + Math.random() * 20, wobble: 0 },
         cp: 0, s: 0, seg: 0, place: 0, time: 0, dnf: false,
       });
-      if (p) this.h.notice(p, `Dein Fahrzeug: ${variantInfo(variant).name}. Startplatz ${i + 1}.`, 'info');
     });
     for (const r of race.racers) this.progress(race, r, true);
     race.phase = 'grid';
     race.t = GRID_TIME;
     race.limit = track.finish / 8 + 90;
-    const humans = crew.length;
-    for (const p of crew) this.h.notice(p, `${track.def.name}: ${humans} Spieler, ${RACE_FIELD - humans} KI-Gegner. Mach dich bereit!`, 'info');
   }
 
   /** Fortschritt entlang der Ideallinie (lokales Suchfenster, damit Runden nicht übersprungen werden). */
@@ -330,7 +326,6 @@ export class Races {
     r.time = race.elapsed;
     const d = race.track.def;
     const time = fmt(r.time);
-    for (const p of this.members(race)) if (p.id !== r.pid) this.h.notice(p, `${r.name} ist im Ziel – Platz ${r.place} (${time})`, 'info');
     const p = this.h.players.get(r.pid);
     if (!p) return;
     const money = d.prize[r.place - 1] ?? 0, xp = d.xp[r.place - 1] ?? 0;

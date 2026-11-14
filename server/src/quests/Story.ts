@@ -142,7 +142,6 @@ export class Story {
         s.rank = r;
         if (!quiet) {
           this.h.send(p, { t: 'rankUp', rank: r });
-          this.h.notice(p, `${T.rankUp}: ${rankOf(r).icon} ${rankOf(r).name}`, 'good');
         }
       }
     }
@@ -269,13 +268,11 @@ export class Story {
     const id = this.h.spawnVehicle(kind, variant, pose.x, pose.z, pose.a);
     if (id === null) { this.h.notice(p, 'Kein Platz zum Ausparken.', 'bad'); return; }
     this.garage.set(p.id, id);
-    this.h.notice(p, fill(STORY.texts.garage, { vehicle: veh.name }), 'good');
   }
 
   setHome(p: ServerPlayer, homeId: string) {
     if (!this.homeNear(p, homeId)) { this.h.notice(p, 'Du musst an diesem Wohnort stehen.', 'bad'); return; }
     this.prog(p).home = homeId;
-    this.h.notice(p, fill(STORY.texts.homeSet, { home: STORY.homes[homeId].name }), 'good');
     this.send(p);
     this.h.persist(p);
   }
