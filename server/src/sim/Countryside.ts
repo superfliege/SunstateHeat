@@ -119,7 +119,6 @@ export class Countryside {
     const n = a && this.clock - a.t < 90 ? a.n + 1 : 1;
     this.anger.set(p.id, { n, t: this.clock });
     if (n >= CALL_SHERIFF) {
-      this.h.notice(p, `${f.regular.name} (${f.name}) ruft den County Sheriff!`, 'bad');
       this.h.crime(p, 1.2, x, z);
       this.anger.set(p.id, { n: 0, t: this.clock });
     } else {
@@ -167,7 +166,6 @@ export class Countryside {
       this.h.vehicles.set(id, { id, kind: VehicleKind.Car, color: 0, sim, driver: DRIVER_NONE, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false });
       this.blocks.push({ id, t: 90 });
       this.blockCd.set(p.id, 35);
-      this.h.notice(p, 'Straßensperre des Sheriffs voraus – ein Traktor quer über der Fahrbahn!', 'bad');
     }
   }
 

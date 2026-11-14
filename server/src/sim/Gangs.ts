@@ -2,7 +2,7 @@
 //   Erzfeind: greift auf Sicht an · Feindlich: greift bei Annäherung < 10 m an · Neutral: ignoriert, wehrt sich
 //   Freundlich/Vertraut: hilft im Kampf gegen die Polizei.
 // Quest-Gegner (hostile = true) greifen unabhängig vom Ruf an und können ein Ziel (Passant/Fahrzeug) angreifen.
-import { GANGS, addRep, repStatus, worstRep, type GangId } from '../../../shared/src/gangs';
+import { addRep, repStatus, worstRep, type GangId } from '../../../shared/src/gangs';
 import { dist2 } from '../../../shared/src/math';
 import { findFootSpot, stepPawn } from '../../../shared/src/sim/movement';
 import { WEAPONS } from '../../../shared/src/weapons';
@@ -41,7 +41,6 @@ export class Gangs {
     if (!gang) return;
     if (!victim.provoked) {
       attacker.profile.reputation = addRep(attacker.profile.reputation, gang, -5);
-      this.h.notice(attacker, `${GANGS[gang].name}: Ruf −5`, 'bad');
     }
     for (const o of this.h.peds.peds.values()) {
       if (o.gang === gang && dist2(o.x, o.z, victim.x, victim.z) < 35 * 35) { o.provoked = 20; o.provokedBy = attacker.id; }
