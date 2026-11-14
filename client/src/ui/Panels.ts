@@ -94,6 +94,22 @@ export class Panels {
   }
 
   get isOpen() { return this.mode !== null; }
+  /** Fenster-Element (für die Controller-Navigation). */
+  get el() { return this.root; }
+  /** Scrollbarer Inhalt (rechter Stick). */
+  get scrollEl() { return this.root.querySelector<HTMLElement>('.pn-box'); }
+  /** Controller B: im Laden vom Sortiment zurück zur Begrüßung, sonst schließen. */
+  back() {
+    const m = this.mode;
+    if (m?.kind === 'talk' && m.step === 'buy') this.talk('hello', pickLine(GREET[m.shop.type]));
+    else this.close();
+  }
+  /** Gerade das Handy offen? (Menü-Taste schließt es wieder.) */
+  get kind() { return this.mode?.kind ?? null; }
+  /** Einstellungen im Handy (Grafik, Vollbild …): Beschriftung + Aktion, vom Spiel geliefert. */
+  settings: () => { label: string; run: () => void }[] = () => [];
+  /** Steuerungsübersicht im Handy (HTML aus eigenen, statischen Texten). */
+  controlsHtml: () => string | null = () => null;
 
   /** Gespräch mit dem Verkäufer beginnen (Begrüßung, dann Einkaufen / Plaudern / Tschüss). */
   openTalk(shop: ShopDef) { this.setMode({ kind: 'talk', shop, step: 'hello', line: pickLine(GREET[shop.type]) }); }
@@ -242,6 +258,25 @@ export class Panels {
       box.append(row);
     }
     box.append(tools);
+    // Einstellungen: alles, was sonst nur über F-Tasten geht, auch für Touch und Controller
+    const set = this.settings();
+    if (set.length) {
+      box.append(el('h3', undefined, '⚙️ Einstellungen'));
+      const grid = el('div', 'pn-settings');
+      for (const it of set) {
+        const b = el('button', 'pn-opt', it.label);
+        b.onclick = () => { it.run(); this.sig = ''; this.render(); };
+        grid.append(b);
+      }
+      box.append(grid);
+    }
+    const ctl = this.controlsHtml();
+    if (ctl) {
+      box.append(el('h3', undefined, '🎮 Controller'));
+      const d = el('div', 'pn-controls');
+      d.innerHTML = ctl; // nur eigene, statische Texte
+      box.append(d);
+    }
     box.append(el('p', 'pn-foot', 'Im Warteraum: E = Runde starten · Esc oder M zum Schließen'));
   }
 

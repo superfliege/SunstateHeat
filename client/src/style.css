@@ -424,3 +424,37 @@ body.touch .pn-close { font-size: 17px; }
 .pn-goal { color: #ffd23a; opacity: 1 !important; }
 body.touch .st-text { font-size: 14px; }
 body.touch #hud-goal { top: 96px; font-size: 10px; max-width: 220px; }
+
+/* ---------- Controller (Xbox / PlayStation) ---------- */
+.pad-hint { display: none; }
+body.pad .pad-hint { display: block; }
+body.pad .kbd-hint, body.pad .touch-hint { display: none; }
+.pad-hint span { display: block; margin-top: 4px; }
+/* Tastensymbole in Hinweisen */
+.pg { display: inline-block; min-width: 1.5em; padding: 0 0.35em; margin: 0 1px; border-radius: 0.5em; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.35);
+  color: #fff !important; font: bold 0.85em/1.45 var(--font); text-align: center; vertical-align: 0.05em; }
+.pg-face { border-radius: 50%; padding: 0; width: 1.5em; min-width: 0; border: 0; color: #fff !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5); }
+.pg-a { background: #3fae3a; } .pg-b { background: #d8312f; } .pg-x { background: #2f6fd8; } .pg-y { background: #e6b422; }
+body.pad-ps .pg-a { background: #5b8fe8; } body.pad-ps .pg-b { background: #e8505b; } body.pad-ps .pg-x { background: #e27bc4; } body.pad-ps .pg-y { background: #3fbf9a; }
+/* Fokusrahmen der Menü-Navigation */
+.pad-focus { outline: 3px solid var(--cyan) !important; outline-offset: 2px; box-shadow: 0 0 14px rgba(42,240,230,0.7) !important; position: relative; z-index: 1; }
+.pn-opt.pad-focus, .st-opt.pad-focus { background: rgba(42,240,230,0.22); }
+/* Bedienleiste unten, solange ein Fenster offen ist */
+body.pad #panel::after { content: 'A Auswählen  ·  B Zurück  ·  R-Stick Blättern'; position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  background: var(--panel); padding: 6px 14px; border-radius: 20px; font-weight: bold; white-space: pre; pointer-events: none; }
+body.pad.pad-ps #panel::after { content: '✕ Auswählen  ·  ○ Zurück  ·  R-Stick Blättern'; }
+body.pad .st-dlg.block .st-foot { font-size: 0; }
+body.pad .st-dlg.block .st-foot::after { content: 'A weiter  ·  B überspringen'; font-size: 12px; }
+body.pad.pad-ps .st-dlg.block .st-foot::after { content: '✕ weiter  ·  ○ überspringen'; }
+body.pad .st-dlg.block:has(.st-opts) .st-foot::after { content: '✚ wählen  ·  A bestätigen'; }
+body.pad.pad-ps .st-dlg.block:has(.st-opts) .st-foot::after { content: '✚ wählen  ·  ✕ bestätigen'; }
+body.pad .pn-opt kbd, body.pad .st-opt kbd { display: none; }
+body.pad #bigmap::after { content: 'B / View: Karte schließen'; position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: var(--panel); padding: 4px 12px; border-radius: 14px; font-weight: bold; }
+body.pad.pad-ps #bigmap::after { content: '○ / Touchpad: Karte schließen'; }
+/* Handy: Einstellungen und Controller-Übersicht */
+.pn-settings { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; }
+.pn-controls h4 { margin: 10px 0 4px; color: var(--orange); }
+.pn-controls .pc-row { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.pn-controls .pc-row small { opacity: 0.8; text-align: right; }
+/* Touch-Layout mit Controller: Platz der Bildschirmtasten freigeben */
+body.touch.pad #chat { bottom: 60px; }

@@ -1,15 +1,14 @@
 // Tastatur + optionales Gamepad. Liefert pro Simulationsschritt eine Achse (ax, ay)
 // und Tasten-Bits, sowie einmalige Aktionen (Einsteigen, Chat, Karte).
 import { Btn } from '../../../shared/src/protocol';
+import { gamepads, P } from './Gamepad';
 
 export interface InputSample { ax: number; ay: number; buttons: number }
 
-const DEADZONE = 0.2;
 
 export class Input {
   private keys = new Set<string>();
   private usePressed = false;
-  private padUseWasDown = false;
   /** Wird gesetzt, solange das Chatfeld offen ist – dann keine Spielsteuerung. */
   blocked = false;
   onChatKey: () => void = () => {};
@@ -26,6 +25,12 @@ export class Input {
   mouseX = 0;
   mouseY = 0;
   fire = false;
+  /** Controller: Schusstaste gehalten (RT zu Fuß, B im Fahrzeug). */
+  padFire = false;
+  /** Controller schießt ohne rechten Stick: geradeaus in Blickrichtung zielen. */
+  aimFacing = false;
+  /** Maus, Touch oder Controller schießen gerade. */
+  get firing() { return !this.blocked && (this.fire || this.padFire); }
   /** Bildschirm-Steuerung (TouchControls) schreibt hierhin; wird in sample() mit Tastatur/Pad gemischt. */
   touch = { ax: 0, ay: 0, buttons: 0 };
   private lastTouchAt = -1e9;
@@ -74,7 +79,7 @@ export class Input {
 
   /** Aktuellen Eingabezustand lesen. `inVehicle` ändert die Gamepad-Belegung (Trigger = Gas). */
   sample(inVehicle: boolean): InputSample {
-    if (this.blocked) return { ax: 0, ay: 0, buttons: 0 };
+    if (this.blocked) { this.padFire = false; return { ax: 0, ay: 0, buttons: 0 }; }
     let ax = (this.down('KeyD', 'ArrowRight') ? 1 : 0) - (this.down('KeyA', 'ArrowLeft') ? 1 : 0);
     let ay = (this.down('KeyW', 'ArrowUp') ? 1 : 0) - (this.down('KeyS', 'ArrowDown') ? 1 : 0);
     let buttons = this.touch.buttons;
@@ -87,35 +92,41 @@ export class Input {
     if (this.down('KeyQ')) buttons |= Btn.STRAFE_L;
     if (this.down('KeyR')) buttons |= Btn.STRAFE_R;
 
-    const pad = navigator.getGamepads?.()[0];
-    if (pad) {
-      const sx = pad.axes[0] ?? 0, sy = pad.axes[1] ?? 0;
-      if (Math.abs(sx) > DEADZONE) ax = sx;
-      if (!inVehicle && Math.abs(sy) > DEADZONE) ay = -sy;
-      if (inVehicle) {
-        const gas = pad.buttons[7]?.value ?? 0, rev = pad.buttons[6]?.value ?? 0;
-        if (gas > 0.05 || rev > 0.05) ay = gas - rev;
-        else if (Math.abs(sy) > DEADZONE) ay = -sy;
+    // Controller (Xbox/PS): Belegung siehe padGlyphs.ts → padLayout
+    const f = gamepads.frame;
+    this.padFire = false; this.aimFacing = false;
+    if (gamepads.connected) {
+      const d = f.down;
+      if (f.lx) ax = f.lx;
+      if (!inVehicle) {
+        if (f.ly) ay = -f.ly;
+        if (d[P.A] || d[P.L3]) buttons |= Btn.SPRINT;
+        this.padFire = f.rt > 0.3;
+      } else {
+        if (f.rt > 0 || f.lt > 0) ay = f.rt - f.lt;
+        else if (f.ly) ay = -f.ly;
+        // RB/A = Nitro bzw. Steigen, LB = Handbremse bzw. Sinken, L3 = Hupe, B = Drive-by
+        if (d[P.RB] || d[P.A]) buttons |= Btn.SPRINT;
+        if (d[P.LB]) buttons |= Btn.BRAKE;
+        if (d[P.L3]) buttons |= Btn.HORN;
+        if (f.rx < -0.5) buttons |= Btn.STRAFE_L; else if (f.rx > 0.5) buttons |= Btn.STRAFE_R;
+        this.padFire = d[P.B];
       }
-      if (pad.buttons[1]?.pressed) buttons |= Btn.SPRINT; // B
-      if (pad.buttons[2]?.pressed) buttons |= Btn.BRAKE; // X
-      if (pad.buttons[3]?.pressed) buttons |= Btn.HORN; // Y
-      if (inVehicle) {
-        // Luftfahrzeuge: RB = steigen, LB = sinken, rechter Stick seitwärts (Helikopter)
-        if (pad.buttons[5]?.pressed) buttons |= Btn.SPRINT;
-        if (pad.buttons[4]?.pressed) buttons |= Btn.BRAKE;
-        const rx = pad.axes[2] ?? 0;
-        if (rx < -0.5) buttons |= Btn.STRAFE_L; else if (rx > 0.5) buttons |= Btn.STRAFE_R;
-      }
-      const useDown = !!pad.buttons[0]?.pressed; // A
-      if (useDown && !this.padUseWasDown) this.usePressed = true;
-      this.padUseWasDown = useDown;
+      // Rechter Stick zielt in Bildschirmrichtung (die Figur steht in der Bildmitte), sonst geradeaus
+      const m = Math.hypot(f.rx, f.ry);
+      if (m > 0.3) {
+        const R = Math.min(window.innerWidth, window.innerHeight) * 0.3;
+        this.mouseX = window.innerWidth / 2 + f.rx / m * R;
+        this.mouseY = window.innerHeight / 2 + f.ry / m * R;
+      } else if (this.padFire) this.aimFacing = true;
     }
     return { ax, ay, buttons };
   }
 
 
   private rumbleUntil = 0;
+  /** Vibration an/aus (Handy → Einstellungen). */
+  rumbleOn = true;
   /**
    * Gamepad-Vibration (Gamepad Haptics API, falls vorhanden). strong/weak 0..1, ms Dauer.
    * Wird höchstens alle 90 ms neu angestoßen, damit Dauer-Rumpeln (Schlupf) nicht flackert.
@@ -123,11 +134,15 @@ export class Input {
   rumble(strong: number, weak: number, ms: number) {
     const now = performance.now();
     if (now < this.rumbleUntil - 30 && strong < 0.5) return;
-    const pad = navigator.getGamepads?.()[0] as (Gamepad & { vibrationActuator?: { playEffect?: (t: string, p: object) => Promise<unknown> } }) | null | undefined;
-    const act = pad?.vibrationActuator;
-    if (!act?.playEffect) return;
+    if (!this.rumbleOn) return;
+    type Haptic = { playEffect?: (t: string, p: object) => Promise<unknown>; pulse?: (v: number, ms: number) => Promise<unknown> };
+    const pad = gamepads.gamepad() as (Gamepad & { vibrationActuator?: Haptic; hapticActuators?: Haptic[] }) | null;
+    if (!pad) return;
+    const act = pad.vibrationActuator, alt = pad.hapticActuators?.[0];
     this.rumbleUntil = now + ms;
-    act.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) }).catch(() => {});
+    // Chrome/Edge/Safari: dual-rumble (Xbox und DualSense), Firefox: hapticActuators.pulse
+    if (act?.playEffect) act.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak) }).catch(() => {});
+    else alt?.pulse?.(Math.min(1, Math.max(strong, weak)), ms)?.catch(() => {});
   }
   /** War seit dem letzten Aufruf "E" gedrückt? */
   consumeUse(): boolean {

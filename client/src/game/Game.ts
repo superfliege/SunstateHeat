@@ -34,7 +34,10 @@ import { generateVegetation } from '../../../shared/src/world/vegetation';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import type { Sfx } from '../audio/Sfx';
 import { Input } from '../input/Input';
-import { TouchControls } from '../input/TouchControls';
+import { TouchControls, toggleFullscreen } from '../input/TouchControls';
+import { gamepads, P, type PadFrame } from '../input/Gamepad';
+import { padHint, padLayout } from '../input/padGlyphs';
+import { PadNav } from '../ui/PadNav';
 import { SnapshotBuffer, VEHICLE_EXTRAPOLATION, type Frame } from '../net/Interpolation';
 import type { Network } from '../net/Network';
 import { Predictor, type Obstacle } from '../net/Prediction';
@@ -193,6 +196,10 @@ export class Game {
   private storyUi = new StoryUi();
   private storyDir: StoryDirector;
   private storyBlock = false;
+  /** Controller: Fokus-Navigation in Fenstern, letzter Kontext (Menü/Spiel), X gehalten. */
+  private padNav = new PadNav();
+  private padUi = false;
+  private padHoldX = false;
   /** Laufender Koop-Auftrag in der Nähe, dem man beitreten kann (Titel). */
   private joinOffer: string | null = null;
   /** Navi-Route zum aktuellen Ziel (Straßennetz), wird gedrosselt neu berechnet. */
@@ -261,7 +268,7 @@ export class Game {
     this.post = new PostFX(this.renderer, this.scene, this.rig.camera);
     this.post.attachTimer(this.prof.gpu);
     this.applyGfx();
-    window.addEventListener('keydown', (e) => this.onGfxKey(e));
+    window.addEventListener('keydown', (e) => { if (this.gfxKey(e.code)) e.preventDefault(); });
     this.minimap = new Minimap(
       this.map,
       document.getElementById('minimap') as HTMLCanvasElement,
@@ -328,6 +335,23 @@ export class Game {
     this.input.onWeaponCycle = (dir) => this.net.send({ t: 'weapon', dir });
     this.chat.onOpenChange = (open) => { this.input.blocked = open || this.storyBlock; this.touch.setBlocked(open || this.storyBlock); if (open) this.input.clear(); this.sfx.ui('toggle', 0.5); };
     this.chat.onSend = (text) => this.net.send({ t: 'chat', text });
+
+    // Controller: Hinweise mit Pad-Tasten, Menü-Navigation, Einstellungen im Handy
+    this.hud.hintMap = (h) => (gamepads.mode === 'pad' ? padHint(h, gamepads.family, this.predictor.inVehicle) : h);
+    gamepads.onModeChange((m) => { if (m !== 'pad') this.padNav.clear(); this.hud.setHint(null); });
+    gamepads.setHandler((f) => this.onPad(f));
+    this.panels.settings = () => [
+      { label: `🖥️ Grafik: ${PRESETS[this.preset].label}`, run: () => this.gfxKey('F8') },
+      { label: `👾 Retro-Modus: ${this.gfx.retro ? 'an' : 'aus'}`, run: () => this.gfxKey('F9') },
+      { label: `📳 Bildschirmwackeln: ${this.rig.shakeEnabled ? 'an' : 'aus'}`, run: () => this.gfxKey('F7') },
+      { label: `🎮 Vibration: ${this.input.rumbleOn ? 'an' : 'aus'}`, run: () => { this.input.rumbleOn = !this.input.rumbleOn; } },
+      { label: '⛶ Vollbild', run: () => { void toggleFullscreen().then((ok) => { if (!ok) this.hud.toast('Vollbild geht hier nur per Tippen/Klick (oder Taste V).', 'info'); }); } },
+      { label: '📊 Debug-Anzeige', run: () => this.debug.toggle() },
+    ];
+    this.panels.controlsHtml = () => {
+      if (!gamepads.connected) return null;
+      return padLayout(gamepads.family).map((sec) => `<h4>${sec.title}</h4>` + sec.rows.map(([k, v]) => `<div class="pc-row"><span>${k}</span><small>${v}</small></div>`).join('')).join('');
+    };
 
     if (new URLSearchParams(location.search).has('bench')) this.bench = new Bench(this.benchHost());
 
@@ -437,25 +461,77 @@ export class Game {
     if (next !== this.resScale) { this.resScale = next; this.applyResolution(); }
   }
 
-  /** F9 = Retro-Modus, F8 = Qualitätsstufe durchschalten (Hoch / Mittel / Niedrig – Inhalte und Cel-Look bleiben). */
-  private onGfxKey(e: KeyboardEvent) {
-    if (e.code === 'F9') {
-      e.preventDefault();
+  /** Grafik-Tasten (auch aus dem Handy-Menü): F9 = Retro-Modus, F8 = Qualitätsstufe durchschalten (Hoch / Mittel / Niedrig – Inhalte und Cel-Look bleiben). */
+  private gfxKey(code: string): boolean {
+    if (code === 'F9') {
       this.gfx.retro = !this.gfx.retro;
       this.hud.toast(`Retro-Modus ${this.gfx.retro ? 'an' : 'aus'} (F9)`, 'info');
       this.applyGfx();
-    } else if (e.code === 'F8') {
-      e.preventDefault();
+    } else if (code === 'F8') {
       const order: GfxPreset[] = ['hoch', 'mittel', 'niedrig'];
       this.gfx.preset = order[(order.indexOf(this.preset) + 1) % order.length];
       applyPreset(this.gfx);
       this.hud.toast(`Grafik: ${PRESETS[this.preset].label} (F8)`, 'info');
       this.applyGfx();
-    } else if (e.code === 'F7') {
-      e.preventDefault();
+    } else if (code === 'F7') {
       this.rig.shakeEnabled = !this.rig.shakeEnabled;
       this.hud.toast(`Bildschirmwackeln ${this.rig.shakeEnabled ? 'an' : 'aus'} (F7)`, 'info');
+    } else return false;
+    return true;
+  }
+
+  // ------------------------------------------------------------------ Controller
+  /** Ein Bild Controller-Tasten: erst offene Fenster/Dialoge, sonst Spielaktionen. */
+  private onPad(f: PadFrame) {
+    // X losgelassen beendet „E halten“ – auch wenn inzwischen ein Fenster offen ist
+    if (this.padHoldX && !f.raw(P.X)) { this.padHoldX = false; this.input.onInteractUp(); }
+    const ui = this.padMenus(f);
+    if (ui) { this.padUi = true; return; }
+    if (this.padUi) {
+      // Fenster gerade geschlossen: noch gehaltene Tasten (B, A …) nicht ins Spiel durchreichen
+      this.padUi = false; this.padNav.clear(); f.swallow(); return;
     }
+    if (!this.predictor.ready) return;
+    const inp = this.input;
+    if (f.pressed(P.Y)) inp.pressUse();
+    if (f.pressed(P.X)) { inp.onInteract(); this.padHoldX = true; }
+    if (!this.predictor.inVehicle) {
+      if (f.pressed(P.LB)) inp.onWeaponCycle(-1);
+      if (f.pressed(P.RB)) inp.onWeaponCycle(1);
+      if (f.pressed(P.B) && this.scope) { this.scope = null; this.rig.photo = null; }
+    }
+    if (f.pressed(P.RIGHT)) inp.onWeaponCycle(1);
+    if (f.pressed(P.UP)) inp.onQuestLog();
+    if (f.pressed(P.DOWN)) inp.onInventory();
+    if (f.pressed(P.LEFT)) inp.onChatKey();
+    if (f.pressed(P.MENU)) inp.onPhoneKey();
+    if (f.pressed(P.VIEW) || f.pressed(P.PAD)) inp.onMapKey();
+  }
+
+  /** Offene Fenster mit dem Controller bedienen. Gibt true zurück, wenn eines offen ist. */
+  private padMenus(f: PadFrame): boolean {
+    if (this.chat.isOpen) {
+      if (f.pressed(P.B)) this.chat.close();
+      else if (f.pressed(P.A)) this.chat.submit();
+      return true;
+    }
+    const st = this.storyUi;
+    if (st.choosing) { this.padNav.update(st.dialogEl, f); return true; }
+    if (st.blocking) {
+      if (f.pressed(P.A) || f.pressed(P.X)) st.padNext();
+      else if (f.pressed(P.B) || f.pressed(P.MENU)) st.padSkip();
+      return true;
+    }
+    if (this.panels.isOpen) {
+      const k = this.panels.kind;
+      if (f.pressed(P.B)) this.panels.back();
+      else if (f.pressed(P.MENU) && k === 'handy') this.panels.close();
+      else if (f.pressed(P.VIEW) && k === 'handy') { this.panels.close(); this.minimap.toggleBig(); }
+      else this.padNav.update(this.panels.el, f, this.panels.scrollEl);
+      return true;
+    }
+    if (this.minimap.bigVisible && (f.pressed(P.B) || f.pressed(P.VIEW) || f.pressed(P.PAD))) { this.minimap.toggleBig(); return true; }
+    return false;
   }
 
   start() {
@@ -509,6 +585,7 @@ export class Game {
   /** Zielwinkel aus der Mausposition (Strahl auf eine Ebene in Brusthöhe), vorwärts = (sin a, cos a). */
   private aimAngle(): number | null {
     const me = this.predictor.view();
+    if (this.input.aimFacing) return me.a; // Controller ohne rechten Stick: geradeaus
     const ndc = new THREE.Vector2((this.input.mouseX / window.innerWidth) * 2 - 1, -(this.input.mouseY / window.innerHeight) * 2 + 1);
     this.ray.setFromCamera(ndc, this.rig.camera);
     this.aimPlane.constant = -(this.map.surfaceY(me.x, me.z) + 1);
@@ -525,7 +602,7 @@ export class Game {
     const hunt = this.questState?.hunt;
     const weapon = hunt === 'taxi' ? 'pistol' : this.weaponId;
     const driveBy = this.predictor.inVehicle && WEAPONS[weapon]?.slot === 'pistol';
-    if (!this.input.fire || this.input.blocked || hunt === 'hunter' || (this.predictor.inVehicle && !driveBy) || this.fireT > 0) return;
+    if (!this.input.firing || hunt === 'hunter' || (this.predictor.inVehicle && !driveBy) || this.fireT > 0) return;
     const aim = this.aimAngle();
     if (aim === null) return;
     this.net.send({ t: 'attack', aim });
@@ -916,7 +993,7 @@ export class Game {
     if (this.scope) {
       const sc = this.scope;
       sc.t -= dt;
-      sc.yaw += (this.input.touch.ax || (this.input.isDown('KeyD') ? 1 : this.input.isDown('KeyA') ? -1 : 0)) * dt * 0.5 + dt * 0.05;
+      sc.yaw += (this.input.touch.ax || gamepads.frame.lx || (this.input.isDown('KeyD') ? 1 : this.input.isDown('KeyA') ? -1 : 0)) * dt * 0.5 + dt * 0.05;
       const ax = 1300 - sc.x, az = 1000 - sc.z, base = Math.atan2(ax, az);
       const yaw = base + Math.sin(sc.yaw) * 1.1;
       this.rig.photo = { pos: new THREE.Vector3(sc.x, sc.y + 2, sc.z), look: new THREE.Vector3(sc.x + Math.sin(yaw) * 900, sc.y - 120, sc.z + Math.cos(yaw) * 900), fov: 30 };

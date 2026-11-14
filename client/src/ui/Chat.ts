@@ -15,11 +15,8 @@ export class Chat {
   constructor() {
     this.input.addEventListener('keydown', (e) => {
       e.stopPropagation();
-      if (e.key === 'Enter') {
-        const text = this.input.value.trim();
-        if (text) this.onSend(text);
-        this.close();
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Enter') this.submit();
+      else if (e.key === 'Escape') {
         this.close();
       }
     });
@@ -34,6 +31,13 @@ export class Chat {
     this.input.value = '';
     this.input.focus();
     this.onOpenChange(true);
+  }
+
+  /** Text senden und schließen (Enter bzw. Controller A). */
+  submit() {
+    const text = this.input.value.trim();
+    if (text) this.onSend(text);
+    this.close();
   }
 
   close() {
