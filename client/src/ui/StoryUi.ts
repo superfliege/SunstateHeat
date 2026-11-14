@@ -56,6 +56,15 @@ export class StoryUi {
     }, true);
   }
 
+  /** Entscheidung offen (Controller navigiert über die Optionen). */
+  get choosing() { return !!this.choiceFn; }
+  /** Dialogbox (für die Controller-Navigation). */
+  get dialogEl() { return this.dlg; }
+  /** Controller A: blockierenden Dialog weiterblättern. */
+  padNext() { if (this.job?.block && !this.choiceFn) this.next(); }
+  /** Controller B: blockierenden Dialog überspringen. */
+  padSkip() { if (this.job?.block && !this.choiceFn) this.skip(); }
+
   get busy() { return !!this.job || !!this.choiceFn || this.queue.length > 0; }
   /** Blockierender Dialog bzw. Entscheidung offen (Eingabe gesperrt). */
   get blocking() { return this.blocked; }

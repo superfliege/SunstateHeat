@@ -52,7 +52,11 @@ export class Hud {
     this.speedEl.textContent = speed === null ? '' : `${Math.round(Math.abs(speed) * 3.6)} km/h`;
   }
 
+  /** Übersetzt Tastatur-Hinweise (z. B. in Controller-Tasten); vom Spiel gesetzt. */
+  hintMap: (html: string) => string = (h) => h;
+
   setHint(html: string | null) {
+    if (html) html = this.hintMap(html);
     if (html === this.lastHint) return;
     this.lastHint = html;
     this.hintEl.classList.toggle('hidden', !html);

@@ -1,7 +1,9 @@
 // Einstiegspunkt: Login-Bildschirm -> Verbindung -> Spiel starten.
 import { Sfx } from './audio/Sfx';
 import { Game } from './game/Game';
-import { isFullscreen, toggleFullscreen } from './input/TouchControls';
+import { isFullscreen, isTouchDevice, toggleFullscreen } from './input/TouchControls';
+import { gamepads, P } from './input/Gamepad';
+import { padLayout } from './input/padGlyphs';
 import { Network } from './net/Network';
 import { Bench } from './perf/Bench';
 import { loadAssets } from './render/assets';
@@ -31,6 +33,25 @@ function guestId(): string {
   } catch { return ''; }
 }
 const status = document.getElementById('login-status')!;
+
+// Controller: Modus-Erkennung starten; im Login startet A das Spiel (ohne Namen als Gast)
+gamepads.start(isTouchDevice() ? 'touch' : 'kbd');
+const padHintEl = document.querySelector<HTMLElement>('.pad-hint');
+const showPadHint = () => {
+  if (!padHintEl) return;
+  padHintEl.innerHTML = '<b>Controller verbunden</b> – A (bzw. ✕) startet das Spiel. ' + padLayout(gamepads.family)
+    .map((sec) => `<span>${sec.title}: ${sec.rows.slice(0, 5).map(([k, v]) => `${k} ${v}`).join(' · ')}</span>`).join(' ');
+};
+gamepads.onModeChange((m) => { if (m === 'pad') showPadHint(); });
+let padLogin = false;
+gamepads.setHandler((f) => {
+  if (loginEl.classList.contains('hidden') || status.dataset.busy) return;
+  if (f.pressed(P.A) || f.pressed(P.MENU)) {
+    if (!nameInput.value.trim()) nameInput.value = 'Gast' + Math.floor(1000 + Math.random() * 9000);
+    padLogin = true;
+    form.requestSubmit();
+  }
+});
 
 // Vollbild: Button im Login und im HUD, Taste V. iPhone-Safari kann kein Vollbild für Webseiten →
 // dort hilft nur "Zum Home-Bildschirm" (Manifest/Meta-Tags sind gesetzt).
@@ -80,6 +101,8 @@ form.addEventListener('submit', async (e) => {
   if (!name) { status.textContent = 'Bitte gib einen Namen ein.'; return; }
   try { localStorage.setItem('sunstate.name', name); } catch { /* egal */ }
   sfx.init(); // Audio darf erst nach einer Nutzeraktion starten
+  // Controller-Tasten zählen im Browser nicht als Nutzeraktion: Audio beim ersten Tippen/Klick/Taste nachstarten
+  if (padLogin) for (const ev of ['pointerdown', 'keydown'] as const) window.addEventListener(ev, () => sfx.init(), { once: true });
 
   status.dataset.busy = '1';
   status.textContent = 'Lade Modelle …';

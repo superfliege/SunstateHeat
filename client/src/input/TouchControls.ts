@@ -3,6 +3,7 @@
 // dessen Aktions-Callbacks auf – das Spiel selbst merkt keinen Unterschied zur Tastatur.
 import { Btn } from '../../../shared/src/protocol';
 import type { Input } from './Input';
+import { gamepads } from './Gamepad';
 
 const STICK_R = 56; // Radius des Joysticks in px
 const AIM_R = 44;
@@ -88,8 +89,16 @@ export class TouchControls {
     this.bindAim(root.querySelector('#tc-aim') as HTMLElement);
     for (const b of root.querySelectorAll<HTMLElement>('.tc-btn')) this.bindButton(b, this.defs.find((d) => d.id === b.dataset.id)!);
 
-    // Erste Berührung schaltet die Touch-Oberfläche ein (auch auf Hybrid-Geräten)
-    window.addEventListener('touchstart', () => this.setActive(true), { passive: true, once: true });
+    // Berührung schaltet die Touch-Oberfläche ein (auch auf Hybrid-Geräten und nach Controller-Nutzung)
+    window.addEventListener('touchstart', () => this.setActive(true), { passive: true });
+    // Controller benutzt: Bildschirmtasten verschwinden (das Touch-Layout des HUD bleibt), bis wieder getippt wird
+    gamepads.onModeChange((m) => {
+      const hide = m === 'pad';
+      if (hide === this.padHidden) return;
+      this.padHidden = hide;
+      if (hide) this.releaseAll();
+      this.syncVisible();
+    });
     window.addEventListener('blur', () => this.releaseAll());
     if (isTouchDevice()) this.setActive(true);
   }
@@ -103,9 +112,10 @@ export class TouchControls {
   }
 
   private visible = false;
+  private padHidden = false;
   /** Nur im Spiel anzeigen (nicht auf dem Login). */
   setShown(v: boolean) { this.visible = v; this.syncVisible(); }
-  private syncVisible() { this.root.classList.toggle('hidden', !(this.active && this.visible)); }
+  private syncVisible() { this.root.classList.toggle('hidden', !(this.active && this.visible && !this.padHidden)); }
 
   setVehicle(inVeh: boolean) { this.root.classList.toggle('in-veh', inVeh); }
 
