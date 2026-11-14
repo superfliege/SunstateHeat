@@ -11,6 +11,7 @@ import { cumulative, pointAt, type Vec2 } from '../../../shared/src/world/geomet
 import { FARMS, farmFences, type FarmProp } from '../../../shared/src/world/farms';
 import { mountainRoads, OKEE_PLACES, okeePads, RESERVOIR } from '../../../shared/src/world/okeePeak';
 import { type BuildingDef, type WorldMap } from '../../../shared/src/world/WorldMap';
+import { Tile } from '../../../shared/src/world/tiles';
 import type { GeoBuilder } from './GeoBuilder';
 import { colored } from './geom';
 import type { CoverKind } from './plants';
@@ -323,6 +324,12 @@ function buildProp(ctx: NorthCtx, f: { x: number; z: number }, p: FarmProp, rnd:
 // ------------------------------------------------------------------ Felder & Zäune
 function buildFields(ctx: NorthCtx) {
   const rnd = mulberry32(4242);
+  // Pflanzen nur auf echtem Feldboden mit etwas Abstand: Straßen, Feldwege und Gebäude
+  // überschreiben den Feld-Untergrund (applyFarmTiles läuft vor den Straßen)
+  const onField = (x: number, z: number, tile: number) => {
+    const m = ctx.map, r = 1.8;
+    return m.tileAt(x, z) === tile && m.tileAt(x + r, z) === tile && m.tileAt(x - r, z) === tile && m.tileAt(x, z + r) === tile && m.tileAt(x, z - r) === tile;
+  };
   for (const f of FARMS) {
     for (const fl of f.fields) {
       const c = Math.cos(fl.rot), s = Math.sin(fl.rot);
@@ -338,7 +345,8 @@ function buildFields(ctx: NorthCtx) {
         case 'cane':
           for (let v = -fl.hd + 1; v < fl.hd; v += 1.6) for (let u = -fl.hw + 1; u < fl.hw; u += 1.4) {
             const [x, z] = at(u + (rnd() - 0.5) * 0.5, v + (rnd() - 0.5) * 0.4);
-            ctx.cover('cane', x, gy(ctx, x, z), z, rnd() * 6.28, 0.85 + rnd() * 0.3);
+            const rot = rnd() * 6.28, sc = 0.85 + rnd() * 0.3;
+            if (onField(x, z, Tile.FIELD)) ctx.cover('cane', x, gy(ctx, x, z), z, rot, sc);
           }
           break;
         case 'crop': {
@@ -346,7 +354,8 @@ function buildFields(ctx: NorthCtx) {
           for (let v = -fl.hd + 1; v < fl.hd; v += 2) for (let u = -fl.hw + 1; u < fl.hw; u += melons ? 1.6 : 1.1) {
             if (rnd() < 0.15) continue;
             const [x, z] = at(u, v);
-            ctx.cover(melons ? 'melon' : 'crop', x, gy(ctx, x, z), z, rnd() * 6.28, 0.8 + rnd() * 0.4);
+            const rot = rnd() * 6.28, sc = 0.8 + rnd() * 0.4;
+            if (onField(x, z, Tile.CROP)) ctx.cover(melons ? 'melon' : 'crop', x, gy(ctx, x, z), z, rot, sc);
           }
           break;
         }

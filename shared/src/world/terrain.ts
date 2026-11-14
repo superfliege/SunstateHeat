@@ -11,6 +11,9 @@ import { mountainRoads, okeeBase, okeeGround, okeePads, OKEE_TRAILS, RESERVOIR }
 import { applyFarmTiles } from './farms';
 import { Zone, type WorldMap } from './WorldMap';
 
+/** Mindesthöhe trockenen Landes abseits der Ufer (Wasserspiegel -0,3 m, Strände bis -0,12 m). */
+const LAND_FLOOR = -0.05;
+
 const N = GRID_SIZE;
 const HGRID = WORLD_SIZE / HEIGHT_STEP + 1;
 
@@ -283,6 +286,9 @@ export function buildTerrain(map: WorldMap, seed: number): TerrainInfo {
         // Berg mit steiler Küste (Kliffs zum Meer), Hügel und Wellen sanft zum Ufer
         h = (rolling * ampAt(px, pz) + mountain(px, pz)) * shore + okee(px, pz) * smooth(distWater[i] / 16);
         if (distWater[i] < 4) h = Math.min(h, -0.12); // flacher Übergang ins Wasser
+        // Landesinneres nie unter den Meeresspiegel (sonst scheint die Wasserfläche als weiße
+        // Schaum-Flecken bzw. dunkle "Seen" mitten im Land durch): Mulden weich auf LAND_FLOOR anheben
+        else if (h < LAND_FLOOR + 0.6) h = LAND_FLOOR + 0.6 * Math.exp((h - LAND_FLOOR - 0.6) / 0.6);
         if (t === Tile.SAND) h = Math.min(h, 0.2 + distWater[i] * 0.01);
       }
       map.heights[gz * HGRID + gx] = h;
