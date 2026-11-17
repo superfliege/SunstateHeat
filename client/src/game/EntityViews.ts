@@ -770,7 +770,10 @@ export class EntityViews {
     c.swing = Math.max(0, c.swing - dt);
     c.kick = Math.max(0, c.kick - dt);
     const fists = c.heldIdx === 0;
-    m.visible = show && (!fists || c.swing > 0);
+    // Figuren mit eigener Schlag-Animation (Kenney) brauchen den Ersatz-Faustklotz nicht – er sähe
+    // aus wie ein Würfel vor der Figur
+    const animatedFists = fists && typeof (c.model as Partial<KenneyCharacter>).attack === 'function';
+    m.visible = show && !animatedFists && (!fists || c.swing > 0);
     const sp = c.swing > 0 ? 1 - c.swing / SWING_TIME : 0; // 0..1 Fortschritt des Schlags
     const kick = c.kick / KICK_TIME;
     // Grundhaltung: Waffe seitlich vor dem Körper, leicht nach vorne geneigt
