@@ -311,6 +311,7 @@ export class EntityViews {
     this.wheelCount = 0;
     for (const v of this.players.values()) v.seen = false;
     for (const v of this.peds.values()) v.seen = false;
+    for (const v of this.venueNpcs.values()) v.seen = false;
     for (const v of this.vehicles.values()) v.seen = false;
   }
 
@@ -827,6 +828,18 @@ export class EntityViews {
     }
   }
 
+  /** Club/Casino und deren Außenbereiche: Menge mit denselben Charakter-Assets wie die Passanten. */
+  private venueNpcs = new Map<number, CharView>();
+  setVenueNpc(s: { id: number; x: number; z: number; a: number; act: number; role: KenneyRole; shirt?: number; scale: number }, dt: number) {
+    if (!this.venueNpcs.has(s.id)) {
+      const model: Figure = createKenneyCharacter(s.role, s.id, s.shirt) ?? createQuaterniusCharacter(s.role === 'cop' || s.role === 'gang' || s.role === 'player' ? 'casual' : s.role, s.id, s.shirt) ?? new CharacterModel(s.id % 8);
+      if (s.scale !== 1) model.root.scale.setScalar(s.scale);
+      this.venueNpcs.set(s.id, { model, lastX: s.x, lastZ: s.z, seen: true, rag: null, anchor: new THREE.Vector3(s.x, 0, s.z), held: null, heldIdx: -1, swing: 0, kick: 0, arch: -1, rank: 0 } as CharView);
+      this.group.add(model.root);
+    }
+    this.updateChar(this.venueNpcs, s.id, 0, s.x, s.z, s.a, dt, null, 0, false, -1, 0, -1, s.act);
+  }
+
   setPed(s: PedState, dt: number) {
     const c = this.updateChar(this.peds, s.id, s.color, s.x, s.z, s.a, dt, null, s.h, s.ragdoll, s.cop || s.gang ? 3 : -1, s.cop ? 1 : s.gang ? 2 : 0, s.arch ?? -1, s.act ?? 0, s.gang && (s.gangId ?? -1) >= 0 ? GANGS[GANG_IDS[s.gangId!]].color : -1);
     this.updateDog(c, s);
@@ -1015,6 +1028,7 @@ export class EntityViews {
     };
     sweepChars(this.players);
     sweepChars(this.peds);
+    sweepChars(this.venueNpcs);
     for (const [id, v] of this.vehicles) if (!v.seen) this.removeVehicle(id);
     this.shadows.count = this.shadowCount;
     this.shadows.instanceMatrix.needsUpdate = true;
