@@ -222,7 +222,9 @@ export class KenneyCharacter {
       const clip = clips[k];
       if (!clip) continue;
       const a = this.mixer.clipAction(clip);
-      if (k === 'punch') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = false; }
+      // Am Ende stehen bleiben statt abzuschalten: eine beendete, nicht gehaltene Aktion hat Gewicht 0 –
+      // ohne andere aktive Aktion stünde die Figur dann in der Ruhepose (T-Pose)
+      if (k === 'punch') { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
       this.actions[k] = a;
     }
     // Zufälliger Startpunkt, damit Gruppen nicht im Gleichschritt laufen
@@ -231,7 +233,8 @@ export class KenneyCharacter {
   }
 
   private play(a: THREE.AnimationAction | undefined, fade = 0.2) {
-    if (!a || a === this.current) return;
+    // Gleiche Aktion nur überspringen, wenn sie noch läuft (sonst z. B. abgelaufener Schlag → T-Pose)
+    if (!a || (a === this.current && a.isRunning())) return;
     a.reset().setEffectiveWeight(1).fadeIn(fade).play();
     this.current?.fadeOut(fade);
     this.current = a;
@@ -240,8 +243,15 @@ export class KenneyCharacter {
   /** Schlag-Animation (Fäuste/Nahkampf). */
   attack() {
     if (!this.actions.punch) return;
+    const punch = this.actions.punch;
     this.attackT = Math.max(0.2, clips.punch!.duration * 0.9);
-    this.play(this.actions.punch, 0.08);
+    if (this.current === punch) {
+      // Schlag folgt auf Schlag: Clip neu starten (play() würde die laufende Aktion überspringen und
+      // die abgelaufene nicht wieder einblenden)
+      punch.reset().setEffectiveWeight(1).play();
+      return;
+    }
+    this.play(punch, 0.08);
   }
 
   /**
