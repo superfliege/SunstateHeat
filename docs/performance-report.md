@@ -317,3 +317,38 @@ Kostenbegrenzung im Client:
 - Benchmark-Route: neue Abschnitte `peak` (Okee Peak Gipfel bei Sonnenuntergang) und `fields`
   (Felder mit Mähdrescher-Kolonne via `/kolonne`). Die Browser-Messung auf dem T580 (Preset „Mittel“)
   steht noch aus – im Container rendert Chromium per SwiftShader (~10 FPS), Zahlen dort nicht vergleichbar.
+
+## 8. Club „Pink Static“ & Casino „Palm Royale“ (Innenräume) – Messungen
+
+Neue Benchmark-Abschnitte am Ende der Route (`?bench=1`, einzeln: `--only=club,casino`):
+**„Club zur Hauptzeit“** (Dev `/club voll`: 40 tanzende NPCs + 8 Tänzer als Stellvertreter für Spieler,
+Bar, Empore, Personal; Leuchtboden, Lichtkegel, Laser, Discokugel-Punkte, Sprechblasen) und
+**„Casino-Automatenhalle“** (`/casino voll`: 60 Automaten, ~80 NPCs, Jackpot-Tafel, Derby-Bildschirm).
+Rohdaten: `docs/bench/venues.json` (gleicher Container, SwiftShader – FPS nicht übertragbar, siehe Abschnitt 2).
+
+| Abschnitt | Draw-Calls Ø/max | Dreiecke Ø/max | GPU-Passes (rel., SwiftShader) |
+|---|---|---|---|
+| Club zur Hauptzeit | 39 / 41 | 21k / 22k | Szene 104 · Bloom 94 · Post 163 ms |
+| Casino-Automatenhalle | 33 / 37 | 29k / 29k | Szene 88 · Bloom 104 · Post 180 ms |
+| *zum Vergleich: Ocean Strip (M8)* | *156 / 193* | *107k / 134k* | |
+| *zum Vergleich: Downtown Nacht (M8)* | *191 / 229* | *216k / 255k* | |
+
+Die Innenräume sind damit deutlich billiger als jeder Außen-Abschnitt: Die Außenwelt wird drinnen nicht
+gezeichnet und nicht aktualisiert, der Server schickt dort keine Außenwelt-Entitäten.
+
+Maßnahmen und ihre Wirkung:
+- **Menge per Instancing + Animationstextur** (`client/src/venues/CrowdMesh.ts`): alle NPCs eines Innenraums
+  in **einem** Draw-Call, keine Skelette/Mixer auf der CPU (`entities` < 0,2 ms CPU je Bild bei 80 Figuren).
+- **Automaten** (Gehäuse + Bildschirme) und **Leuchtboden** per Instancing; statische Einrichtung in zwei
+  zusammengefasste Meshes (Cel-Material + Neon), Matrizen eingefroren.
+- **Keine dynamischen Lichter:** Lichtkegel als additive Fake-Volumen, Laser als Linien, Discokugel-Punkte als
+  Decal-Quads, Glühen über den vorhandenen Bloom.
+- **Überzeichnung reduziert:** Die erste Fassung hatte im Club die 11-fache Szenen-GPU-Zeit des Casinos
+  (doppelseitige Lichtkegel + dynamischer Uniform-Array-Zugriff im Kachel-Shader). Lichtkegel nur noch
+  einseitig und schmaler, „eigene Kachel“ als Instanz-Attribut → Club-GPU gesamt **1254 → 363 ms**
+  (SwiftShader, relativ), jetzt auf Casino-Niveau.
+- **Server:** `Venues.update` mit 16 Spielern drinnen (8 Club, 8 Casino) Ø **0,17 ms je Tick**; Snapshot drinnen
+  Ø **1,4 KB** je Spieler und Tick (draußen 3,9 KB). Server-Tick (`server-bench.ts`, 16 Spieler draußen)
+  unverändert Ø 8,9 ms, p99 17 ms.
+
+Auf dem T580 nachmessen (Preset „Mittel“): `http://localhost:5173/?bench=1&only=club,casino&preset=mittel`.

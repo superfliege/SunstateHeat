@@ -840,7 +840,6 @@ export class Venues {
       p.interior!.seat = `tile${tile}`;
       const st = this.v.get('club')!;
       this.say(st, q.npc, 'Static Shock, Mittel. Der Verlierer kauft Nachos. Und den Stick.', 'shout');
-      this.h.send(p, { t: 'vgame', s: { g: 'dance', s: null } });
       return true;
     }
     return false;

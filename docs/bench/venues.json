@@ -1,0 +1,188 @@
+{
+  "date": "2026-11-17T16:00:20.070Z",
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "gl": {
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "vendor": "Google Inc. (Google)",
+    "timerQuery": true
+  },
+  "viewport": [
+    1920,
+    1080
+  ],
+  "dpr": 1,
+  "sections": [
+    {
+      "id": "club",
+      "name": "Club „Pink Static“ zur Hauptzeit",
+      "frames": 374,
+      "seconds": 99.2,
+      "fps": 3.8,
+      "low1": 0.1,
+      "p50ms": 3.7,
+      "p99ms": 6198.3,
+      "maxMs": 9372.7,
+      "spikes33": 50,
+      "spikes50": 43,
+      "hist": {
+        "<16.7": 81,
+        "<20": 2.4,
+        "<25": 1.9,
+        "<33.3": 1.3,
+        "<50": 1.9,
+        ">50": 11.5
+      },
+      "settleMaxMs": 80915.5,
+      "settleSpikes33": 6,
+      "calls": {
+        "avg": 39,
+        "max": 41
+      },
+      "tris": {
+        "avg": 20536,
+        "max": 21697
+      },
+      "programs": 77,
+      "progNew": 15,
+      "textures": 192,
+      "geometries": 1270,
+      "gpuMemMB": 243.8,
+      "heapMB": [
+        314.5,
+        255.9
+      ],
+      "cpu": {
+        "sim": 0.112,
+        "net": 0.305,
+        "entities": 0.132,
+        "world": 0.006,
+        "effects": 0.001,
+        "camera": 0.756,
+        "ui": 0.103,
+        "minimap": 0.064,
+        "audio": 0.043,
+        "render": 300.642,
+        "total": 310.193
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "scene": 103.643,
+        "overlay": 1.78,
+        "bloom": 94.336,
+        "post": 162.948,
+        "total": 362.707
+      },
+      "res": 1,
+      "trisBy": {
+        "main:venueCrowd:inst": 13.4,
+        "main:interior:club:mesh": 1.6,
+        "main:entities:hull": 1.6,
+        "main:entities:skin": 1.6,
+        "main:interior:club:inst": 1.4,
+        "main:Mesh:mesh": 0.5,
+        "main:entities:mesh": 0.4,
+        "main:entities:inst": 0,
+        "main:postQuad:mesh": 0,
+        "main:venueBubbles:sprite": 0
+      },
+      "callsBy": {
+        "main:interior:club:mesh": 12.4,
+        "main:postQuad:mesh": 11,
+        "main:venueBubbles:sprite": 6.4,
+        "main:entities:inst": 3,
+        "main:interior:club:inst": 3,
+        "main:entities:hull": 2,
+        "main:Mesh:mesh": 1,
+        "main:entities:mesh": 1,
+        "main:venueCrowd:inst": 1,
+        "main:entities:skin": 1
+      }
+    },
+    {
+      "id": "casino",
+      "name": "Casino „Palm Royale“ · Automatenhalle",
+      "frames": 212,
+      "seconds": 88.8,
+      "fps": 2.4,
+      "low1": 0.2,
+      "p50ms": 5.3,
+      "p99ms": 6271.4,
+      "maxMs": 6948.6,
+      "spikes33": 45,
+      "spikes50": 42,
+      "hist": {
+        "<16.7": 72.6,
+        "<20": 2.4,
+        "<25": 1.9,
+        "<33.3": 1.9,
+        "<50": 1.4,
+        ">50": 19.8
+      },
+      "settleMaxMs": 25966.3,
+      "settleSpikes33": 2,
+      "calls": {
+        "avg": 33,
+        "max": 37
+      },
+      "tris": {
+        "avg": 28942,
+        "max": 28999
+      },
+      "programs": 80,
+      "progNew": 3,
+      "textures": 192,
+      "geometries": 1290,
+      "gpuMemMB": 245.8,
+      "heapMB": [
+        261.1,
+        255.3
+      ],
+      "cpu": {
+        "sim": 0.086,
+        "net": 0.832,
+        "entities": 0.168,
+        "world": 0.011,
+        "effects": 0,
+        "camera": 0.244,
+        "ui": 0.072,
+        "minimap": 0.089,
+        "audio": 0.043,
+        "render": 423.633,
+        "total": 431.985
+      },
+      "gpu": {
+        "method": "EXT_disjoint_timer_query_webgl2",
+        "scene": 87.452,
+        "overlay": 1.202,
+        "bloom": 103.861,
+        "post": 179.681,
+        "total": 372.196
+      },
+      "res": 1,
+      "trisBy": {
+        "main:venueCrowd:inst": 16.2,
+        "main:interior:casino:inst": 4.9,
+        "main:interior:casino:mesh": 3.7,
+        "main:entities:hull": 1.6,
+        "main:entities:skin": 1.6,
+        "main:Mesh:mesh": 0.5,
+        "main:entities:mesh": 0.4,
+        "main:entities:inst": 0,
+        "main:postQuad:mesh": 0,
+        "main:venueBubbles:sprite": 0
+      },
+      "callsBy": {
+        "main:interior:casino:mesh": 11.4,
+        "main:postQuad:mesh": 11,
+        "main:entities:inst": 3,
+        "main:interior:casino:inst": 3,
+        "main:venueBubbles:sprite": 2.4,
+        "main:entities:hull": 2,
+        "main:Mesh:mesh": 1,
+        "main:entities:mesh": 1,
+        "main:venueCrowd:inst": 1,
+        "main:entities:skin": 1
+      }
+    }
+  ]
+}
