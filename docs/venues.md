@@ -177,6 +177,14 @@ Jackpots, Dance-Battle-Sieger, Rang-S-Läufe und Ereignisse landen im Gerüchte-
 Vee (Club-Bar) und Barkeeper Lucien (Casino) erzählen die neuesten. Jackpots gehen zusätzlich als
 Radiomeldung an alle Spieler.
 
+## Auf der Karte finden
+
+Club (💃) und Casino (🎰) sind auf der Minimap und der großen Karte markiert (auch am Rand der Minimap,
+wenn sie außer Sicht sind). Große Karte (**K**): oben die **Suche** („casino“, „nachtclub“, „tanzen“, „derby“ …,
+Enter = erster Treffer), **Zoom** per Mausrad, Doppelklick oder ＋/－, **Ziehen** zum Verschieben, ◎ = zu mir,
+⤢ = ganze Karte. Ein Treffer bzw. Klick auf einen Marker setzt einen **Wegpunkt** mit GPS-Route
+(„✖ Ziel“ löscht ihn; erreicht = automatisch weg). Auch im Handy: Einstellungen → „Ort auf der Karte suchen“.
+
 ## Steuerung
 
 | | Tastatur | Gamepad |

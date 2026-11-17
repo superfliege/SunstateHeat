@@ -289,6 +289,7 @@ export class Game {
       document.getElementById('minimap') as HTMLCanvasElement,
       document.getElementById('bigmap-canvas') as HTMLCanvasElement,
     );
+    this.minimap.onWaypoint = (p) => this.hud.toast(p ? `📍 Wegpunkt: ${p.title} – folge der blauen Route` : 'Wegpunkt gelöscht.', 'info');
     this.debug = new DebugOverlay(this.map, this.minimap.base);
     this.debug.onNpcTab = (on) => this.net.send({ t: 'npcDebug', on });
     this.debug.onCommand = (text) => this.net.send({ t: 'chat', text });
@@ -377,6 +378,7 @@ export class Game {
       { label: `🎮 Vibration: ${this.input.rumbleOn ? 'an' : 'aus'}`, run: () => { this.input.rumbleOn = !this.input.rumbleOn; } },
       { label: '⛶ Vollbild', run: () => { void toggleFullscreen().then((ok) => { if (!ok) this.hud.toast('Vollbild geht hier nur per Tippen/Klick (oder Taste V).', 'info'); }); } },
       { label: '📊 Debug-Anzeige', run: () => this.debug.toggle() },
+      { label: '🔍 Ort auf der Karte suchen (Casino, Club …)', run: () => { this.panels.close(); this.minimap.openSearch(); } },
       { label: `🎰 Casino-Tipps (Grundstrategie): ${this.venue.tipsOn ? 'an' : 'aus'}`, run: () => { this.venue.toggleTips(); } },
       { label: '🎰 Casino-Bilanz & Konto-Sperre', run: () => { this.panels.close(); this.venue.ui.openStats(); } },
       { label: '💃 Tanz: Bestenlisten & Latenz-Test (auf einer Tanzkachel: F)', run: () => { this.panels.close(); this.venue.ui.openStats(); } },
@@ -1593,6 +1595,23 @@ export class Game {
       const label = ph.taxi ? [ph.name, 'Spielmodus · Taxi jagen'] : ph.race ? [`🏁 ${ph.name}`, 'Renntelefon'] : [`☎ ${ph.name}`, 'Missionstelefon · Aufträge'];
       dots.push({ x: ph.x, z: ph.z, color: ph.taxi ? '#3ad1ff' : ph.race ? '#ff8a3a' : '#ffe14d', size: ph.taxi ? 4 : 3, ring: true, label });
     }
+    // Wichtige Orte: Club, Casino (Tür), Wahrzeichen, Derby-Terminals – mit Symbol auch auf der kleinen Minimap
+    const lm = (id: string) => this.map.landmarks.find((l) => l.id === id);
+    const club = lm('club'), casino = lm('casino');
+    if (club) dots.push({ x: club.door.x, z: club.door.z, color: '#ff3fa4', size: 4, icon: '💃', poi: true, keys: 'nachtclub club disco tanzen dance floor heat neon syndicate pink static party',
+      label: ['💃 Club „Pink Static“', `${where(club.x, club.z)} · Nachtclub (22–5 Uhr)`, 'Dance Floor Heat: F auf einer Leuchtkachel. Türsteher Big Teo prüft das Outfit (oder 200 $).'] });
+    if (casino) dots.push({ x: casino.door.x, z: casino.door.z, color: '#e8c35a', size: 4, icon: '🎰', poi: true, keys: 'casino spielbank gluecksspiel automaten slots blackjack roulette gator derby hotel palm royale valet',
+      label: ['🎰 Casino „Palm Royale“', `${where(casino.x, casino.z)} · 24 Stunden geöffnet`, 'Automaten, Blackjack, Roulette, Gator Derby, Valet-Parking. Nur Spielgeld.'] });
+    const lmInfo: Record<string, [string, string, string, string]> = {
+      hospital: ['🏥', '#f4f6f8', 'Krankenhaus · Respawn nach dem K.O.', 'krankenhaus klinik arzt spital'],
+      police: ['🚓', '#5a8dff', 'Polizeirevier · nach einer Festnahme', 'polizei revier wache'],
+      garage: ['🫧', '#ff8cc6', 'Lous Waschanlage & Garage', 'waschanlage garage lou bubble bath'],
+    };
+    for (const l of this.map.landmarks) {
+      const info = lmInfo[l.id];
+      if (info) dots.push({ x: l.door.x, z: l.door.z, color: info[1], size: 3, icon: info[0], keys: info[3], label: [`${info[0]} ${l.name}`, `${where(l.x, l.z)} · ${info[2]}`] });
+    }
+    for (const t of this.venue.exterior.terminals) dots.push({ x: t.x, z: t.z, color: '#7dff6a', size: 3, icon: '🐊', keys: 'gator derby wetten wettbuero terminal bar', label: [`🐊 ${t.name}`, `${where(t.x, t.z)} · Gator-Derby-Wetten (Bargeld)`] });
     return (this.staticDotList = dots);
   }
 
@@ -1626,6 +1645,12 @@ export class Game {
 
   /** Navi-Ziel: Auftragsziel (Ziel > Checkpoint > Fahrzeug > Schützling > Sammelobjekt > Gegner), sonst die nächste Story-Figur. */
   private navTarget(x: number, z: number): { x: number; z: number } | null {
+    // Eigener Wegpunkt (Kartensuche / Klick auf der großen Karte) hat Vorrang – bis er erreicht oder gelöscht ist
+    const wp = this.minimap.waypoint;
+    if (wp) {
+      if (Math.hypot(wp.x - x, wp.z - z) < 25) { this.minimap.waypoint = null; this.hud.toast(`Ziel erreicht: ${wp.title}`, 'good'); }
+      else return wp;
+    }
     const ts = this.questState?.targets ?? [];
     for (const kind of [1, 2, 7, 6, 4, 3, 5]) {
       let best: { x: number; z: number } | null = null, bd = Infinity;
