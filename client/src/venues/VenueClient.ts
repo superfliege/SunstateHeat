@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { BALANCE } from '../../../shared/src/balance';
 import { GATORS } from '../../../shared/src/content/casino/derby';
 import { CASINO_TABLES, INTERIORS, interiorFrame, interiorFloorH, spotNear, tableSeat, tileAt, toLocal, toWorld, venueExterior, zoneAt, type InteriorFrame, type InteriorId, type Spot } from '../../../shared/src/venues/interiors';
-import { VNpcKind, type VenueGame, type VenueServerMsg, type VNpcTuple } from '../../../shared/src/venues/net';
+import { type VenueGame, type VenueServerMsg, type VNpcTuple } from '../../../shared/src/venues/net';
 import type { ClientMsg } from '../../../shared/src/protocol';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { gamepads, type PadFrame } from '../input/Gamepad';
@@ -15,7 +15,7 @@ import type { Sfx } from '../audio/Sfx';
 import type { CameraRig } from '../render/CameraRig';
 import type { Sky } from '../render/Sky';
 import { BubbleLayer } from './bubbles';
-import { animForAct, CrowdMesh, type CrowdLook } from './CrowdMesh';
+import { FigureList, lookForKind, type VenueFigure } from './figures';
 import { VenueExterior3D } from './Exterior';
 import { InteriorView } from './InteriorView';
 import { DanceTrack, VenuePA } from './music';
@@ -41,26 +41,7 @@ export interface VenueGameHost {
 
 interface NpcRec { a: VNpcTuple; b: VNpcTuple; t: number; x: number; z: number; ang: number; moving: boolean }
 
-const SHIRTS = [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff, 0x7dff6a, 0xff8a2a, 0xffffff, 0xe0453a, 0x2a2a3a, 0x3a6bff, 0xf4f1e8, 0x16161c];
 const fmt = (n: number) => Math.floor(n).toLocaleString('de-DE');
-
-function lookFor(kind: number, seed: number, style: number): CrowdLook {
-  const s = style % 1000;
-  switch (kind) {
-    case VNpcKind.COP: return { shirt: 0x24408a, pants: 0x16203a, skin: seed };
-    case VNpcKind.GUARD: return { shirt: 0x16161c, pants: 0x16161c, skin: seed };
-    case VNpcKind.CROUPIER: return { shirt: 0xf4f1e8, pants: 0x16161c, skin: seed };
-    case VNpcKind.WAITER: return { shirt: 0xf4f1e8, pants: 0x7a1f2e, skin: seed };
-    case VNpcKind.STAFF: return { shirt: 0x7a1f2e, pants: 0x16161c, skin: seed };
-    case VNpcKind.BARKEEP: return { shirt: 0xff3fa4, pants: 0x16161c, skin: seed + 2 };
-    case VNpcKind.DJ: return { shirt: 0x111118, pants: 0x3af2ff, skin: 3 };
-    case VNpcKind.BOUNCER: return { shirt: 0x111118, pants: 0x111118, skin: 4 };
-    case VNpcKind.PIANIST: return { shirt: 0x111118, pants: 0x111118, skin: 0 };
-    case VNpcKind.GANG: return s === 1 ? { shirt: 0x2ad4c9, pants: 0xf4f1e8, skin: seed } : { shirt: 0xff2fd0, pants: 0x16161c, skin: seed };
-    case VNpcKind.VIP: return { shirt: 0xe8c35a, pants: 0x16161c, skin: seed };
-    default: return { shirt: SHIRTS[(seed + s) % SHIRTS.length], pants: [0x22223a, 0x3a2a1a, 0x16161c, 0x4a5a7a][seed % 4], skin: seed };
-  }
-}
 
 export class VenueClient {
   inside: InteriorId | null = null;
@@ -72,7 +53,8 @@ export class VenueClient {
   readonly exterior: VenueExterior3D;
   private views = new Map<InteriorId, InteriorView>();
   private frames: Record<InteriorId, InteriorFrame | null>;
-  private crowd = new CrowdMesh(140);
+  /** Menge drinnen (normale NPC-Figuren, gezeichnet von EntityViews) */
+  private inFigures = new FigureList();
   private npcs = new Map<number, NpcRec>();
   readonly bubbles = new BubbleLayer(7);
   private pa: VenuePA | null = null;
@@ -96,8 +78,7 @@ export class VenueClient {
   constructor(private h: VenueGameHost) {
     this.frames = { club: interiorFrame(h.map, 'club'), casino: interiorFrame(h.map, 'casino') };
     this.exterior = new VenueExterior3D(h.map);
-    this.crowd.mesh.visible = false;
-    h.scene.add(this.exterior.group, this.crowd.mesh, this.bubbles.group);
+    h.scene.add(this.exterior.group, this.bubbles.group);
     try { this.tipsOn = localStorage.getItem('sunstate.casinoTips') !== '0'; } catch { /* egal */ }
     this.ui = new VenueUi({
       send: (v) => h.send({ t: 'venue', v }),
@@ -193,7 +174,7 @@ export class VenueClient {
       this.h.notice(m.in === 'club' ? 'Pink Static: F auf einer Leuchtkachel = Dance Floor Heat · Bar: E bei Vee · VIP-Empore oben rechts' : `Palm Royale: Kasse links (Chips 1:1), Automaten rechts, Tische in der Mitte, Gator Derby an der Wand · Jackpot ${fmt(this.jackpot)} $`, 'info');
     } else if (m.door === 'evac') this.h.notice('Feueralarm! Alle raus – die Party geht draußen weiter.', 'bad');
     else if (m.door === 'kick') this.h.notice('Rausgeworfen.', 'bad');
-    this.crowd.mesh.visible = !!m.in;
+    this.inFigures.begin(); this.exterior.figures.begin();
     this.setLoop();
   }
 
@@ -378,12 +359,9 @@ export class VenueClient {
     if (sp) { const a = this.h.playerAnchor(sp); if (a) { const l = toLocal(f, a.x, a.z); v.moveSpot(l.x, l.z); } }
     v.setMyTiles(this.dance.active ? [this.myTile()] : []);
     // Menge interpolieren (4 Hz Server-Takt)
-    const c = this.crowd;
+    const c = this.inFigures;
     c.begin();
-    c.uniforms.uTint.value.setHex(id === 'club' ? [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff][Math.floor(Math.max(0, beat)) % 4] : 0xffd8a0);
-    c.uniforms.uTintAmt.value = id === 'club' ? 0.22 : 0.08;
-    c.uniforms.uAmbient.value.setRGB(id === 'club' ? 0.36 : 0.5, id === 'club' ? 0.3 : 0.44, id === 'club' ? 0.42 : 0.4);
-    c.mesh.position.set(0, 0, 0);
+    this.exterior.figures.begin();
     for (const r of this.npcs.values()) {
       r.t = Math.min(1, r.t + dt * 4);
       const ax = r.a[1] / 10, az = r.a[2] / 10, bx = r.b[1] / 10, bz = r.b[2] / 10;
@@ -392,13 +370,11 @@ export class VenueClient {
       const want = r.b[3] / 100;
       let d = want - r.ang; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
       r.ang += d * Math.min(1, dt * 8);
-      const style = r.b[7], y = Math.floor(style / 1000) / 10 || interiorFloorH(f.def, r.x, r.z);
       const w = toWorld(f, r.x, r.z);
-      const kind = r.b[5];
-      const big = kind === VNpcKind.BOUNCER || kind === VNpcKind.GUARD ? 1.12 : kind === VNpcKind.COP ? 1.05 : 1;
-      c.add(w.x, f.y + y, w.z, r.ang + f.rot, animForAct(r.b[4], r.moving), r.b[6], lookFor(kind, r.b[6], style), big);
+      const look = lookForKind(r.b[5], r.b[6], r.b[7]);
+      // Höhe (Empore, Podest) kommt über EntityViews.groundOverride → groundAt
+      c.add(r.b[0], w.x, w.z, r.ang + f.rot, r.moving ? 0 : r.b[4], look.role, look.shirt, look.scale);
     }
-    c.end(this.t, beat >= 0 ? beat : this.t * 2);
     this.bubbles.update(dt, 0.85);
     // Derby-Großbildschirm (10 Bilder/s)
     if (id === 'casino') { this.derbyT -= dt; if (this.derbyT <= 0) { this.derbyT = 0.1; drawDerby(v.derbyCanvas, this.derbyView, this.t); v.derbyDirty(); } }
@@ -471,6 +447,9 @@ export class VenueClient {
   sameSpace(interiorIdx: number) { const mine = this.inside === 'club' ? 1 : this.inside === 'casino' ? 2 : 0; return (interiorIdx ?? 0) === mine; }
 
   isInside() { return this.inside !== null; }
+
+  /** Figuren dieses Bildes: drinnen die Menge, draußen Schlange, Türsteher, Portier, Valet, Partygäste. */
+  get figures(): readonly VenueFigure[] { return this.inside ? this.inFigures.list : this.exterior.figures.list; }
   usesPad() { return gamepads.mode === 'pad'; }
 }
 

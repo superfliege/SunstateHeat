@@ -21,7 +21,7 @@ Tanz-Minispiel **Dance Floor Heat** und das Hotel-Casino mit Automaten, Blackjac
 | Ereignisse E57–E64 | `shared/src/content/events/venues.ts` |
 | Quests | `shared/src/questData.ts` (`neon_02_dance_for_your_life`, `marlin_03_card_counter`), Story: `shared/src/story/missions.json` + `story.json` (`story_side_jackpot_coup`) |
 | Server | `server/src/venues/` – `Venues.ts` (Tür, Gates, Polizei, Valet, Emotes, Quests, Sync), `Crowd.ts` (Menge), `Director.ts` (Ereignisse), `DanceFloor.ts`, `Casino.ts`, `Bank.ts` (Chips, Limits, Bilanz), `Leaderboard.ts` |
-| Client | `client/src/venues/` – `VenueClient.ts`, `InteriorView.ts`, `CrowdMesh.ts` (Instancing + Animationstextur), `Exterior.ts`, `bubbles.ts`, `music.ts`, `ui/VenueUi.ts`, `ui/DanceUi.ts`, `ui/style.ts` |
+| Client | `client/src/venues/` – `VenueClient.ts`, `InteriorView.ts`, `figures.ts` (Menge mit dem normalen NPC-Asset), `Exterior.ts`, `bubbles.ts`, `music.ts`, `ui/VenueUi.ts`, `ui/DanceUi.ts`, `ui/style.ts` |
 | Fassaden | `client/src/render/LandmarkBuilder.ts` (`club`, `casino`) |
 | Sounds | `client/src/audio/manifest.ts` (`venue.*`), Erzeugung `client/src/audio/procedural.ts` (`venue:*`) |
 | Tests | `npm run venue-test` (Server-Rauchtest), `npm test` (Inhalte inkl. Beatmaps, RTP, Plätze) |
@@ -198,9 +198,10 @@ Enter = erster Treffer), **Zoom** per Mausrad, Doppelklick oder ＋/－, **Ziehe
 
 ## Performance
 
-- Menge per **Instancing + Animationstextur** (`CrowdMesh.ts`): 11 Knochen, 23 Animationen à 32 Frames
-  einmal in eine Float-Textur gebacken, der Vertex-Shader setzt die Kette zusammen – ein Draw-Call für bis
-  zu 140 Figuren, keine Skelette auf der CPU. Tänze laufen im Takt der Club-Musik.
+- Die Menge (drinnen und vor Club/Casino) nutzt **dasselbe Charakter-Asset wie die Passanten** (Kenney-Figuren,
+  `EntityViews.setVenueNpc`) mit Szenario-Posen aus `render/npcActs.ts` (Tanzstile, Jubeln, DJ, Croupier,
+  Automat …) und deren Animations-LOD. Das kostet mehr Draw-Calls als die frühere Instanz-Menge
+  (Club ~170 statt ~40, Casino ~80 statt ~35), bleibt aber im Rahmen der Außen-Abschnitte (156–191).
 - Automaten per Instancing (Gehäuse + Bildschirme, Farbe je Instanz), Tanzfläche per Instancing + Shader.
 - Lichtshow nur mit Emissive, additiven Fake-Volumen, Linien, Decal-Quads und Bloom – **keine dynamischen
   Lichter**. Statische Einrichtung zu wenigen Meshes zusammengefasst, Matrizen eingefroren.

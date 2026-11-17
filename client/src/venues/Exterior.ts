@@ -1,7 +1,7 @@
 // Außenbereiche der Venues (Teil der Außenwelt, wird mit ihr pausiert): Schlange vor dem Pink Static mit
 // Türsteher Big Teo und Samtkordel, Limousine/Sportwagen am Bordstein, Taxi lässt Partygäste raus,
 // Palm Royale mit Springbrunnen-Lichtshow, Portier und Valet-Stand (Rico), Derby-Terminals in Bars,
-// und die Straßenparty bei Feueralarm (E60). Figuren über dieselbe instanzierte Menge wie drinnen.
+// und die Straßenparty bei Feueralarm (E60). Figuren mit dem normalen NPC-Asset (siehe figures.ts).
 import * as THREE from 'three';
 import { clubOpen, interiorFrame, venueExterior, type InteriorFrame, type VenueExterior } from '../../../shared/src/venues/interiors';
 import { derbyTerminals } from '../../../shared/src/questLocations';
@@ -9,7 +9,9 @@ import type { WorldMap } from '../../../shared/src/world/WorldMap';
 import { box, cyl, ico, merge } from '../render/geom';
 import { toonVC } from '../render/models';
 import { textSign } from '../render/LandmarkBuilder';
-import { Anim, CrowdMesh } from './CrowdMesh';
+import { Act } from '../../../shared/src/npc/scenarios';
+import { EXTERIOR_ID, FigureList } from './figures';
+import type { KenneyRole } from '../render/kenneyCharacters';
 
 const neon = new THREE.MeshBasicMaterial({ vertexColors: true, color: new THREE.Color(1.6, 1.6, 1.6), toneMapped: false });
 
@@ -28,7 +30,8 @@ interface Walker { x: number; z: number; tx: number; tz: number; t: number; look
 
 export class VenueExterior3D {
   readonly group = new THREE.Group();
-  readonly crowd = new CrowdMesh(70);
+  /** Figuren (Schlange, Türsteher, Portier, Valet, Partygäste) – gezeichnet von EntityViews wie Passanten */
+  readonly figures = new FigureList();
   private clubF: InteriorFrame | null;
   private casinoF: InteriorFrame | null;
   private clubEx: VenueExterior | null = null;
@@ -104,7 +107,6 @@ export class VenueExterior3D {
     }
     if (parts.length) { const m = new THREE.Mesh(merge(parts), toonVC); m.name = 'venueExteriorStatic'; m.castShadow = true; this.group.add(m); }
     if (glow.length) this.group.add(new THREE.Mesh(merge(glow), neon));
-    this.group.add(this.crowd.mesh);
     // Wartende Partygäste, die das Taxi bringt
     for (let i = 0; i < 2; i++) this.walkers.push({ x: 0, z: 0, tx: 0, tz: 0, t: -1, look: 40 + i });
   }
@@ -117,16 +119,18 @@ export class VenueExterior3D {
     const clubNear = near(this.clubF), casinoNear = near(this.casinoF);
     this.group.visible = clubNear || casinoNear || this.terminals.some((x) => Math.hypot(x.x - focus.x, x.z - focus.z) < 160);
     if (!this.group.visible) return;
-    const c = this.crowd;
-    c.uniforms.uAmbient.value.copy(light).multiplyScalar(0.55);
-    c.begin();
+    const f = this.figures;
+    f.begin();
+    void light; void beat;
+    // Adapter: (x, y, z, Winkel, Act, Seed, Aussehen, Größe) → Figur mit fester ID je Seed
+    const c = { add: (x: number, _y: number, z: number, a: number, act: number, seed: number, look: { role: KenneyRole; shirt?: number }, scale = 1) => f.add(EXTERIOR_ID + seed, x, z, a, act, look.role, look.shirt, scale) };
     const night = clubOpen(day);
     if (this.clubF && this.clubEx && clubNear) {
       const ex = this.clubEx, y = this.clubF.y;
       // Big Teo (breit, schwarzes Shirt) und die Schlange
-      c.add(ex.host.x, y, ex.host.z, ex.host.a + 0.4, Anim.LEAN, 7, { shirt: 0x111118, pants: 0x1a1a24, skin: 3 }, 1.18);
+      c.add(ex.host.x, y, ex.host.z, ex.host.a + 0.4, Act.Lean, 7, { role: 'business', shirt: 0x111118 }, 1.18);
       const n = night ? 6 : 1;
-      for (let i = 0; i < n; i++) c.add(ex.queue.x + ex.queue.dx * i * 0.95, y, ex.queue.z + ex.queue.dz * i * 0.95, Math.atan2(-ex.queue.dx, -ex.queue.dz), i % 3 === 0 ? Anim.PHONE : i % 3 === 1 ? Anim.TALK : Anim.IDLE, 11 + i, { shirt: [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff, 0xffffff, 0x2aa060][i], pants: 0x22223a, skin: i });
+      for (let i = 0; i < n; i++) c.add(ex.queue.x + ex.queue.dx * i * 0.95, y, ex.queue.z + ex.queue.dz * i * 0.95, Math.atan2(-ex.queue.dx, -ex.queue.dz), i % 3 === 0 ? Act.Phone : i % 3 === 1 ? Act.Talk : Act.None, 11 + i, { role: (['casual', 'beach', 'business'] as KenneyRole[])[i % 3], shirt: [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff, 0xffffff, 0x2aa060][i] });
       // Taxi bringt Partygäste (nachts, alle ~35 s)
       if (this.taxi) {
         const period = 35, k = (t % period) / period;
@@ -143,7 +147,7 @@ export class VenueExterior3D {
           const dx = w.tx - w.x, dz = w.tz - w.z, d = Math.hypot(dx, dz);
           if (d > 0.2) { w.x += (dx / d) * 1.4 * dt; w.z += (dz / d) * 1.4 * dt; }
           if (w.t > 20) w.t = -1;
-          c.add(w.x + i * 0.6, y, w.z, Math.atan2(dx, dz), d > 0.2 ? Anim.WALK : Anim.TALK, w.look, { shirt: i ? 0xff8a2a : 0xe8f0ff, pants: 0x1a1a2a, skin: 2 + i });
+          c.add(w.x + i * 0.6, y, w.z, Math.atan2(dx, dz), d > 0.2 ? Act.None : Act.Talk, w.look, { role: i ? 'casual' : 'business', shirt: i ? 0xff8a2a : 0xe8f0ff });
         }
       }
       // Straßenparty (E60 Feueralarm): Gäste tanzen draußen weiter, DJ mit mobiler Box, Feuerwehrleute
@@ -153,21 +157,20 @@ export class VenueExterior3D {
         for (let i = 0; i < 28; i++) {
           const along = ((i * 7) % 28) / 27 - 0.5, depth = 1.6 + (i % 3) * 1.1;
           const px = d.x + fx * depth + sx * along * 22, pz = d.z + fz * depth + sz * along * 22;
-          c.add(px, y, pz, d.a + Math.PI + Math.sin(i) * 0.6, [Anim.DANCE, Anim.SHUFFLE, Anim.DISCO, Anim.ROBOT, Anim.CHEER][i % 5], 60 + i, { shirt: [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff][i % 4], pants: 0x22223a, skin: i });
+          c.add(px, y, pz, d.a + Math.PI + Math.sin(i) * 0.6, [Act.Dance, Act.Dance3, Act.Dance4, Act.Dance2, Act.Cheer][i % 5], 60 + i, { role: (['casual', 'beach', 'casual', 'business'] as KenneyRole[])[i % 4], shirt: [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff][i % 4] });
         }
-        c.add(d.x + fx * 1.2, y, d.z + fz * 1.2, d.a, Anim.DJ, 5, { shirt: 0x111118, pants: 0x111118, skin: 1 });
-        for (let i = 0; i < 2; i++) c.add(d.x + fx * 4 + sx * (6 + i), y, d.z + fz * 4 + sz * (6 + i), d.a, Anim.WATCH, 90 + i, { shirt: 0xd0202a, pants: 0x2a2a30, skin: 3 + i });
+        c.add(d.x + fx * 1.2, y, d.z + fz * 1.2, d.a, Act.DJ, 5, { role: 'casual', shirt: 0x111118 });
+        for (let i = 0; i < 2; i++) c.add(d.x + fx * 4 + sx * (6 + i), y, d.z + fz * 4 + sz * (6 + i), d.a, Act.Watch, 90 + i, { role: 'outdoor', shirt: 0xd0202a });
       }
     }
     if (this.casinoF && this.casinoEx && casinoNear) {
       const ex = this.casinoEx, y = this.casinoF.y;
       const d = this.casinoF.door, fx = Math.sin(d.a), fz = Math.cos(d.a);
-      c.add(d.x + fx * 2.5 + fz * 2.2, y, d.z + fz * 2.5 - fx * 2.2, d.a, Anim.LEAN, 21, { shirt: 0x7a1f2e, pants: 0x111118, skin: 4 });
-      c.add(ex.valet.x + Math.sin(ex.valet.a) * 0.9, y, ex.valet.z + Math.cos(ex.valet.a) * 0.9, ex.valet.a + Math.PI, Anim.IDLE, 22, { shirt: 0xf4f1e8, pants: 0x7a1f2e, skin: 2 });
+      c.add(d.x + fx * 2.5 + fz * 2.2, y, d.z + fz * 2.5 - fx * 2.2, d.a, Act.Lean, 21, { role: 'business', shirt: 0x7a1f2e });
+      c.add(ex.valet.x + Math.sin(ex.valet.a) * 0.9, y, ex.valet.z + Math.cos(ex.valet.a) * 0.9, ex.valet.a + Math.PI, Act.None, 22, { role: 'business', shirt: 0xf4f1e8 });
       // Springbrunnen: Fontänen im Wechsel, Farbe läuft durch
       this.fountainJets.forEach((j, i) => { const h = 0.4 + 0.6 * Math.max(0, Math.sin(t * 1.6 + i * 0.9)); j.scale.set(1, h * (i === 0 ? 1.6 : 1), 1); });
       this.fountainMat.color.setHSL((t * 0.05) % 1, 0.9, 0.6);
     }
-    c.end(t, beat);
   }
 }

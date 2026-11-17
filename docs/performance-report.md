@@ -352,3 +352,9 @@ Maßnahmen und ihre Wirkung:
   unverändert Ø 8,9 ms, p99 17 ms.
 
 Auf dem T580 nachmessen (Preset „Mittel“): `http://localhost:5173/?bench=1&only=club,casino&preset=mittel`.
+
+**Nachtrag – Menge mit dem NPC-Asset:** Auf Wunsch zeigen Club, Casino und deren Außenbereiche jetzt dieselben
+Kenney-Charaktere wie die Passanten statt der instanzierten Low-Poly-Figuren (`CrowdMesh` entfernt). Stichprobe
+im Container: Club zur Hauptzeit ~170 Draw-Calls, Casino-Automatenhalle ~80 (vorher 39 bzw. 33) – damit im
+Bereich der Außen-Abschnitte. Die Figuren nutzen das vorhandene Animations-LOD und Bildschirm-Culling von
+`EntityViews`. Bei Bedarf auf dem T580 mit `?bench=1&only=club,casino&preset=mittel` nachmessen.

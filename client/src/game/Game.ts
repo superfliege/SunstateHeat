@@ -1313,6 +1313,9 @@ export class Game {
       }, dt);
     }
 
+    // Club/Casino: Menge drinnen bzw. Schlange, Türsteher, Portier & Co. draußen (normale NPC-Figuren)
+    for (const fig of this.venue.figures) this.views.setVenueNpc(fig, dt);
+
     // Quest-Objekte: Marker + Pakete (getragene Pakete schweben über dem Träger)
     const q = this.buffer.latest?.quest ?? null;
     if (q) {
