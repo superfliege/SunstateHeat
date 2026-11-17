@@ -355,6 +355,25 @@ const LOOPS: Record<string, Gen> = {
     let am = 1;
     return noiseLoop(sr, 2, 44, (w, _i, r) => { am += (0.7 + r() * 0.6 - am) * 0.003; return w * am; }, [new Biquad(sr, 'hp', 2600, 0.7), new Biquad(sr, 'lp', 9000)], 0.16);
   },
+  // ---------------- Club & Casino (shared/venues)
+  /** Stimmengewirr im Club (laut, Rufe, Lachen) */
+  'venue:crowd_club': (_r, sr) => {
+    const fs = [new Biquad(sr, 'bp', 420, 2.5), new Biquad(sr, 'bp', 900, 3), new Biquad(sr, 'bp', 1700, 4)];
+    let am = 1;
+    return noiseLoop(sr, 4, 61, (w, i, r) => { if (i % 2200 === 0) am = 0.5 + r() * 0.9; return w * am; }, fs.slice(0, 1), 0.2);
+  },
+  /** Automatenhalle: Klingeln, Melodie-Fetzen, Münzen, Gemurmel */
+  'venue:slot_hall': (_r, sr) => {
+    const r = rng(62), xf = Math.round(sr * 0.3), n = Math.round(sr * 6) + xf, d = new Float32Array(n);
+    const murmur = new Biquad(sr, 'bp', 600, 1.5);
+    const notes = [523, 659, 784, 1046, 880, 698];
+    for (let i = 0; i < n; i++) d[i] = murmur.p(r() * 2 - 1) * 0.35;
+    for (let k = 0; k < 70; k++) {
+      const t0 = Math.floor(r() * (n - sr * 0.3)), f = notes[Math.floor(r() * notes.length)] * (r() < 0.3 ? 2 : 1), L = Math.round(sr * (0.08 + r() * 0.15)), a = 0.15 + r() * 0.25;
+      for (let j = 0; j < L; j++) d[t0 + j] += Math.sin(2 * Math.PI * f * j / sr) * Math.exp(-j / (sr * 0.05)) * a;
+    }
+    return normRms(loopify(d, xf), 0.16);
+  },
 };
 
 // ------------------------------------------------------------------ Einzel-Effekte (je 4 Varianten)
@@ -378,6 +397,40 @@ function metalPartials(r: () => number, base: number, count: number) {
 }
 
 const SHOTS: Record<string, (sr: number, v: number) => Float32Array> = {
+  // ---------------- Club & Casino
+  /** Schwere Tür: Klinke, Knarzen, dumpfer Schlag */
+  'venue:door': (sr, v) => shot(sr, 0.9, 1200 + v, (_i, t, r) => {
+    const latch = t < 0.04 ? (r() * 2 - 1) * Math.exp(-t / 0.008) * 0.8 : 0;
+    const creak = t > 0.05 && t < 0.55 ? Math.sin(2 * Math.PI * (180 + 60 * Math.sin(t * 23)) * t) * (r() * 0.5 + 0.5) * 0.25 : 0;
+    const thud = t > 0.6 ? Math.sin(2 * Math.PI * 70 * (t - 0.6)) * Math.exp(-(t - 0.6) / 0.07) : 0;
+    return latch + creak + thud;
+  }),
+  /** Walzen laufen (Rattern) */
+  'venue:reels': (sr, v) => shot(sr, 1.6, 1210 + v, (_i, t, r) => ((t * 22) % 1 < 0.12 ? (r() * 2 - 1) * 0.6 : 0) + Math.sin(2 * Math.PI * 110 * t) * 0.08),
+  /** Walze stoppt (Klack) */
+  'venue:reel_stop': (sr, v) => shot(sr, 0.18, 1220 + v, (_i, t, r) => ((r() * 2 - 1) * 0.5 + Math.sin(2 * Math.PI * (300 + v * 40) * t)) * Math.exp(-t / 0.03)),
+  /** Kleiner Gewinn: Glöckchen-Arpeggio */
+  'venue:win': (sr, v) => shot(sr, 0.9, 1230 + v, (_i, t) => { const k = Math.min(3, Math.floor(t / 0.11)); const f = [784, 988, 1175, 1568][k] * (1 + v * 0.02); return Math.sin(2 * Math.PI * f * t) * Math.exp(-(t - k * 0.11) / 0.18) * 0.7; }),
+  /** Münzregen */
+  'venue:coins': (sr, v) => shot(sr, 1.6, 1240 + v, (_i, t, r) => { let s = 0; if (r() < 0.01 * Math.max(0, 1 - t / 1.6)) s = 1; return s ? Math.sin(2 * Math.PI * (2400 + r() * 1800) * t) * 0.8 : 0; }, (d) => { const f = new Biquad(sr, 'bp', 3200, 2); for (let i = 0; i < d.length; i++) { let acc = d[i]; for (let k = 1; k < 220 && i - k >= 0; k++) acc += d[i - k] * Math.exp(-k / 60) * Math.sin(k * 0.9); d[i] = f.p(acc); } }),
+  /** Jackpot-Sirene (Casino-Lichtshow) */
+  'venue:jackpot': (sr, v) => { let ph = 0; return shot(sr, 3.2, 1250 + v, (_i, t) => { const f = 660 + 440 * ((t * 3) % 1); ph += f / sr; return Math.sign(Math.sin(2 * Math.PI * ph)) * 0.35 * Math.min(1, t / 0.05) * Math.max(0, 1 - Math.max(0, t - 2.9) / 0.3); }, (d) => filterOnce(d, new Biquad(sr, 'lp', 3500, 0.7))); },
+  /** Jubel einer Menge */
+  'venue:cheer': (sr, v) => shot(sr, 2.4, 1260 + v, (_i, t, r) => (r() * 2 - 1) * Math.min(1, t / 0.25) * Math.exp(-Math.max(0, t - 0.8) / 0.8) * (0.7 + 0.3 * Math.sin(t * 31 + v)), (d) => { filterOnce(d, new Biquad(sr, 'bp', 1100, 0.8)); }),
+  /** Buhrufe */
+  'venue:boo': (sr, v) => shot(sr, 1.8, 1270 + v, (_i, t, r) => (Math.sin(2 * Math.PI * (140 + 20 * v - t * 30) * t) * 0.6 + (r() * 2 - 1) * 0.25) * Math.min(1, t / 0.2) * Math.exp(-Math.max(0, t - 1) / 0.5), (d) => filterOnce(d, new Biquad(sr, 'lp', 900, 0.7))),
+  /** Chips setzen (Klackern) */
+  'venue:chips': (sr, v) => shot(sr, 0.35, 1280 + v, (_i, t, r) => { const k = Math.floor(t / 0.05); return t - k * 0.05 < 0.012 && k < 4 ? (r() * 2 - 1) * 0.6 + Math.sin(2 * Math.PI * (2600 + k * 200) * t) * 0.4 : 0; }),
+  /** Karte ausgeteilt */
+  'venue:card': (sr, v) => shot(sr, 0.16, 1290 + v, (_i, t, r) => (r() * 2 - 1) * Math.exp(-t / 0.035) * 0.7, (d) => filterOnce(d, new Biquad(sr, 'hp', 1800, 0.7))),
+  /** Roulette-Kugel (rollt, klackert aus) */
+  'venue:ball': (sr, v) => shot(sr, 4.5, 1300 + v, (_i, t, r) => { const rate = 30 * Math.max(0.05, 1 - t / 4.5); const ph = (t * rate) % 1; return (ph < 0.06 ? (r() * 2 - 1) * 0.5 : 0) + Math.sin(2 * Math.PI * 900 * t) * 0.03 * (1 - t / 4.5); }),
+  /** Feueralarm / Tresoralarm */
+  'venue:alarm': (sr, v) => shot(sr, 2, 1310 + v, (_i, t) => (Math.sin(2 * Math.PI * 1050 * t) > 0 ? 0.4 : -0.4) * ((t * 6) % 1 < 0.5 ? 1 : 0)),
+  /** Kurzer Neon-/Licht-Effekt (DJ-Pult, Spotlight) */
+  'venue:zap': (sr, v) => { const sw = sweep(1800 + v * 100, 300, 0.25); return shot(sr, 0.3, 1320 + v, (_i, t) => sw(t, sr) * Math.exp(-t / 0.12) * 0.7); },
+  /** Pokal / Fanfare (Battle-Sieg) */
+  'venue:fanfare': (sr, v) => shot(sr, 1.6, 1330 + v, (_i, t) => { const k = Math.min(3, Math.floor(t / 0.18)); const f = [523, 659, 784, 1046][k]; return (Math.sin(2 * Math.PI * f * t) + 0.4 * Math.sin(2 * Math.PI * f * 2 * t)) * Math.exp(-(t - k * 0.18) / (k === 3 ? 0.8 : 0.2)) * 0.5; }),
   // ---------------- Land & Berg
   'amb:moo': (sr, v) => {
     // Muhen: tiefer Sägezahn mit Formant, Tonhöhe fällt ab

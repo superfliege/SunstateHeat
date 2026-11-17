@@ -26,6 +26,8 @@ export type VenueAction =
   | { a: 'bj'; table: string; op: 'bet' | 'hit' | 'stand' | 'double' | 'split' | 'insure' | 'noinsure'; amount?: number }
   | { a: 'ru'; table: string; op: 'bet' | 'clear'; type?: RouletteBetType; n?: number; amount?: number }
   | { a: 'derby'; gator: number; amount: number }
+  /** Derby-Ansicht an einem Terminal (Bar/Wettbüro) abonnieren */
+  | { a: 'derbyWatch' }
   | { a: 'dance'; op: 'setup'; song: string; diff: Difficulty; mode: DanceMode }
   | { a: 'dance'; op: 'join' | 'go' | 'quit' }
   /** Treffer: [Noten-Index, Bewertung 0–3, gehaltene Beats] – fortlaufend, in Paketen. */

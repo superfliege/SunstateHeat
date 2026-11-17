@@ -52,6 +52,7 @@ interface RuTable { def: TableDef; phase: RouletteView['phase']; t: number; resu
 // ------------------------------------------------------------------ Gator Derby
 interface DerbyState { race: number; phase: DerbyView['phase']; t: number; form: number[]; odds: number[]; order?: number[]; script?: number[][]; bets: { pid: number; gator: number; amount: number; cash: boolean }[]; say?: string; history: number[] }
 const DERBY_RUN = 22, DERBY_RESULT = 10;
+const NPC_NAMES = ['Tourist Hank', 'Oma Dolores', 'Systemspieler Bernd', 'Junggeselle Kevin', 'Dame mit Fächer', 'Trauzeuge Dennis', 'Mr. Sonnenbrille'];
 
 export class Casino {
   jackpotPool = C.jackpotSeed;
@@ -248,7 +249,11 @@ export class Casino {
         // NPC-Mitspieler füllen ab und zu freie Plätze (nur Anzeige, kein Geld)
         if (t.t > C.bjBetSeconds - 0.2) {
           for (const s of t.seats) {
-            if (s.pid === 0 && humans.length && secureRnd(100) < 35) Object.assign(s, { pid: -1, name: pick(['Tourist Hank', 'Oma Dolores', 'Systemspieler Bernd', 'Junggeselle Kevin', 'Dame mit Fächer']), npc: { style: secureRnd(3) }, bet: 0, hands: [] });
+            if (s.pid === 0 && humans.length && secureRnd(100) < 35) {
+              const used = new Set(t.seats.map((x) => x.name));
+              const free = NPC_NAMES.filter((n) => !used.has(n));
+              if (free.length) Object.assign(s, { pid: -1, name: pick(free), npc: { style: secureRnd(3) }, bet: 0, hands: [] });
+            }
             if (s.pid === -1 && !s.bet) s.bet = (t.def.high ? 500 : 10) * (1 + secureRnd(5));
           }
           t.dirty = true;

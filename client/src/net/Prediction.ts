@@ -20,6 +20,7 @@ import { checkNearMiss, newStuntTracker, updateStunts, type BonusEvent, type Stu
 import { createSimVehicle, stepSimVehicle, type SimVehicle } from '../../../shared/src/sim/vehicle';
 import { isAircraft, isWaterVehicle } from '../../../shared/src/sim/vehicleDefs';
 import type { WorldMap } from '../../../shared/src/world/WorldMap';
+import { interiorByIndex, interiorFrame, stepInteriorPawn, type InteriorFrame } from '../../../shared/src/venues/interiors';
 
 const MAX_PENDING = 240;
 /** Zeitkonstante des Fehlerausgleichs (s). */
@@ -68,6 +69,8 @@ export class Predictor {
   private obstacles: Obstacle[] = [];
   private bodies: Box[] = [];
   private clock = 0;
+  /** Innenraum (Club/Casino): Lage, Gate-Maske, sitzt fest (Automat/Tisch/Kachel) – vom Snapshot */
+  interior: { f: InteriorFrame; mask: number; seated: boolean } | null = null;
 
   /** Fahrzeuge in der Nähe als feste Körper für die Figur zu Fuß (wie auf dem Server). */
   private footBodies(): Box[] {
@@ -108,7 +111,12 @@ export class Predictor {
   private apply(cmd: InputCmd, dt: number, replay: boolean) {
     const [, ax, ay, buttons] = cmd;
     const sim = this.sim;
-    if (!this.inVehicle || !sim) { stepPawn(this.map, this.pawn, ax, ay, buttons, dt, undefined, this.footBodies(), true); return; }
+    if (!this.inVehicle || !sim) {
+      const it = this.interior;
+      if (it) { if (!it.seated) stepInteriorPawn(it.f, it.mask, this.pawn, ax, ay, buttons, dt); return; }
+      stepPawn(this.map, this.pawn, ax, ay, buttons, dt, undefined, this.footBodies(), true);
+      return;
+    }
     const out = this.out;
     clearStepOut(out);
     if (isAircraft(sim.kind)) {
@@ -141,6 +149,9 @@ export class Predictor {
   reconcile(snap: SnapshotMsg, myId: number, dt: number) {
     const me = snap.players.find((p) => p[0] === myId);
     if (!me || !snap.me) return;
+    const vin = interiorByIndex(snap.me.vin ?? 0);
+    const f = vin ? interiorFrame(this.map, vin) : null;
+    this.interior = f ? { f, mask: snap.me.vmask ?? 0, seated: !!snap.me.vseat } : null;
     const vehId = me[5];
     const wasVehicle = this.vehicleId;
     // Darstellung vor dem Zurücksetzen merken (für den Glättungs-Versatz)

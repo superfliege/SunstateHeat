@@ -78,6 +78,7 @@ export class Venues {
   /** Spieler, die gerade einen Türsteher-Dialog haben (Eintritt/Leih-Sakko) */
   private pending = new Map<number, InteriorId>();
   private terminals;
+  private lastChips = new Map<number, number>();
 
   constructor(private h: VenueHost) {
     for (const id of ['club', 'casino'] as InteriorId[]) {
@@ -131,7 +132,7 @@ export class Venues {
   private local(p: ServerPlayer) { return toLocal(p.interior!.f, p.pawn.x, p.pawn.z); }
 
   // ================================================================== Betreten & Verlassen
-  private enter(p: ServerPlayer, id: InteriorId, payFee = false) {
+  private enter(p: ServerPlayer, id: InteriorId, payFee = false, force = false) {
     const st = this.v.get(id);
     if (!st || p.interior) return;
     if (p.vehicleId >= 0 || p.ride >= 0 || p.downT > 0) return;
@@ -142,7 +143,7 @@ export class Venues {
     const vp = vprof(p);
     const look = this.h.lookStyle(p);
     const outfit = vp.outfit && p.profile.inventory[vp.outfit] ? vp.outfit : null;
-    if (id === 'club') {
+    if (force) { /* Dev/Benchmark: ohne Tür-Prüfung */ } else if (id === 'club') {
       if (!this.forceOpen && !clubOpen(this.h.day(), CB.openFrom, CB.openTo)) return this.dlg(p, { id: 'teo', who: 'Big Teo', lines: ['Geschlossen. Wir öffnen um 22 Uhr.', 'Komm wieder, wenn du müde aussiehst.'], options: [{ id: 'ok', label: 'Alles klar' }] });
       const rep = p.profile.reputation.neon ?? 0;
       const fits = look === 'business' || !!outfit;
@@ -236,6 +237,13 @@ export class Venues {
         return;
       }
       case 'stats': return this.sendStats(p);
+      case 'derbyWatch': {
+        const inCasino = p.interior?.id === 'casino';
+        if (!inCasino && !this.terminals.some((t) => Math.hypot(t.x - p.pawn.x, t.z - p.pawn.z) < 5)) return;
+        (p as ServerPlayer & { derbyWatch?: number }).derbyWatch = Date.now() + 120_000;
+        this.h.send(p, { t: 'vgame', s: { g: 'derby', view: this.casino.derbyView(p) } });
+        return;
+      }
       case 'derby': {
         const term = this.terminals.find((t) => Math.hypot(t.x - p.pawn.x, t.z - p.pawn.z) < 5);
         const inCasino = p.interior?.id === 'casino';
@@ -586,12 +594,14 @@ export class Venues {
     // Sitzplätze: wer sich wegbewegt (Teleport, Ragdoll), steht auf
     this.secT -= dt;
     if (this.secT <= 0) {
-      this.secT = 1;
+      this.secT = 0.5;
       for (const p of this.h.players.values()) {
         const it = p.interior;
         if (!it) continue;
         const m = this.maskFor(p);
-        if (m !== it.mask) { it.mask = m; this.sendState(p, 'none'); }
+        const chips = vprof(p).chips;
+        // Chips/Gates geändert (Abrechnung am Tisch, Derby, Kasse): Anzeige nachziehen
+        if (m !== it.mask || chips !== this.lastChips.get(p.id)) { it.mask = m; this.lastChips.set(p.id, chips); this.sendState(p, 'none'); }
         if (p.downT > 0) this.exit(p, 'none');
       }
     }
@@ -855,10 +865,7 @@ export class Venues {
         if (p.interior) this.exit(p, 'none');
         p.pawn = newPawn(f.door.x + Math.sin(f.door.a) * 2.5, f.door.z + Math.cos(f.door.a) * 2.5, f.door.a + Math.PI);
         if (args[0] === 'rein' || args[0] === 'voll') {
-          const fo = this.forceOpen; this.forceOpen = true;
-          vprof(p).outfit = null;
-          this.enter(p, id, true);
-          this.forceOpen = fo;
+          this.enter(p, id, false, true);
           if (args[0] === 'voll') this.fill(id);
         }
         return true;
@@ -868,6 +875,14 @@ export class Venues {
         const ev = { E57: 'dj_missing', E58: 'gang_dance_battle', E59: 'vip_drama', E60: 'fire_alarm', E61: 'lucky_granny', E62: 'system_player', E63: 'vault_false_alarm', E64: 'jackpot_hysteria' }[key.toUpperCase()] ?? key;
         for (const st of this.v.values()) { st.director.abort(); if (st.director.start(ev)) { this.h.notice(p, `Ereignis ${key} gestartet.`, 'info'); return true; } }
         this.h.notice(p, 'Unbekanntes Ereignis (E57–E64).', 'bad');
+        return true;
+      }
+      case '/vtp': {
+        // Dev: im Innenraum zu einem Platz springen (z. B. /vtp slot5, /vtp bj1:2, /vtp tile14, /vtp cage)
+        const it = p.interior;
+        const sp = it ? spotById(it.f.def, args[0] ?? '') : null;
+        if (!it || !sp) { this.h.notice(p, 'Nur drinnen: /vtp <platz> (exit, bar, dj, tile0–29, cage, slot0–59, bj1:0, ru1:0, derby, ledger …)', 'info'); return true; }
+        this.snapTo(p, sp.x, sp.z, sp.a);
         return true;
       }
       case '/chips': { const n = Math.floor(Number(args[0] ?? 10000)); vprof(p).chips += n; this.h.notice(p, `+${n} Chips (Dev).`, 'info'); if (p.interior) this.sendState(p, 'none'); return true; }
