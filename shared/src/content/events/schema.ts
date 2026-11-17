@@ -28,6 +28,8 @@ export const EVENT_PLACES = [
   'marina', 'souvenir_shop', 'office_tower', 'power_box', 'gas_station', 'cafe', 'awning',
   // Norden: Höfe, Landstraßen, Berg
   'farm', 'farm_shop', 'rodeo_arena', 'country_road', 'dirt_road', 'mountain_road', 'summit', 'quarry', 'campground', 'truck_stop', 'pasture',
+  // Innenräume (shared/venues): Club „Pink Static“, Casino „Palm Royale“
+  'nightclub', 'dance_floor', 'dj_booth', 'vip_area', 'casino', 'slot_hall', 'card_table', 'vault',
 ] as const;
 export type EventPlace = (typeof EVENT_PLACES)[number];
 
@@ -49,6 +51,7 @@ export const PROP_KINDS = [
   'campaign_sign', 'umbrella', 'phone_light', 'fuse_box', 'treasure_map', 'shovel', 'fishing_rod', 'ice_cream', 'roller_skates',
   'water_bucket', 'bush', 'lemonade', 'neon_light', 'cone', 'tape', 'flowers', 'candles', 'buffet', 'rope', 'sandwich', 'dice',
   'sled', 'trophy', 'marshmallow', 'juice_cup', 'business_card', 'tow_rope', 'siren', 'expedition_gear', 'hay_bale', 'gravel',
+  'dj_deck', 'fog_machine', 'velvet_rope', 'confetti', 'notepad', 'lucky_charm', 'slot_machine', 'roulette_wheel', 'usb_stick',
 ] as const;
 export type VehicleKind = (typeof VEHICLE_KINDS)[number];
 export type AnimalKind = (typeof ANIMAL_KINDS)[number];
@@ -74,10 +77,12 @@ export interface Action { role: string; act?: ActName; move?: MoveKind; target?:
 /** Physik-Effekte (clientseitig deterministisch aus Seed, Pickups serverseitig autoritativ). */
 export type PhysicsKind =
   | 'spawn_pickups' | 'scatter_props' | 'knockback' | 'chain_collide' | 'tip_over' | 'splash' | 'projectiles'
-  | 'paper_flurry' | 'bump_vehicles' | 'fire' | 'foam' | 'lights_out' | 'lights_on' | 'traffic_jam' | 'sway';
+  | 'paper_flurry' | 'bump_vehicles' | 'fire' | 'foam' | 'lights_out' | 'lights_on' | 'traffic_jam' | 'sway'
+  | 'music_stop' | 'music_start' | 'fog' | 'confetti' | 'alarm' | 'evacuate';
 export const PHYSICS_KINDS: readonly PhysicsKind[] = [
   'spawn_pickups', 'scatter_props', 'knockback', 'chain_collide', 'tip_over', 'splash', 'projectiles',
   'paper_flurry', 'bump_vehicles', 'fire', 'foam', 'lights_out', 'lights_on', 'traffic_jam', 'sway',
+  'music_stop', 'music_start', 'fog', 'confetti', 'alarm', 'evacuate',
 ];
 export interface Physics {
   kind: PhysicsKind;
@@ -126,7 +131,9 @@ export type Detect =
   | { kind: 'board'; target: string; byVehicle?: VehicleKind }
   | { kind: 'climb'; target: EventPlace; then?: Detect }
   | { kind: 'use_item'; item: 'extinguisher' | 'firetruck'; target: string }
-  | { kind: 'enter_area'; place: EventPlace; outfit?: 'formal' | 'any' };
+  | { kind: 'enter_area'; place: EventPlace; outfit?: 'formal' | 'any' }
+  /** Innenraum-Minispiel (shared/venues): DJ-Pult, Dance-Battle … */
+  | { kind: 'venue_game'; game: 'dj' | 'dance_battle' | 'slots' | 'blackjack' | 'roulette'; side?: string; minRank?: string };
 
 /** Zusatzbedingung für eine Eingreifoption (Ruf, Outfit, Fahrzeug, Zufall). */
 export interface Gate {
@@ -151,12 +158,12 @@ export type TraceKind =
   | 'police_tape' | 'wreck' | 'flowers' | 'graffiti' | 'repaired_window' | 'wanted_poster' | 'wet_footprints'
   | 'tipped_cart' | 'floating_ducks' | 'damaged_pier' | 'scattered_chairs' | 'paper_litter' | 'orange_peels'
   | 'foam_puddle' | 'campaign_posters' | 'holes' | 'tourists_with_cameras' | 'airboat_rental' | 'double_parked'
-  | 'tire_tracks' | 'mud_splatter' | 'dust_layer' | 'hay_scattered' | 'broken_fence';
+  | 'tire_tracks' | 'mud_splatter' | 'dust_layer' | 'hay_scattered' | 'broken_fence' | 'confetti_heap';
 export const TRACE_KINDS: readonly TraceKind[] = [
   'police_tape', 'wreck', 'flowers', 'graffiti', 'repaired_window', 'wanted_poster', 'wet_footprints',
   'tipped_cart', 'floating_ducks', 'damaged_pier', 'scattered_chairs', 'paper_litter', 'orange_peels',
   'foam_puddle', 'campaign_posters', 'holes', 'tourists_with_cameras', 'airboat_rental', 'double_parked',
-  'tire_tracks', 'mud_splatter', 'dust_layer', 'hay_scattered', 'broken_fence',
+  'tire_tracks', 'mud_splatter', 'dust_layer', 'hay_scattered', 'broken_fence', 'confetti_heap',
 ];
 
 export interface Outcome {
@@ -238,6 +245,8 @@ export interface StreetEventDef {
    * Ereignis bevorzugt startet – z. B. ['double_r', 'Pinecrest Parkway']. Siehe EVENT_ANCHORS.
    */
   at?: string[];
+  /** Ereignis spielt in einem Innenraum (shared/venues) – der Server-Regisseur der Innenräume startet es dort. */
+  venue?: 'club' | 'casino';
 }
 
 /** Gültige Schauplätze für `at` (Höfe, Orte am Okee Peak, Landstraßen im Norden). */

@@ -55,6 +55,9 @@ export interface QuestHost {
   applyChoice(p: ServerPlayer, id: string, option: string): boolean;
   /** Spieler versetzen (Warteraum-Start: entfernte Mitglieder zum Treffpunkt holen). */
   teleport?(p: ServerPlayer, x: number, z: number): void;
+  /** Innenraum-Ziel (Club/Casino, server/venues) auswerten bzw. nach Laufende aufräumen. */
+  venueGoal?(runId: number, goal: Extract<Objective, { type: 'venue' }>, crew: ServerPlayer[], dt: number): { done?: boolean; fail?: string; prog?: string; target?: [number, number] };
+  venueCleanup?(runId: number): void;
 }
 
 /** Warteraum eines Koop-Auftrags (#43): wartet auf Mitspieler, jeder Teilnehmer kann mit E starten. */
@@ -64,7 +67,7 @@ const QUEST_LOBBY_WAIT = 90;
 let nextLobby = 1;
 
 interface Pickup { tag: string; x: number; z: number }
-interface ObjState { def: Objective; done: boolean; t: number; n: number; pts?: Point[]; idx: Map<number, number> }
+interface ObjState { def: Objective; done: boolean; t: number; n: number; pts?: Point[]; idx: Map<number, number>; /** Innenraum-Ziel: Anzeige */ vprog?: string; vtgt?: [number, number] }
 interface Run {
   id: number;
   def: QuestDefinition;
@@ -338,6 +341,7 @@ export class QuestEngine {
 
   private finish(run: Run, success: boolean, why = '') {
     if (run.ending > 0) return;
+    this.h.venueCleanup?.(run.id);
     const crew = this.members(run);
     if (success) {
       const d = run.def, r = d.rewards;
@@ -704,6 +708,14 @@ export class QuestEngine {
         if (v.sim.dmg.wreck || v.sim.dmg.hp <= 0) o.done = true;
         break;
       }
+      case 'venue': {
+        const r = this.h.venueGoal?.(run.id, d, crew, dt);
+        if (!r) { o.done = true; break; }
+        if (r.fail) return r.fail;
+        if (r.done) o.done = true;
+        o.vprog = r.prog; o.vtgt = r.target;
+        break;
+      }
       case 'interact': {
         const l = this.loc(run, d.at); if (!l) { o.done = true; break; }
         const holding = crew.some((p) => { const q = at(p); return p.hold && !q.inVehicle && dist2(q.x, q.z, l.x, l.z) <= 7 * 7; });
@@ -781,6 +793,7 @@ export class QuestEngine {
         case 'survive': prog.push(`Überleben ${Math.floor(o.t)}/${d.seconds} s`); break;
         case 'loseWanted': prog.push('Fahndung abschütteln'); break;
         case 'herd': if (l && !o.done) { targets.push([l.x, l.z, d.radius ?? 14, 1]); prog.push(`Rinder in der Koppel: ${o.n}/${this.tagged(run, d.tag).ped.length}`); } break;
+        case 'venue': if (!o.done) { if (o.vprog) prog.push(o.vprog); if (o.vtgt) targets.push([o.vtgt[0], o.vtgt[1], 3, d.goal === 'catch' ? 5 : 1]); } break;
       }
     }
     if (run.places.length && run.def.rewards.byPlace) prog.push(`Platz ${run.places.indexOf(p.id) + 1 || '–'}`);

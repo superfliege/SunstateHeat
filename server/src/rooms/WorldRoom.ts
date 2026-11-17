@@ -66,6 +66,10 @@ import { Perception } from '../sim/Perception';
 import { NpcEv } from '../../../shared/src/npc/reactions';
 import { DAY_PARTS, DAY_PART_NAMES, type DayPart, type Weather } from '../../../shared/src/npc/population';
 import { Traffic } from '../sim/Traffic';
+import { Venues } from '../venues/Venues';
+import { interiorIndex, stepInteriorPawn } from '../../../shared/src/venues/interiors';
+import { addRep } from '../../../shared/src/gangs';
+import { rankOf } from '../../../shared/src/story';
 
 const CMD_BUDGET_MAX = 24;
 const CMD_REFILL_PER_TICK = (1 / SIM_DT / SERVER_TICK_HZ) * 1.15; // 15 % Toleranz für Jitter
@@ -138,6 +142,8 @@ export class WorldRoom {
   /** Fahrzeug-Minispiele (Sumo & Co., server/minigames). */
   private readonly mg: MinigameManager;
   private readonly shops: ShopDef[];
+  /** Club „Pink Static“ & Casino „Palm Royale“ (Innenräume, Minispiele, Ereignisse E57–E64). */
+  readonly venues: Venues;
   private timer: NodeJS.Timeout;
   private props = new Map<number, PropBody>();
   /** Gegner beim gerade berechneten Fahrzeug-Zusammenstoß (für den Minispiel-Schadensfaktor). */
@@ -303,6 +309,8 @@ export class WorldRoom {
       offerChoice: (p, id) => this.story.offerChoice(p, id),
       applyChoice: (p, id, opt) => this.story.applyChoice(p, id, opt),
       teleport: (p, x, z) => this.teleport(p, x, z),
+      venueGoal: (runId, goal, crew, dt) => this.venues.questGoal(runId, goal, crew, dt),
+      venueCleanup: (runId) => this.venues.questCleanup(runId),
     });
     this.story = new Story({
       map, locations: questLocations(map),
@@ -453,6 +461,40 @@ export class WorldRoom {
       grantXp: (p, xp) => this.grantXp(p, xp),
       persist: (p) => this.persist(p),
     }, { x: map.spawn.x, z: map.spawn.z });
+    this.venues = new Venues({
+      map, players: this.players, vehicles: this.vehicles,
+      day: () => this.dayPhase(),
+      dayIndex: () => Math.floor((Date.now() - this.startedAt) / DAY_LENGTH_MS + 0.35),
+      send: (p, msg) => p.conn.send(msg),
+      notice: (p, text, kind) => this.noticeTo(p, text, kind),
+      addMoney: (p, amount, reason) => this.addMoney(p, amount, reason),
+      grantXp: (p, xp) => this.grantXp(p, xp),
+      persist: (p) => this.persist(p),
+      addItem: (p, id, n) => this.addItem(p, id, n ?? 1),
+      addRep: (p, gang, delta) => { p.profile.reputation = addRep(p.profile.reputation, gang, delta) as Record<string, number>; },
+      level: (p) => levelFromXp(p.profile.xp).level,
+      arrest: (p) => this.arrest(p),
+      radio: (text) => { for (const q of this.players.values()) q.conn.send({ t: 'notice', text: `📻 ${text}`, kind: 'info' }); },
+      lookStyle: (p) => { const r = p.profile.story?.rank ?? 0; return r === 0 ? 'beach' : rankOf(r).look.style; },
+      spawnCar: (kind, variant, x, z, a, color) => {
+        const sim = createSimVehicle(map, kind, variant, x, z, a);
+        const id = this.allocId();
+        const v: ServerVehicle = { id, kind, color, sim, driver: DRIVER_NONE, home: null, idleTime: 0, dents: [], dmgVer: 0, buttons: 0, kinematic: false };
+        this.vehicles.set(id, v);
+        return v;
+      },
+      removeVehicle: (id) => { const v = this.vehicles.get(id); if (v) { this.clearOccupants(v); this.vehicles.delete(id); } },
+      placeOnFoot: (p, x, z, a) => {
+        const old = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
+        if (old && old.driver === p.id) { old.driver = DRIVER_NONE; old.buttons = 0; old.idleTime = 0; }
+        p.vehicleId = -1;
+        p.pawn = newPawn(x, z, a);
+      },
+      spawnPed: (x, z, tag) => this.peds.spawnExt(x, z, { gang: '', color: 9, hp: 60, tag }),
+      movePed: (ped, dx, dz, speed, dt) => { if (ped.rt <= 0) stepPawn(this.map, ped, dx, -dz, 0, dt, speed); },
+      removePed: (id) => { this.peds.peds.delete(id); },
+      busy: (p) => this.quests.isActive(p.id) || this.races.has(p.id) || this.mg.has(p.id),
+    });
     this.timer = setInterval(() => this.tick(1 / SERVER_TICK_HZ), 1000 / SERVER_TICK_HZ);
   }
 
@@ -609,6 +651,8 @@ export class WorldRoom {
     this.hunt.onPlayerLeave(player.id);
     this.mg.onPlayerLeave(player.id);
     this.story.onPlayerLeave(player.id);
+    if (player.interior) this.venues.exit(player, 'none');
+    this.venues.onLeave(player);
     this.players.delete(player.id);
     this.systemChat(`${player.name} hat das Spiel verlassen.`);
   }
@@ -638,6 +682,8 @@ export class WorldRoom {
       case 'useItem': if (typeof msg.id === 'string') this.useItem(player, msg.id); break;
       case 'tune': if (DEV) this.tune(msg); break;
       case 'npcDebug': if (DEV) { if (msg.on) this.npcDebug.add(player.id); else this.npcDebug.delete(player.id); } break;
+      case 'venue': if (msg.v && typeof msg.v === 'object') this.venues.handle(player, msg.v); break;
+      case 'emote': if (typeof msg.id === 'string') this.venues.emote(player, msg.id); break;
     }
   }
 
@@ -668,7 +714,7 @@ export class WorldRoom {
   private bodyTmp: Box[] = [];
 
   private applyInputs(p: ServerPlayer, cmds: InputCmd[]) {
-    const bodies = p.vehicleId < 0 ? this.bodiesNear(p.pawn.x, p.pawn.z) : undefined;
+    const bodies = p.vehicleId < 0 && !p.interior ? this.bodiesNear(p.pawn.x, p.pawn.z) : undefined;
     for (const c of cmds.slice(0, 40)) {
       if (!Array.isArray(c) || c.length < 4) continue;
       const [seq, ax, ay, buttons] = c;
@@ -687,14 +733,18 @@ export class WorldRoom {
       if (v) {
         v.buttons = buttons;
         this.physicsStep(v, cx, cy, isAircraft(v.kind) ? (buttons & ~Btn.PILOT) | Btn.PILOT : buttons & ~Btn.PILOT, p);
+      } else if (p.interior) {
+        // Innenraum: eigene Wände/Gates; wer an einem Automaten/Tisch/auf einer Tanzkachel steht, bleibt stehen
+        if (!p.interior.seat) stepInteriorPawn(p.interior.f, p.interior.mask, p.pawn, cx, cy, buttons, SIM_DT);
       } else stepPawn(this.map, p.pawn, cx, cy, buttons, SIM_DT, undefined, bodies, true);
+      if (!p.interior && p.act && Math.abs(cx) + Math.abs(cy) > 0.3) { p.act = 0; p.actT = 0; } // Emote endet beim Loslaufen
       p.lastSeq = seq;
     }
   }
 
   /** F-Taste: aussteigen, oder ins nächste freie Fahrzeug einsteigen. */
   private toggleVehicle(p: ServerPlayer) {
-    if (p.downT > 0) return;
+    if (p.downT > 0 || p.interior) return;
     // Mitfahrer: aussteigen (nur am Boden bzw. Helikopter knapp darüber)
     if (p.ride >= 0) {
       const rv = this.vehicles.get(p.ride);
@@ -828,7 +878,14 @@ export class WorldRoom {
       p.conn.send({ t: 'notice', text: on ? 'Heißblütig-Modus AN: Du kannst von anderen PvP-Spielern verletzt werden.' : 'Heißblütig-Modus aus.', kind: 'info' });
       return;
     }
-    if (DEV && text.startsWith('/')) { this.devCommand(p, text); return; }
+    // Emotes für alle (freigeschaltete Tanzstile aus „Dance Floor Heat“)
+    const em = /^\/(tanz|tanzen|dance|jubeln|winken)(?:\s+(\S+))?/i.exec(text);
+    if (em) { const c = em[1].toLowerCase(); this.venues.emote(p, c === 'jubeln' || c === 'winken' ? c : (em[2] ?? 'wippen').toLowerCase()); return; }
+    if (DEV && text.startsWith('/')) {
+      const parts = text.toLowerCase().split(/\s+/);
+      if (this.venues.dev(p, parts[0], parts.slice(1))) return;
+      this.devCommand(p, text); return;
+    }
     this.broadcast({ t: 'chat', from: p.name, text, color: p.color });
   }
 
@@ -1237,6 +1294,7 @@ export class WorldRoom {
 
   /** Respawn am Zuhause aus der Story (sonst Krankenhaus = Standard-Spawn): kostet 10 % des Bargelds, max. 1.000 $; setzt die Fahndung zurück. */
   private respawn(p: ServerPlayer) {
+    if (p.interior) this.venues.exit(p, 'none');
     const cost = Math.min(BALANCE.player.respawnCostMax, Math.floor(p.profile.money * BALANCE.player.respawnCostShare));
     if (cost > 0) this.addMoney(p, -cost, 'respawn');
     const ang = Math.random() * Math.PI * 2;
@@ -1386,6 +1444,7 @@ export class WorldRoom {
 
   /** Spieler (oder sein Fahrzeug) an einen Ort versetzen. */
   private teleport(p: ServerPlayer, x: number, z: number) {
+    if (p.interior) this.venues.exit(p, 'none');
     const v = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
     if (v) { v.driver = DRIVER_NONE; v.buttons = 0; p.vehicleId = -1; }
     if (p.ride >= 0) this.leaveRide(p);
@@ -1452,6 +1511,7 @@ export class WorldRoom {
 
   /** Festnahme (Spec 7.3): 15 % Bargeld und illegale Gegenstände weg, Respawn vor dem Polizeirevier. */
   private arrest(p: ServerPlayer) {
+    if (p.interior) this.venues.exit(p, 'none');
     const cost = Math.floor(p.profile.money * BALANCE.player.arrestCostShare);
     if (cost > 0) this.addMoney(p, -cost, 'arrest');
     for (const id of Object.keys(p.profile.inventory)) if (ITEMS[id]?.kind === 'illegal') delete p.profile.inventory[id];
@@ -1487,6 +1547,7 @@ export class WorldRoom {
   private useItem(p: ServerPlayer, id: string) {
     const def = ITEMS[id], inv = p.profile.inventory;
     if (!def || (inv[id] ?? 0) <= 0 || p.downT > 0) return;
+    if (def.kind === 'cosmetic') { this.venues.wear(p, id); return; }
     if (def.kind === 'consumable') {
       if (def.heal) p.health = Math.min(BALANCE.player.maxHealth, p.health + def.heal);
     } else if (def.kind === 'armor') {
@@ -1614,6 +1675,7 @@ export class WorldRoom {
   /** Angriff mit der gewählten Waffe. Der Server prüft Feuerrate, Munition und trifft selbst. */
   private attack(p: ServerPlayer, aimRaw: number) {
     if (p.downT > 0 || p.atkCd > 0 || p.pawn.rt > 0) return;
+    if (p.interior) { if (p.noAmmoCd <= 0) { p.noAmmoCd = 2; this.noticeTo(p, 'Waffen bleiben an der Garderobe – drinnen wird getanzt bzw. verloren, nicht geschossen.', 'info'); } return; }
     // Catch the Taxi: Jäger dürfen nicht schießen, das Taxi schießt mit Pistole (Munition frei)
     const huntRole = this.hunt.role(p.id);
     if (huntRole === 'hunter') {
@@ -1878,6 +1940,7 @@ export class WorldRoom {
     this.updatePullOut(dt);
     this.updateSinking(dt);
     this.quests.update(dt);
+    this.venues.update(dt);
     this.story.update(dt, this.players.values());
     this.races.update(dt);
     this.gangs.update(dt, this.isNight());
@@ -1923,7 +1986,7 @@ export class WorldRoom {
     // Ohne Zwischen-Arrays/Generatoren (lief für ~450 NPCs jeden Tick und erzeugte viel Müll für den GC)
     const pawns = this.pawnList;
     pawns.length = 0;
-    for (const p of this.players.values()) if (p.vehicleId < 0 && p.ride < 0 && p.downT <= 0) pawns.push({ pawn: p.pawn, player: p });
+    for (const p of this.players.values()) if (p.vehicleId < 0 && p.ride < 0 && p.downT <= 0 && !p.interior) pawns.push({ pawn: p.pawn, player: p });
     for (const p of this.peds.peds.values()) pawns.push({ pawn: p, ped: p });
     const grid = this.grid;
     for (const { pawn, ped, player } of pawns) {
@@ -2021,7 +2084,7 @@ export class WorldRoom {
   private separatePawns() {
     type P = { x: number; z: number; rt: number; h: number };
     const items: { p: P; player: boolean }[] = [];
-    for (const pl of this.players.values()) if (pl.vehicleId < 0 && pl.ride < 0 && pl.pawn.rt <= 0) items.push({ p: pl.pawn, player: true });
+    for (const pl of this.players.values()) if (pl.vehicleId < 0 && pl.ride < 0 && pl.pawn.rt <= 0 && !pl.interior) items.push({ p: pl.pawn, player: true });
     // Fußgänger in einer Szene (Bank, Gespräch, Café …) stehen bewusst eng: nicht verschieben
     for (const ped of this.peds.peds.values()) if (ped.rt <= 0 && ped.hp > 0 && !ped.act && !ped.scn) items.push({ p: ped, player: false });
     if (items.length < 2) return;
@@ -2236,7 +2299,7 @@ export class WorldRoom {
     const players: PlayerTuple[] = [...this.players.values()].map((p) => [
       p.id, p.name, r2(p.pawn.x), r2(p.pawn.z), r3(p.pawn.a), p.vehicleId >= 0 ? p.vehicleId : p.ride, p.color, this.quests.isCarrying(p.id) ? 1 : 0,
       r2(p.pawn.h), p.pawn.pc ? 2 : p.pawn.rt > 0 ? 1 : 0, p.vehicleId >= 0 || p.downT > 0 ? 0 : Math.max(0, weaponNames.indexOf(p.weapon)),
-      p.profile.story?.rank ?? 0,
+      p.profile.story?.rank ?? 0, interiorIndex(p.interior?.id), p.act ?? 0,
     ]);
     const floorsJson = this.mg.floorsJson();
     const common = `"time":${Date.now()},"day":${r3((((Date.now() - this.startedAt) / DAY_LENGTH_MS) + 0.35) % 1)},"players":${JSON.stringify(players)},"quest":null`;
@@ -2261,14 +2324,17 @@ export class WorldRoom {
     for (const p of this.players.values()) {
       const pos = this.positionOf(p);
       const view = p.view;
-      const near = (x: number, z: number) => dist2(x, z, pos.x, pos.z) < R2;
-      const nearPed = (x: number, z: number) => dist2(x, z, pos.x, pos.z) < PED_INTEREST * PED_INTEREST;
+      // Im Innenraum: keine Außenwelt-Entitäten (Rendering draußen pausiert, spart Bandbreite)
+      const inside = !!p.interior;
+      const near = (x: number, z: number) => !inside && dist2(x, z, pos.x, pos.z) < R2;
+      const nearPed = (x: number, z: number) => !inside && dist2(x, z, pos.x, pos.z) < PED_INTEREST * PED_INTEREST;
       const parts: string[] = [];
       // Fahrzeuge
       const v: string[] = [], vi: string[] = [], vg: number[] = [], dmg: string[] = [], dents: string[] = [];
       const seen = (veh: ServerVehicle) => {
         const c = veh.sim.car;
         if (near(c.x, c.z) || veh.id === p.vehicleId || veh.id === p.ride) return 2;
+        if (inside) return 0;
         // Luftfahrzeuge sind weiter sichtbar, jenseits der normalen Sichtweite seltener aktualisiert
         return isAircraft(veh.kind) && dist2(c.x, c.z, pos.x, pos.z) < AIR_R2 ? 1 : 0;
       };
@@ -2337,14 +2403,15 @@ export class WorldRoom {
       if (pk.length) parts.push(`"pk":${JSON.stringify(pk)}`);
       if (pkg.length) parts.push(`"pkg":${JSON.stringify(pkg)}`);
       // Ereignisse im Umkreis
-      const ev = this.events.filter((e) => e.vid === p.vehicleId && e.vid >= 0 || dist2(e.x, e.z, pos.x, pos.z) < (INTEREST + 20) ** 2).map((e) => e.ev);
+      const ev = inside ? [] : this.events.filter((e) => e.vid === p.vehicleId && e.vid >= 0 || dist2(e.x, e.z, pos.x, pos.z) < (INTEREST + 20) ** 2).map((e) => e.ev);
       if (ev.length) parts.push(`"ev":${JSON.stringify(ev)}`);
       // Arena-Böden (Minispiele): nur bei Änderung
       if (view.floors !== floorsJson) { parts.push(`"af":${floorsJson}`); view.floors = floorsJson; }
       // Eigener Zustand
       const myV = p.vehicleId >= 0 ? this.vehicles.get(p.vehicleId) : undefined;
       const pw = p.pawn;
-      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt), pw.pc ? 1 : 0], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p) };
+      const me = { pawn: [r3(pw.x), r3(pw.z), r3(pw.a), r3(pw.h), r3(pw.vx), r3(pw.vy), r3(pw.vz), r3(pw.rt), pw.pc ? 1 : 0], veh: myV ? packCar(myV.sim.car) : null, ride: p.ride >= 0 ? p.ride : undefined, money: p.profile.money, stats: this.statsOf(p), quest: this.quests.view(p) ?? this.races.view(p) ?? this.hunt.view(p) ?? this.mg.view(p), join: this.quests.joinableTitle(p),
+        vin: p.interior ? interiorIndex(p.interior.id) : undefined, vmask: p.interior ? p.interior.mask : undefined, vseat: p.interior?.seat ? 1 : undefined };
       parts.push(`"me":${JSON.stringify(me)}`);
       p.conn.sendRaw(`{"t":"snap","ack":${p.lastSeq},${common},${parts.join(',')}}`);
     }

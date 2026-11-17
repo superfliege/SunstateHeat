@@ -11,6 +11,7 @@ import { pointInPolygon } from './world/geometry';
 import { Tile } from './world/tiles';
 import type { WorldMap } from './world/WorldMap';
 import { FARMS } from './world/farms';
+import { interiorFrame } from './venues/interiors';
 import { mountainRoads, OKEE_PLACES, SUMMIT_PLATEAU } from './world/okeePeak';
 
 export interface Point { x: number; z: number }
@@ -116,6 +117,14 @@ export function questLocations(map: WorldMap): Record<string, Point> {
   return c;
 }
 
+/** Vorplatz (3 m vor der Tür) bzw. Gasse am Hinterausgang eines Innenraum-Gebäudes. */
+function venueSpot(map: WorldMap, id: 'club' | 'casino', back: boolean): Point | null {
+  const f = interiorFrame(map, id);
+  if (!f) return null;
+  const d = back ? f.back : f.door;
+  return foot(map, d.x + Math.sin(d.a) * (back ? 1 : 3), d.z + Math.cos(d.a) * (back ? 1 : 3));
+}
+
 function computeLocations(map: WorldMap): Record<string, Point> {
   const sp = map.spawn;
   const ocean = centroid(map, 'Ocean Strip');
@@ -133,8 +142,11 @@ function computeLocations(map: WorldMap): Record<string, Point> {
     supermarket: foot(map, sp.x + 26, sp.z - 12),
     harbor: { x: map.questStart.x, z: map.questStart.z },
     trailerpark: { x: map.questDest.x, z: map.questDest.z },
-    club: foot(map, ocean.x, ocean.z),
-    clubBack: foot(map, ocean.x + 18, ocean.z + 12),
+    // Club „Pink Static“ / Casino „Palm Royale“ (Wahrzeichen mit Innenraum, shared/venues): Vorplatz und Gasse am Hinterausgang
+    club: venueSpot(map, 'club', false) ?? foot(map, ocean.x, ocean.z),
+    clubBack: venueSpot(map, 'club', true) ?? foot(map, ocean.x + 18, ocean.z + 12),
+    casino: venueSpot(map, 'casino', false) ?? foot(map, ocean.x, ocean.z + 80),
+    casinoBack: venueSpot(map, 'casino', true) ?? foot(map, ocean.x, ocean.z + 90),
     brickell: foot(map, centroid(map, 'Brickell Hills').x, centroid(map, 'Brickell Hills').z),
     marina,
     lighthouse: foot(map, keys.x - 25, keys.z - 10),
@@ -193,6 +205,7 @@ export function payphones(map: WorldMap): PhoneDef[] {
     at('bus', 'Telefon am Busbahnhof', loc.busStation),
     at('neon', 'Telefon Ocean Strip', loc.club, -8, 4),
     at('marlin', 'Telefon Sunset Village', loc.lighthouse, 8, 6),
+    at('casino', 'Telefon Palm Royale (Marlin Club)', loc.casino, 7, 2),
     at('mangrove', 'Telefon Mangrove Bend', loc.stiltHouse, 6, -4),
     at('dustline', 'Telefon Cane Ridge', loc.dustlineCamp, -10, 6),
     at('okeefield', 'Telefon Sunny Acres', dry, 12, -8),
@@ -269,4 +282,14 @@ export function minigamePhones(map: WorldMap, taken: Point[]): PhoneDef[] {
     const m = MINIGAMES[mode];
     return { id: `${MG_PHONE_PREFIX}${mode}_${n}`, name: `${m.icon} ${m.name} – Arena-Telefon ${district}`, x: Math.round(p.x * 10) / 10, z: Math.round(p.z * 10) / 10, mg: mode };
   });
+}
+
+/** Gator-Derby-Wettterminals in Bars/Wettbüros außerhalb des Casinos (Gator Flats, Okeefield). */
+export function derbyTerminals(map: WorldMap): { id: string; name: string; x: number; z: number; a: number }[] {
+  const loc = questLocations(map);
+  const t = (id: string, name: string, p: Point, dx: number, dz: number) => { const s = foot(map, p.x + dx, p.z + dz); return { id, name, x: Math.round(s.x * 10) / 10, z: Math.round(s.z * 10) / 10, a: 0 }; };
+  return [
+    t('derby_gator', 'Wettbüro „Swamp Odds“ (Gator Flats)', loc.stiltHouse, 9, 5),
+    t('derby_okee', 'Bar „The Rusty Spur“ – Derby-Terminal (Okeefield)', loc.okeefield, -7, 9),
+  ];
 }

@@ -47,6 +47,66 @@ export const BALANCE = {
     drift: 1,
     nearMiss: 1,
   },
+  /** Club „Pink Static“ (Tanz-Minispiel, Einlass, VIP). */
+  club: {
+    /** Öffnungszeit (Spielzeit-Stunden, über Mitternacht). */
+    openFrom: 22,
+    openTo: 5,
+    /** Eintritt, wenn Outfit/Ruf nicht passen. */
+    entryFee: 200,
+    /** Einlass ohne Eintritt ab diesem Ruf beim Neon Syndicate. */
+    repFreeEntry: 20,
+    /** VIP-Empore: ab diesem Ruf oder mit gekaufter VIP-Karte. */
+    repVip: 60,
+    vipCardPrice: 5_000,
+    /** Dance Floor Heat: Geld nach Punkten (linear zwischen min und max), XP, Ruf (1–3, max. 1x pro Spieltag). */
+    danceMoneyMin: 50,
+    danceMoneyMax: 800,
+    danceXpMax: 120,
+    danceRepMax: 3,
+    /** Spotlight: Punkte-Multiplikator und Dauer (s). */
+    spotlightMult: 2,
+    spotlightSeconds: 8,
+    /** Siegprämie Dance-Battle (zusätzlich, je Gegner). */
+    battleBonus: 150,
+    /** DJ-Aushilfe (E57): Freigetränk + Gage. */
+    djGig: 300,
+  },
+  /**
+   * Casino „Palm Royale“: nur Spielgeld ($), Chips 1:1, kein Echtgeld, keine kaufbaren Chips, keine Lootboxen.
+   * Der Hausvorteil zieht langfristig Geld aus der Wirtschaft (Geldsenke, Spec 14.6).
+   */
+  casino: {
+    /** Pro Spieler und Stunde (gleitend): max. Nettoverlust bzw. Nettogewinn – danach sperrt das Casino. */
+    maxLossPerHour: 50_000,
+    maxWinPerHour: 100_000,
+    /** High-Roller-Raum. */
+    highRollerLevel: 15,
+    highRollerChips: 50_000,
+    /** Einsätze. */
+    slotBets: [10, 50, 100, 500],
+    bjLimits: [10, 500],
+    bjHighLimits: [500, 20_000],
+    rouletteLimits: [5, 5_000],
+    derbyLimits: [10, 2_000],
+    /** Progressiver Jackpot pro Instanz: Startwert und Anteil jedes Automaten-Einsatzes. */
+    jackpotSeed: 10_000,
+    jackpotShare: 0.02,
+    /** Blackjack: Zeit pro Zug (s), Setzphase (s), Mischen ab Schlitten-Anteil. */
+    bjTurnSeconds: 15,
+    bjBetSeconds: 12,
+    bjShuffleAt: 0.75,
+    bjDecks: 6,
+    /** Roulette: Setzphase (s). */
+    rouletteBetSeconds: 20,
+    /** Gator Derby: Rennen alle N Sekunden (Echtzeit, siehe docs/venues.md), Setzphase bis kurz vor Start. */
+    derbyInterval: 300,
+    /** Valet-Parking: Wäsche inklusive. */
+    valetFee: 40,
+    buffetPrice: 25,
+    jacketRent: 50,
+    eveningWearPrice: 1_500,
+  },
 } as const;
 
 /** XP, die benötigt werden, um von `level` auf `level + 1` aufzusteigen. */

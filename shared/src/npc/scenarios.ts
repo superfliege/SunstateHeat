@@ -11,6 +11,8 @@ export const Act = {
   // Reaktionen (Schritt 4): kurz hinschauen, erschrecken, schimpfen, filmen, ducken, zeigen, Polizei rufen,
   // Panik (rennt mit erhobenen Armen), winken, durch eine Tür / ins Auto gehen
   Look: 21, Flinch: 22, Scold: 23, Film: 24, Cower: 25, Point: 26, Call: 27, Panic: 28, Wave: 29, Enter: 30,
+  // Club & Casino (shared/venues): Tanzstile, Stolpern, Spotlight-Pose, Jubeln, Ohnmacht, Croupier, Automat, DJ
+  Dance2: 31, Dance3: 32, Dance4: 33, Dance5: 34, Stumble: 35, Pose: 36, Cheer: 37, Faint: 38, Deal: 39, Slot: 40, DJ: 41,
 } as const;
 export type ActId = (typeof Act)[keyof typeof Act];
 export const ACT_NAMES = Object.fromEntries(Object.entries(Act).map(([k, v]) => [v, k])) as Record<number, string>;

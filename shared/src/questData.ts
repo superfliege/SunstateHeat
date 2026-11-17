@@ -119,6 +119,35 @@ const BASE_QUESTS: QuestDefinition[] = [
     ],
     rewards: { money: 0, xp: 250, byPlace: [1000, 600, 300] },
   },
+  // ------------------------------------------------------------------ Club & Casino (shared/venues)
+  {
+    id: 'neon_02_dance_for_your_life', title: 'Tanz um dein Leben', gang: 'neon',
+    giver: { type: 'payphone', id: 'neon' }, minLevel: 3, coop: { min: 1, max: 2 }, repeatable: true, cooldownMinutes: 20, nightOnly: true,
+    intro: [
+      { who: 'Neon Syndicate', text: 'Jemand hat uns einen USB-Stick geklaut. Kontaktliste, Buchhaltung, Karaoke-Playlist. Alles wichtig.' },
+      { who: 'Neon Syndicate', text: 'Der Dieb heißt Kai „Glitch“ Moreno und hängt im Pink Static ab. Er rückt den Stick nur raus, wenn ihn jemand im Dance-Battle schlägt. Er ist gut. Sei besser.' },
+    ],
+    stages: [
+      { id: 'enter', description: 'Rein ins Pink Static (Einlass nachts – Outfit, Ruf oder 200 $).', objectives: [{ type: 'venue', venue: 'club', goal: 'enter' }] },
+      { id: 'battle', description: 'Fordere Glitch auf der Tanzfläche heraus (E) und schlag ihn im Dance-Battle.', timeLimitSeconds: 420, objectives: [{ type: 'venue', venue: 'club', goal: 'battle' }] },
+      { id: 'deliver', description: 'Bring den USB-Stick zum Neon-Telefon am Ocean Strip.', objectives: [{ type: 'goTo', at: 'club', radius: 10 }] },
+    ],
+    rewards: { money: 1400, xp: 260, reputation: { gang: 'neon', gain: 8, rivalLoss: 3 } },
+  },
+  {
+    id: 'marlin_03_card_counter', title: 'Kartenzähler', gang: 'marlin',
+    giver: { type: 'payphone', id: 'casino' }, minLevel: 4, coop: { min: 1, max: 2 }, repeatable: true, cooldownMinutes: 20,
+    intro: [
+      { who: 'Marlin Club', text: 'Am Blackjack-Tisch „Sunset“ gewinnt einer zu oft. Karierte Jacke, Zahnstocher, zählt Karten wie andere Leute Schäfchen.' },
+      { who: 'Marlin Club', text: 'Beobachte ihn unauffällig. Wenn er merkt, dass wir ihn haben, rennt er. Dann rennst du schneller.' },
+    ],
+    stages: [
+      { id: 'enter', description: 'Betritt das Palm Royale.', objectives: [{ type: 'venue', venue: 'casino', goal: 'enter' }] },
+      { id: 'observe', description: 'Beobachte den Kartenzähler am Tisch „Sunset“ (in der Nähe bleiben, nicht zu dicht).', timeLimitSeconds: 300, objectives: [{ type: 'venue', venue: 'casino', goal: 'observe', seconds: 25 }] },
+      { id: 'chase', description: 'Er flieht durch den Personalausgang! Hol ihn ein!', timeLimitSeconds: 120, objectives: [{ type: 'venue', venue: 'casino', goal: 'catch' }] },
+    ],
+    rewards: { money: 1600, xp: 280, reputation: { gang: 'marlin', gain: 8, rivalLoss: 3 } },
+  },
 ];
 
 /** Alle Quests: die Beispielquests (als Nebenjobs der Story-Figuren) und die Story-Missionen (shared/story). */

@@ -6,6 +6,7 @@ import type { MgHud } from './minigames';
 import type { DialogueLine } from './quests';
 import type { StoryView } from './story';
 import type { FloorNet } from './world/arenaFloor';
+import type { VenueAction, VenueServerMsg } from './venues/net';
 
 /** Bitmaske für Tasten in einem Eingabe-Kommando. */
 export const Btn = {
@@ -61,7 +62,11 @@ export type ClientMsg =
   /** Handy (#43): offene Warteräume abfragen, einem beitreten, den eigenen Warteraum starten. */
   | { t: 'lobbies' }
   | { t: 'lobbyJoin'; kind: LobbyKind; id: string }
-  | { t: 'lobbyStart' };
+  | { t: 'lobbyStart' }
+  /** Club & Casino (shared/venues): Betreten, Interaktion, Minispiele. */
+  | { t: 'venue'; v: VenueAction }
+  /** Emote in der offenen Welt (freigeschaltete Tanzstile, shared/content/dance). */
+  | { t: 'emote'; id: string };
 
 /** Warteraum-Art: Minispiel, Straßenrennen, Koop-Auftrag. */
 export type LobbyKind = 'mg' | 'race' | 'quest';
@@ -77,8 +82,11 @@ export interface LobbyInfo {
 }
 
 // ---------- Server -> Client ----------
-/** [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll/Fallschirm), 0 / 1 = Ragdoll / 2 = Fallschirm, Waffenindex, Story-Rang] */
-export type PlayerTuple = [number, string, number, number, number, number, number, number, number, number, number, number];
+/**
+ * [id, name, x, z, angle, vehicleId (-1 = zu Fuß), outfitColor, carryingPackage 0/1, höhe (Ragdoll/Fallschirm), 0 / 1 = Ragdoll / 2 = Fallschirm, Waffenindex, Story-Rang,
+ *  Innenraum (0 = draußen, sonst interiorIndex), Act (Tanzen/Emote, 0 = keiner)]
+ */
+export type PlayerTuple = [number, string, number, number, number, number, number, number, number, number, number, number, number?, number?];
 /**
  * Fahrzeug-Bewegung: [id, x, z, y, yaw, vx, vz, steer, flags, pitch, roll, vy, rpm/100]
  * flags: VehFlag
@@ -192,7 +200,7 @@ export interface SnapshotMsg {
   day: number; // Tageszeit 0..1 (0 = Mitternacht, 0.5 = Mittag)
   ack: number; // letzte verarbeitete Eingabe-Sequenz DIESES Clients
   /** Eigener Zustand: Fußgänger [x, z, a, h, vx, vy, vz, rt, Fallschirm 0/1], Fahrzeug (packCar) oder null, Geld. */
-  me?: { pawn: number[]; veh: number[] | null; /** Mitfahrer in Luftfahrzeug (ID) */ ride?: number; money: number; stats: PlayerStats; quest: QuestState | null; join?: string };
+  me?: { pawn: number[]; veh: number[] | null; /** Mitfahrer in Luftfahrzeug (ID) */ ride?: number; money: number; stats: PlayerStats; quest: QuestState | null; join?: string; /** Innenraum (interiorIndex) und Gate-Maske – für die Prediction */ vin?: number; vmask?: number; /** sitzt an Automat/Tisch/Tanzkachel: keine Bewegung */ vseat?: number };
   players: PlayerTuple[];
   /** Geänderte Fahrzeuge / Stammdaten / verschwundene IDs */
   v?: VehicleTuple[];
@@ -239,7 +247,8 @@ export type ServerMsg =
   | { t: 'lobbies'; list: LobbyInfo[] }
   | { t: 'error'; text: string }
   /** Nur Dev-Modus: NPCs um den Spieler (F3 → NPC-Tab). */
-  | { t: 'npcDebug'; peds: NpcDebugPed[]; events: [number, number, number, number, number][]; pop: string };
+  | { t: 'npcDebug'; peds: NpcDebugPed[]; events: [number, number, number, number, number][]; pop: string }
+  | VenueServerMsg;
 
 /** Debug-Ansicht eines NPCs: Archetyp, Absichtskette, Bedürfnisse, Smart Object, Reaktion, Wahrnehmung. */
 export interface NpcDebugPed {

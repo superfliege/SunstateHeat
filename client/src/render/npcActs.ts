@@ -96,7 +96,7 @@ export class NpcActs {
     this.inner.rotation.set(0, 0, 0);
     const base = this.inner.userData.baseY as number;
     this.inner.position.set(0, base, 0);
-    const lieOff = act === Act.Lie ? 1 : 0;
+    const lieOff = act === Act.Lie || act === Act.Faint ? 1 : 0;
     if (lieOff) { this.inner.rotation.x = -1.42; this.inner.position.set(0, base + 0.42, -0.35); }
     else if (act === Act.Sit || act === Act.Drink) this.inner.position.set(0, base + SIT_DROP, SIT_BACK);
     else if (act === Act.Lean) { this.inner.rotation.x = -0.2; this.inner.position.set(0, base, -0.28); }
@@ -114,6 +114,11 @@ export class NpcActs {
       }
     }
   }
+
+  /** Tanzschritt-Akzent (getroffene Note): kurzer Hüpfer/Dreh, klingt in ~0,2 s ab. */
+  private accent = 0;
+  private accentDir = 1;
+  pulse(strength = 1) { this.accent = Math.min(1.4, this.accent * 0.4 + strength); this.accentDir = -this.accentDir; }
 
   /** Rotation `x, y, z` (Figurenraum) auf einen Knochen anwenden – nach jedem Mixer-Update aufrufen. */
   private rot(name: BoneName, x: number, y: number, z: number) {
@@ -145,6 +150,14 @@ export class NpcActs {
     if (NO_POSE.has(a)) return;
     const t = this.t + this.seed * 7.3;
     const s = Math.sin, c = Math.cos;
+    // Tanzschritt-Akzent: Hüpfer + Drehimpuls (Dance-Minispiel, jede getroffene Note)
+    const acc = this.accent;
+    if (acc > 0.01) {
+      this.accent = Math.max(0, acc - dt * 6);
+      const base = this.inner.userData.baseY as number;
+      if (a !== Act.Faint && a !== Act.Lie) this.inner.position.y = base + 0.12 * Math.sin(Math.min(1, acc) * Math.PI);
+      this.rot('hips', 0, 0.35 * acc * this.accentDir, 0);
+    }
     switch (a) {
       case Act.Phone: // Hand ans Ohr, Kopf leicht geneigt, ab und zu Gestik mit der freien Hand
         this.rot('rArm', -0.35, 0, -0.55); this.rot('rFore', -2.3, 0, 0);
@@ -194,6 +207,79 @@ export class NpcActs {
         this.rot('rArm', -0.4, 0, -1.6 - 0.7 * Math.max(0, s(b))); this.rot('rFore', -1.3 + 0.6 * s(b), 0, 0);
         this.rot('lArm', -0.4, 0, 1.6 + 0.7 * Math.max(0, -s(b))); this.rot('lFore', -1.3 - 0.6 * s(b), 0, 0);
         this.rot('head', 0.12 * s(b * 2), 0.2 * s(b), 0);
+        break;
+      }
+      case Act.Dance2: { // Roboter: eckige Arme, ruckartige Kopfdrehung im Takt
+        const b = Math.floor(t * 4) / 4 * 4.5;
+        this.rot('rArm', -1.5, 0, -0.1 * s(b)); this.rot('rFore', -1.57 * (0.5 + 0.5 * Math.sign(s(b))), 0, 0);
+        this.rot('lArm', -1.5, 0, 0.1 * c(b)); this.rot('lFore', -1.57 * (0.5 - 0.5 * Math.sign(s(b))), 0, 0);
+        this.rot('head', 0, 0.5 * Math.sign(s(b * 0.5)), 0);
+        this.rot('chest', 0, 0.25 * Math.sign(c(b)), 0);
+        break;
+      }
+      case Act.Dance3: { // Ocean-Shuffle: Oberkörper federt, Arme schwingen gegengleich
+        const b = t * 7;
+        this.rot('spine', 0.1 + 0.08 * s(b * 2), 0, 0);
+        this.rot('hips', 0, 0.25 * s(b), 0);
+        this.rot('rArm', -0.6 + 0.6 * s(b), 0, -0.4); this.rot('rFore', -1.2, 0, 0);
+        this.rot('lArm', -0.6 - 0.6 * s(b), 0, 0.4); this.rot('lFore', -1.2, 0, 0);
+        this.rot('head', 0.15 * s(b * 2), 0, 0);
+        break;
+      }
+      case Act.Dance4: { // Disco-Finger: rechter Arm zeigt diagonal hoch/runter, Hüfte kippt
+        const b = t * 3.6, up = s(b) > 0;
+        this.rot('rArm', up ? -2.7 : -0.3, 0, up ? -0.6 : -0.9); this.rot('rFore', 0, 0, 0);
+        this.rot('lArm', -0.2, 0, 0.5); this.rot('lFore', -1.6, 0, 0);
+        this.rot('hips', 0, 0, 0.18 * s(b * 2)); this.rot('head', up ? -0.25 : 0.2, 0.3, 0);
+        break;
+      }
+      case Act.Dance5: { // Flamingo-Kreisel: dreht sich, Arme ausgebreitet
+        this.inner.rotation.y = (t * 5) % (Math.PI * 2);
+        this.rot('rArm', -0.1, 0, -1.4 - 0.2 * s(t * 6)); this.rot('lArm', -0.1, 0, 1.4 + 0.2 * s(t * 6));
+        this.rot('head', -0.2, 0, 0);
+        break;
+      }
+      case Act.Stumble: { // Comic-Stolpern: nach vorn kippen, Arme rudern
+        const w = s(t * 16);
+        this.rot('spine', 0.5, 0, 0.2 * w); this.rot('rArm', -2.2 + 0.6 * w, 0, -0.6); this.rot('lArm', -2.2 - 0.6 * w, 0, 0.6);
+        this.rot('head', -0.3, 0.3 * w, 0);
+        break;
+      }
+      case Act.Pose: // Spotlight-Pose: eine Hand in die Hüfte, Zeigefinger zum Himmel
+        this.rot('rArm', -0.2, 0, -2.9); this.rot('rFore', 0, 0, 0);
+        this.rot('lArm', 0.3, 0, 0.9); this.rot('lFore', -1.8, 0, 0);
+        this.rot('hips', 0, 0, 0.15); this.rot('head', -0.3, 0.25, 0);
+        break;
+      case Act.Cheer: { // Jubeln: beide Arme hoch, hüpfen
+        const j = Math.abs(s(t * 7));
+        this.rot('rArm', -0.2, 0, -2.6 - 0.3 * j); this.rot('lArm', -0.2, 0, 2.6 + 0.3 * j);
+        this.rot('rFore', 0, 0, -0.3); this.rot('lFore', 0, 0, 0.3);
+        this.inner.position.y = (this.inner.userData.baseY as number) + 0.15 * j;
+        break;
+      }
+      case Act.Faint: // ohnmächtig (liegt, Arme von sich gestreckt)
+        this.rot('rArm', 0, 0, -1.3); this.rot('lArm', 0, 0, 1.3);
+        this.rot('head', 0, 0.4, 0);
+        break;
+      case Act.Deal: { // Croupier: Karten austeilen / Kugel werfen
+        const d = Math.max(0, s(t * 2.2));
+        this.rot('rArm', -0.9 - 0.4 * d, 0.3 * d, -0.2); this.rot('rFore', -0.8 + 0.5 * d, 0, 0);
+        this.rot('lArm', -0.6, 0, 0.2); this.rot('lFore', -1.2, 0, 0);
+        this.rot('head', 0.35, 0.2 * s(t * 0.5), 0);
+        break;
+      }
+      case Act.Slot: { // am Automaten: Hand am Knopf/Hebel, ab und zu ziehen
+        const pull = Math.max(0, s(t * 0.9)) ** 4;
+        this.rot('rArm', -1.2 - 0.9 * pull, 0, -0.3); this.rot('rFore', -0.6 + 0.4 * pull, 0, 0);
+        this.rot('lArm', -0.4, 0, 0.1); this.rot('lFore', -1.0, 0, 0);
+        this.rot('head', 0.1, 0, 0);
+        break;
+      }
+      case Act.DJ: { // DJ: eine Hand am Kopfhörer, andere am Mischpult, Kopf nickt
+        const b = t * 6.5;
+        this.rot('lArm', -0.4, 0, 1.2); this.rot('lFore', -2.3, 0, 0);
+        this.rot('rArm', -0.9, 0, -0.2); this.rot('rFore', -0.8 + 0.2 * s(b), 0, 0);
+        this.rot('head', 0.2 + 0.15 * s(b), 0, 0); this.rot('spine', 0.15, 0, 0);
         break;
       }
       case Act.Busk: { // Gitarre: Schlaghand wippt, andere Hand am Hals
