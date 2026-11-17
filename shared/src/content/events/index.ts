@@ -1,4 +1,4 @@
-// Register aller Straßenereignisse (E01–E56), nach Viertel in eigenen Dateien.
+// Register aller Straßenereignisse (E01–E56) und Innenraum-Ereignisse (E57–E64), nach Viertel in eigenen Dateien.
 import { ANYWHERE_EVENTS } from './anywhere';
 import { BRICKELL_HILLS_EVENTS } from './brickellHills';
 import { CORAL_KEYS_EVENTS } from './coralKeys';
@@ -10,6 +10,7 @@ import { OCEAN_STRIP_EVENTS } from './oceanStrip';
 import { OKEEFIELD_EVENTS } from './okeefield';
 import { NORTH_EVENTS } from './north';
 import { PORT_DISTRICT_EVENTS } from './portDistrict';
+import { VENUE_EVENTS } from './venues';
 import { validateEvent, type StreetEventDef } from './schema';
 import { DISTRICT_IDS } from '../../world/districts';
 import { REGULAR_IDS } from '../regulars';
@@ -18,7 +19,7 @@ export * from './schema';
 
 export const STREET_EVENTS: StreetEventDef[] = [
   ...OCEAN_STRIP_EVENTS, ...DOWNTOWN_EVENTS, ...LITTLE_HAVANA_EVENTS, ...PORT_DISTRICT_EVENTS, ...BRICKELL_HILLS_EVENTS,
-  ...NORTHGATE_EVENTS, ...CORAL_KEYS_EVENTS, ...GATOR_FLATS_EVENTS, ...OKEEFIELD_EVENTS, ...NORTH_EVENTS, ...ANYWHERE_EVENTS,
+  ...NORTHGATE_EVENTS, ...CORAL_KEYS_EVENTS, ...GATOR_FLATS_EVENTS, ...OKEEFIELD_EVENTS, ...NORTH_EVENTS, ...ANYWHERE_EVENTS, ...VENUE_EVENTS,
 ];
 export const EVENT_BY_ID: Record<string, StreetEventDef> = Object.fromEntries(STREET_EVENTS.map((e) => [e.id, e]));
 export const EVENT_BY_KEY: Record<string, StreetEventDef> = Object.fromEntries(STREET_EVENTS.map((e) => [e.key, e]));

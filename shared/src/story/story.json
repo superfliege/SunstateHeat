@@ -2,6 +2,7 @@
   "characters": {
     "lou":    { "name": "Lou Navarro", "short": "Lou", "title": "Autowäsche, Kurierdienste, Geschäftliches", "color": "#ffb347", "look": { "style": "casual", "shirt": "#ff8c42" } },
     "gus":    { "name": "Augusto „Gus“ Medina", "short": "Gus", "title": "König der Nacht", "color": "#f4f4f0", "look": { "style": "business", "shirt": "#ffffff" } },
+    "sunday": { "name": "Mister Sunday", "short": "Sunday", "title": "Geldgeber des Marlin Club, Besitzer (inoffiziell) des Palm Royale", "color": "#e8c35a", "look": { "style": "business", "shirt": "#f4f1e8" } },
     "carla":  { "name": "Carla Reyes", "short": "Carla", "title": "Managerin des Velvet Tide", "color": "#ff4f8b", "look": { "style": "business", "shirt": "#2b2b38" } },
     "grady":  { "name": "Hollis Grady", "short": "Grady", "title": "Rancher, Pistenkönig, Schweiger", "color": "#d9a066", "look": { "style": "outdoor" } },
     "racer":  { "name": "Roxy „Redline“ Ramirez", "short": "Roxy", "title": "Rennfahrerin", "color": "#ff6a3a", "look": { "style": "casual", "shirt": "#f25c3c" } },
@@ -337,6 +338,18 @@
       "briefing": [{ "who": "carla", "text": "Lieferung für den Marlin Club heute Nacht. Das Leuchtfeuer muss brennen, und Gus' Neon-Leute wollen es ausknipsen. Knips sie aus." }] },
     { "id": "indep_02_gator_grand_prix", "act": 2, "giver": "racer", "kind": "side", "order": 108, "when": { "done": ["story_10a_rennfahrerin"] },
       "hint": "Roxys Nebenjob: Airboat-Rennen am Telefon Rennstrecke (Gator Flats).",
-      "briefing": [{ "who": "racer", "text": "Airboat-Rennen durch Gator Flats. Zwölf Checkpoints, null Bremsen, ein paar Alligatoren. Wer zuerst ankommt, kassiert." }] }
+      "briefing": [{ "who": "racer", "text": "Airboat-Rennen durch Gator Flats. Zwölf Checkpoints, null Bremsen, ein paar Alligatoren. Wer zuerst ankommt, kassiert." }] },
+    { "id": "story_side_jackpot_coup", "act": 2, "giver": "carla", "kind": "side", "order": 109, "when": { "done": ["story_10_crew"] },
+      "hint": "Carla hat eine Spur: Mister Sunday wäscht Geld im Palm Royale (Casino am Ocean Strip).",
+      "briefing": [
+        { "who": "carla", "text": "Das Palm Royale gehört offiziell einer Firma mit sehr langem Namen. Inoffiziell gehört es Mister Sunday. Und Mister Sunday gehört zum Marlin Club." },
+        { "who": "carla", "text": "Jeder zweite Jackpot dort ist gewaschenes Geld. Ich will Fotos von seinen Büchern – Hinterzimmer im High-Roller-Raum." },
+        { "who": "sunday", "text": "*im Hintergrund am Telefon* …nein, der Waschbär war NICHT eingeplant." }
+      ],
+      "outro": [
+        { "who": "carla", "text": "Doppelte Buchführung, Jackpots auf Bestellung … und ein Monokel-Abo. Damit haben wir Sunday in der Hand." },
+        { "who": "sunday", "text": "*Anruf* Ich weiß, wer du bist. Ich weiß, wo du parkst. Und ich weiß, dass dein Valet-Ticket abläuft." }
+      ],
+      "effects": { "rep": { "marlin": -10 } } }
   ]
 }

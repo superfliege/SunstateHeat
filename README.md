@@ -241,6 +241,17 @@ Quest-Engine (Q02–Q08), Gruppen/Wiederbeleben, 10 Fahrzeuge, Docker/Deployment
 - **Wahrnehmung & Reaktionen** (`shared/src/npc/reactions.ts`, `server/src/sim/Perception.ts`): Ereignisse mit Radius/Stärke (Hupe, Unfall, Schuss, Explosion, Schlägerei, Sirene, Sprint, Anrempeln, Auto auf dem Gehweg, Autodiebstahl); Reaktionen nach Mut: hinschauen, ausweichen, erschrecken, schimpfen, filmen, Polizei rufen (Zeugen-Meldung hängt am NPC – wird er vorher ausgeknockt, kommt sie nicht an), flüchten, Gruppenpanik, ducken, eingreifen; bei Fahndung zeigen Passanten auf den Spieler. Kurzzeitgedächtnis 60 s. Blickkontakt rechnet der Client.
 - **Barks** (`shared/src/npc/barks.ts`): satirische Sprüche je Situation und Archetyp als DS-Sprechblasen; Abklingzeit pro NPC, max. 3 gleichzeitig je 30 m, Client zeigt höchstens 4.
 
+### Club „Pink Static“ & Casino „Palm Royale“
+- **Begehbare Innenräume** am Ocean Strip (Details: `docs/venues.md`): geteilte Teil-Szene pro Instanz, Tür mit Blende,
+  näherer Zoom, Puppenhaus-Wände, Außenwelt pausiert. Polizei kommt rein, ab Fahndungsstufe 2 wird abgeriegelt.
+- **Club** (Neon Syndicate, nachts 22–5 Uhr, Türsteher Big Teo prüft das Outfit): Leuchtboden, Lichtshow, Bar mit Vee,
+  VIP-Empore, Tanz-Minispiel **Dance Floor Heat** (F auf einer Kachel: 6 Songs × 3 Stufen, Solo/Battle/Crew,
+  Spotlight, Bestenlisten, Tanzstile als Emotes: G bzw. `/tanz <stil>`).
+- **Casino** (nur Spielgeld, Chips 1:1 an der Kasse): Lucky Flamingo Slots mit progressivem Jackpot, 21 (Blackjack),
+  Ruleta Royale, Gator Derby (auch an Terminals in Gator Flats/Okeefield), Valet-Parking, High-Roller-Raum,
+  Stundenlimits und Casino-Bilanz im Handy (Einstellungen), Konto-Sperre.
+- Ereignisse E57–E64, Quests „Tanz um dein Leben“, „Kartenzähler“, „Der Jackpot-Coup“. Test: `npm run venue-test`.
+
 ### Flughafen & Luftfahrzeuge
 - **Port Coralia International** (`shared/src/world/airport.ts`, Bahnen in `palmara.ts`): Nordbahn 09L/27R (245 m) und
   Südbahn 09R/27L (260 m) mit Mittellinie, Schwellen, Bahnnummern, Rand-/Schwellen-/Anflugbefeuerung (nachts leuchtend),

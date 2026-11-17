@@ -110,6 +110,23 @@ const engineDefs: SoundDef[] = ENGINE_SETS.flatMap((set) =>
 export const SOUNDS: SoundDef[] = [
   // ---------------- Radio (prozedurale Platzhalter-Loops je Sender; Tracks: spec 5.7)
   { id: 'radio.swamp', bus: 'music', kind: 'loop', files: [], proc: 'radio:swamp', vol: -6, priority: 0.5, stereo: true },
+  // ---------------- Club „Pink Static“ & Casino „Palm Royale“ (prozedural; Club-Musik: venues/music.ts)
+  { id: 'venue.door', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:door', pitch: [0.92, 1.05], maxInst: 2, priority: 0.7 },
+  { id: 'venue.reels', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:reels', spatial: SPATIAL.point, maxInst: 4, zones: ['ocean-strip'] },
+  { id: 'venue.reel_stop', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:reel_stop', spatial: SPATIAL.point, pitch: [0.9, 1.1], maxInst: 6, zones: ['ocean-strip'] },
+  { id: 'venue.win', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:win', spatial: SPATIAL.point, pitch: [0.97, 1.05], maxInst: 4, zones: ['ocean-strip'] },
+  { id: 'venue.coins', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:coins', spatial: SPATIAL.point, maxInst: 3, zones: ['ocean-strip'] },
+  { id: 'venue.jackpot', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:jackpot', maxInst: 1, priority: 1, zones: ['ocean-strip'] },
+  { id: 'venue.cheer', bus: 'ambience', kind: 'oneshot', files: [], proc: 'venue:cheer', spatial: { ref: 6, max: 90, rolloff: 1.1, wet: 0.5 }, pitch: [0.9, 1.1], maxInst: 3, zones: ['ocean-strip'] },
+  { id: 'venue.boo', bus: 'ambience', kind: 'oneshot', files: [], proc: 'venue:boo', spatial: { ref: 6, max: 90, rolloff: 1.1, wet: 0.5 }, maxInst: 2, zones: ['ocean-strip'] },
+  { id: 'venue.chips', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:chips', pitch: [0.9, 1.15], maxInst: 4, zones: ['ocean-strip'] },
+  { id: 'venue.card', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:card', pitch: [0.9, 1.2], maxInst: 4, zones: ['ocean-strip'] },
+  { id: 'venue.ball', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:ball', spatial: SPATIAL.point, maxInst: 1, zones: ['ocean-strip'] },
+  { id: 'venue.alarm', bus: 'sfx', kind: 'oneshot', files: [], proc: 'venue:alarm', maxInst: 1, priority: 0.9, zones: ['ocean-strip'] },
+  { id: 'venue.zap', bus: 'ui', kind: 'oneshot', files: [], proc: 'venue:zap', pitch: [0.9, 1.15], maxInst: 3 },
+  { id: 'venue.fanfare', bus: 'ui', kind: 'oneshot', files: [], proc: 'venue:fanfare', maxInst: 1 },
+  { id: 'venue.crowd.club', bus: 'ambience', kind: 'loop', files: [], proc: 'venue:crowd_club', vol: -8, priority: 0.5, zones: ['ocean-strip'] },
+  { id: 'venue.slot_hall', bus: 'ambience', kind: 'loop', files: [], proc: 'venue:slot_hall', vol: -10, priority: 0.5, zones: ['ocean-strip'] },
   { id: 'radio.coral', bus: 'music', kind: 'loop', files: [], proc: 'radio:coral', vol: -6, priority: 0.5, stereo: true },
   { id: 'radio.static', bus: 'music', kind: 'loop', files: [], proc: 'radio:static', vol: -10, priority: 0.4 },
   // ---------------- Land & Berg (Ambience, prozedural; Rohdateien können über assets-src/audio ersetzt werden)

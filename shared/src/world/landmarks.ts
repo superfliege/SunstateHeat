@@ -8,7 +8,7 @@ import { distToSegment, orientedRect, pointAt, pointInPolygon, rasterizePolygon,
 import { Tile } from './tiles';
 import { BuildingStyle, RoadType, type WorldMap } from './WorldMap';
 
-export type LandmarkId = 'hospital' | 'police' | 'garage';
+export type LandmarkId = 'hospital' | 'police' | 'garage' | 'club' | 'casino';
 
 export interface Landmark {
   id: LandmarkId;
@@ -26,6 +26,9 @@ const DEFS: LandmarkDef[] = [
   { id: 'police', name: 'Polizeirevier Downtown', anchor: [1392, 1052], w: 28, d: 18, h: 10, color: 0xe8edf4 },
   // Story-Hauptpunkt: Lous Waschanlage mit Garage (Zuhause „Lous Sofa“, Garagenfahrzeuge)
   { id: 'garage', name: 'Bubble Bath – Waschanlage & Garage', anchor: [1290, 812], w: 22, d: 14, h: 6.5, color: 0xfde7f1 },
+  // Begehbare Orte mit Innenraum (shared/venues): Club „Pink Static“ (Neon Syndicate) und Casino „Palm Royale“
+  { id: 'club', name: 'Pink Static', anchor: [1556, 905], w: 34, d: 24, h: 11, color: 0x2a1838 },
+  { id: 'casino', name: 'Palm Royale', anchor: [1530, 1030], w: 50, d: 36, h: 15, color: 0xf6ead2 },
 ];
 
 /** Bodenarten, auf denen ein Wahrzeichen stehen darf (Gebäude werden abgerissen). */

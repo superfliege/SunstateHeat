@@ -86,6 +86,7 @@ import { charOf } from '../../../shared/src/story';
 import { roadRoute } from '../../../shared/src/story/places';
 import { CallCounter, Profiler } from '../perf/Profiler';
 import { Bench, type BenchHost } from '../perf/Bench';
+import { VenueClient } from '../venues/VenueClient';
 
 const SEND_INTERVAL_MS = 33; // ~30 Eingabe-Pakete pro Sekunde
 const MINIMAP_INTERVAL = 1 / 15;
@@ -196,6 +197,9 @@ export class Game {
   private storyUi = new StoryUi();
   private storyDir: StoryDirector;
   private storyBlock = false;
+  /** Venue-Overlay (Minispiel/Dialog) offen: Bewegung gesperrt */
+  private venueBlock = false;
+  private emoteOn = false;
   /** Controller: Fokus-Navigation in Fenstern, letzter Kontext (Menü/Spiel), X gehalten. */
   private padNav = new PadNav();
   private padUi = false;
@@ -210,6 +214,11 @@ export class Game {
   private bench: Bench | null = null;
   private shadowExt = 0;
   private programCount = 0;
+  /** Club „Pink Static“ & Casino „Palm Royale“: Innenräume, Minispiele, Außenbereiche. */
+  readonly venue: VenueClient;
+  private wasInside = false;
+  /** Gruppen der Außenwelt (im Innenraum ausgeblendet und nicht aktualisiert). */
+  private outdoor: THREE.Object3D[] = [];
   /** Benchmark mit dynamischer Auflösung (`&dyn=1`), sonst feste Auflösung (vergleichbare Zahlen). */
   private benchDyn = new URLSearchParams(location.search).get('dyn') === '1';
 
@@ -269,6 +278,12 @@ export class Game {
     this.post.attachTimer(this.prof.gpu);
     this.applyGfx();
     window.addEventListener('keydown', (e) => { if (this.gfxKey(e.code)) e.preventDefault(); });
+    // G: Emote (Tanzen an/aus) – freigeschaltete Tanzstile per Chat „/tanz <stil>“, Jubeln „/jubeln“
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'KeyG' || e.repeat || this.input.blocked || this.predictor.inVehicle) return;
+      this.emoteOn = !this.emoteOn;
+      this.net.send({ t: 'emote', id: this.emoteOn ? 'wippen' : 'stop' });
+    });
     this.minimap = new Minimap(
       this.map,
       document.getElementById('minimap') as HTMLCanvasElement,
@@ -304,12 +319,27 @@ export class Game {
 
     window.addEventListener('resize', () => this.applyGfx());
 
+    this.venue = new VenueClient({
+      map: this.map, scene: this.scene, sfx: this.sfx, rig: this.rig, sky: this.sky, myId: this.myId,
+      send: (m) => this.net.send(m),
+      notice: (text, kind) => this.hud.toast(text, kind),
+      serverNow: () => this.buffer.serverNow,
+      money: () => this.money,
+      setBlocked: (b) => { this.venueBlock = b; const blocked = b || this.panels.isOpen || this.chat.isOpen || this.storyBlock; this.input.blocked = blocked; this.touch.setBlocked(blocked); if (b) { this.input.clear(); this.input.fire = false; } },
+      pulse: (id, s) => this.views.pulsePlayer(id, s),
+      playerAnchor: (id) => this.views.playerAnchor(id),
+    });
+    this.views.groundOverride = (x, z) => this.venue.groundAt(x, z);
+    this.outdoor = [this.world.group, this.props.group, this.features.group, this.smartObjects.group, this.fx.group, this.stores.group, this.phonesView.group, this.questMarkers.group, this.arenas.group, this.storyDir.group, this.airport.group, this.pickups.group, this.north.group, this.farLod.group, this.particles.group, this.tracers.group, this.venue.exterior.group];
+
     // UI-Verdrahtung
     this.input.onChatKey = () => this.chat.open();
     this.input.onMapKey = () => this.minimap.toggleBig();
     this.input.onPhoneKey = () => this.panels.toggleHandy();
     this.panels.onMap = () => this.minimap.toggleBig();
     this.input.onInteract = () => {
+      // Club/Casino: Türen, Valet, Derby-Terminals, Interaktionspunkte drinnen (E halten bleibt für Quests aktiv)
+      if (this.venue.interact()) { this.net.send({ t: 'hold', on: true }); return; }
       // E im umgekippten Fahrzeug: aufrichten (F bleibt ein-/aussteigen)
       const flipped = this.predictor.sim?.car;
       if (flipped && flipped.flip >= ASSISTS.unflipDelay) { this.unflipFrames = 6; return; }
@@ -347,6 +377,9 @@ export class Game {
       { label: `🎮 Vibration: ${this.input.rumbleOn ? 'an' : 'aus'}`, run: () => { this.input.rumbleOn = !this.input.rumbleOn; } },
       { label: '⛶ Vollbild', run: () => { void toggleFullscreen().then((ok) => { if (!ok) this.hud.toast('Vollbild geht hier nur per Tippen/Klick (oder Taste V).', 'info'); }); } },
       { label: '📊 Debug-Anzeige', run: () => this.debug.toggle() },
+      { label: `🎰 Casino-Tipps (Grundstrategie): ${this.venue.tipsOn ? 'an' : 'aus'}`, run: () => { this.venue.toggleTips(); } },
+      { label: '🎰 Casino-Bilanz & Konto-Sperre', run: () => { this.panels.close(); this.venue.ui.openStats(); } },
+      { label: '💃 Tanz: Bestenlisten & Latenz-Test (auf einer Tanzkachel: F)', run: () => { this.panels.close(); this.venue.ui.openStats(); } },
     ];
     this.panels.controlsHtml = () => {
       if (!gamepads.connected) return null;
@@ -510,6 +543,7 @@ export class Game {
 
   /** Offene Fenster mit dem Controller bedienen. Gibt true zurück, wenn eines offen ist. */
   private padMenus(f: PadFrame): boolean {
+    if (this.venue.pad(f)) return true;
     if (this.chat.isOpen) {
       if (f.pressed(P.B)) this.chat.close();
       else if (f.pressed(P.A)) this.chat.submit();
@@ -579,6 +613,7 @@ export class Game {
         this.hud.toast(msg.text, 'bad');
         break;
       case 'npcDebug': this.debug.setNpcData(msg); break;
+      case 'venue': case 'vnpc': case 'vsay': case 'vgame': case 'vfx': case 'vdlg': case 'vstats': this.venue.onMessage(msg); break;
     }
   }
 
@@ -916,7 +951,8 @@ export class Game {
     this.acc += rawDt;
     let steps = 0;
     const useNow = this.input.consumeUse();
-    if (useNow) {
+    if (useNow && this.venue.use()) { /* drinnen: F = Tanzkachel/Interaktion */ }
+    else if (useNow) {
       const car = this.predictor.sim?.car;
       if (car && car.flip >= ASSISTS.unflipDelay) this.unflipFrames = 6;
       else this.net.send({ t: 'use' });
@@ -1015,33 +1051,45 @@ export class Game {
     // Schattenbereich an den sichtbaren Ausschnitt anpassen (Kameraabstand = 30 / zoom)
     const ext = shadowExtentFor(30 / this.rig.zoom);
     if (ext !== this.shadowExt) { this.shadowExt = ext; this.sky.setExtent(ext); }
-    this.sky.update(this.viewDay(), this.rig.target, dt);
+    // Innenraum (Club/Casino): Außenwelt pausieren, eigenes Licht-Setup, Teil-Szene aktualisieren
+    const inside = this.venue.frame(dt, { x: me.x, z: me.z, inVehicle: this.predictor.inVehicle }, this.rig.target, this.viewDay(), this.sky.light);
+    if (inside !== this.wasInside) {
+      this.wasInside = inside;
+      for (const g of this.outdoor) g.visible = !inside;
+      if (!inside) { this.rig.extraZoom = 1; this.sky.setShadows(this.gfx.shadows); }
+    }
+    if (inside) { this.venue.applyLighting(this.sky, this.scene); U.uNight.value = 0.2; }
+    else this.sky.update(this.viewDay(), this.rig.target, dt);
     P.end('camera');
     P.begin('world');
-    this.world.update(this.rig.target.x, this.rig.target.z, this.sky.fog.far);
-    // Schattenrichtung je Meter Objekthöhe (Sonne -> Boden), fürs Pflanzen-Culling
-    const sd = tmpV3.copy(this.sky.sun.position).sub(this.sky.sun.target.position).normalize();
-    const shadowDir = this.gfx.shadows ? tmpV4.set(-sd.x, 0, -sd.z).divideScalar(Math.max(0.15, sd.y)) : null;
-    this.world.updatePlants(this.rig.camera, this.rig.target, shadowDir, this.sky.fog.far);
-    this.props.cullView(this.rig.camera, shadowDir, this.sky.fog.far);
-    this.views.setCamera(this.rig.camera);
-    this.views.cullVehicleShadows(shadowDir);
-    this.world.setNight(this.sky.night);
-    this.world.setLight(this.sky.light);
-    this.world.updateWobble(dt);
-    this.props.setNight(this.sky.night);
-    this.props.update(dt);
-    this.pickups.update(dt);
-    this.features.update(dt);
+    if (!inside) {
+      this.world.update(this.rig.target.x, this.rig.target.z, this.sky.fog.far);
+      // Schattenrichtung je Meter Objekthöhe (Sonne -> Boden), fürs Pflanzen-Culling
+      const sd = tmpV3.copy(this.sky.sun.position).sub(this.sky.sun.target.position).normalize();
+      const shadowDir = this.gfx.shadows ? tmpV4.set(-sd.x, 0, -sd.z).divideScalar(Math.max(0.15, sd.y)) : null;
+      this.world.updatePlants(this.rig.camera, this.rig.target, shadowDir, this.sky.fog.far);
+      this.props.cullView(this.rig.camera, shadowDir, this.sky.fog.far);
+      this.views.setCamera(this.rig.camera);
+      this.views.cullVehicleShadows(shadowDir);
+      this.world.setNight(this.sky.night);
+      this.world.setLight(this.sky.light);
+      this.world.updateWobble(dt);
+      this.props.setNight(this.sky.night);
+      this.props.update(dt);
+      this.pickups.update(dt);
+      this.features.update(dt);
+    }
     this.views.setFocus(this.rig.target);
     this.views.setCamera(this.rig.camera); // Sichtfeld fürs nächste Bild (Animationen außerhalb sparen)
     P.end('world');
     P.begin('effects');
-    for (const p of this.props.sprays) this.fx.splash(p.x, p.y + 0.8, p.z, 0, 7, 0, 2);
-    this.particles.update(dt, this.rig.target);
-    this.north.update(dt, this.rig.target);
-    this.fx.update(dt);
-    this.tracers.update(dt);
+    if (!inside) {
+      for (const p of this.props.sprays) this.fx.splash(p.x, p.y + 0.8, p.z, 0, 7, 0, 2);
+      this.particles.update(dt, this.rig.target);
+      this.north.update(dt, this.rig.target);
+      this.fx.update(dt);
+      this.tracers.update(dt);
+    }
     P.end('effects');
     P.begin('ui');
     const talk = this.panels.talkingTo() ?? (this.chat.isOpen ? null : this.shopNearMe());
@@ -1054,7 +1102,7 @@ export class Game {
     U.uOutlineScale.value = this.gfx.outlines ? Math.max(0.55, this.rig.zoom) * (U.uResolution.value.y / 720) : 0;
     const day = this.viewDay();
     const dusk = Math.max(0, 1 - Math.abs(day - 0.74) / 0.08, 1 - Math.abs(day - 0.27) / 0.06);
-    this.post.update(this.sky.mood, this.sky.night, dusk);
+    this.post.update(this.sky.mood, inside ? 0.85 : this.sky.night, inside ? 0 : dusk);
     P.begin('audio');
     this.rig.camera.getWorldDirection(tmpV3);
     this.sfx.frame(rawDt, this.rig.target.x, myY, this.rig.target.z, tmpV3.x, tmpV3.z);
@@ -1240,13 +1288,14 @@ export class Game {
 
     for (const pb of b.players.values()) {
       const isMe = pb[0] === this.myId;
+      if (!isMe && !this.venue.sameSpace(pb[12] ?? 0)) continue; // anderer Raum (drinnen/draußen)
       const pa = a.players.get(pb[0]) ?? pb;
       const pw = this.predictor.pawn;
       const st: PlayerState = isMe
-        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0, chute: !!pw.pc }
+        ? { id: pb[0], name: pb[1], x: me.x, z: me.z, a: me.a, veh: myVehicle >= 0 ? myVehicle : this.ride, color: pb[6], carrying: pb[7] === 1, h: pw.h, ragdoll: pw.rt > 0, weapon: pb[10] ?? 0, rank: pb[11] ?? 0, chute: !!pw.pc, act: pb[13] ?? 0 }
         : {
             id: pb[0], name: pb[1], x: lerp(pa[2], pb[2], t), z: lerp(pa[3], pb[3], t),
-            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, chute: pb[9] === 2, weapon: pb[10] ?? 0, rank: pb[11] ?? 0,
+            a: lerpAngle(pa[4], pb[4], t), veh: pb[5], color: pb[6], carrying: pb[7] === 1, h: lerp(pa[8] ?? 0, pb[8] ?? 0, t), ragdoll: pb[9] === 1, chute: pb[9] === 2, weapon: pb[10] ?? 0, rank: pb[11] ?? 0, act: pb[13] ?? 0,
           };
       const seat = st.veh >= 0 ? vehicleStates.get(st.veh) ?? null : null;
       if (seat) { st.x = seat.x; st.z = seat.z; }
@@ -1471,6 +1520,9 @@ export class Game {
     if (!this.predictor.inVehicle && this.predictor.pawn.pc) { this.hud.setHint(`Fallschirm · <b>WASD</b> lenken · ${Math.round(this.predictor.pawn.h)} m`); return; }
     if (this.questState?.lobby) { this.hud.setHint(`Warteraum (${this.questState.lobby.members.length}/${this.questState.lobby.max}) · <b>E</b> Runde starten · <b>M</b> Handy`); return; }
     if (this.joinOffer) { this.hud.setHint(`<b>E</b> Bei „${this.joinOffer}“ mitmachen`); return; }
+    const venueHint = this.venue.hintText;
+    if (venueHint) { this.hud.setHint(venueHint.replace(/^([EF])( halten)?:/, '<b>$1</b>$2:')); return; }
+    if (this.venue.isInside()) { this.hud.setHint(null); return; }
     const storyTarget = this.storyDir.nearest();
     if (storyTarget) { this.hud.setHint(this.storyDir.hint(storyTarget)); return; }
     if (this.ride >= 0) {

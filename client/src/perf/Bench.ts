@@ -1,8 +1,9 @@
 // Reproduzierbare Benchmark-Route (`?bench=1`, nur mit Dev-Server – nutzt Dev-Chatbefehle).
 //
-// Sieben Abschnitte à ~36 s (zusammen ~4 min): Teleport an den Start, Tageszeit/Wetter/Ereignis per
+// Neun Abschnitte à ~36 s (zusammen ~5,5 min): Teleport an den Start, Tageszeit/Wetter/Ereignis per
 // Dev-Befehl setzen, 4 s Einschwingen (Streaming/Spawns – Hänger werden extra gezählt), dann fährt
-// ein Autopilot im Sportwagen die Straßenroute ab. Zufall ist auf Client UND Server geseedet
+// ein Autopilot im Sportwagen die Straßenroute ab. Die beiden letzten Abschnitte spielen in den
+// Innenräumen (Club zur Hauptzeit, Casino-Automatenhalle): Einlass per Dev-Befehl, Rundgang zu Fuß. Zufall ist auf Client UND Server geseedet
 // (Math.random; Server mit BENCH_SEED), damit NPCs, Verkehr und Partikel jedes Mal gleich starten.
 //
 // Pro Abschnitt: Ø-FPS, 1 %-Low, Bildzeit-Verteilung, Draw-Calls, Dreiecke, Shader-Programme,
@@ -30,6 +31,8 @@ export interface BenchSection {
   /** Zieltempo des Autopiloten (m/s) */
   speed: number;
   drive: number;
+  /** Innenraum-Abschnitt: zu Fuß im Club/Casino (Dev-Befehl „/club voll“ bzw. „/casino voll“), statt Autopilot ein Rundgang. */
+  venue?: 'club' | 'casino';
 }
 
 export const BENCH_ROUTE: BenchSection[] = [
@@ -44,9 +47,15 @@ export const BENCH_ROUTE: BenchSection[] = [
   // Wolken, Fern-Silhouette) und Felder mit Mähdrescher-Kolonne (Instancing: Zäune, Zuckerrohr, Gemüse; Tiere)
   { id: 'peak', name: 'Okee Peak Gipfel · Sonnenuntergang', hour: 18.2, weather: 'klar', from: [872, 272], to: [952, 508], speed: 11, drive: 32 },
   { id: 'fields', name: 'Felder mit Mähdrescher-Kolonne', hour: 10, weather: 'klar', extra: ['/kolonne'], from: [960, 515], to: [880, 700], speed: 9, drive: 32 },
+  // Innenräume (shared/venues): Club zur Hauptzeit (40 tanzende NPCs + 8 Tänzer als Stellvertreter für Spieler,
+  // Lichtshow, Laser, Discokugel) und die volle Automatenhalle des Casinos (72 Automaten, ~50 NPCs, Jackpot-Tafel)
+  { id: 'club', name: 'Club „Pink Static“ zur Hauptzeit', hour: 23.5, weather: 'klar', venue: 'club', from: [0, 0], to: [0, 0], speed: 0, drive: 32 },
+  { id: 'casino', name: 'Casino „Palm Royale“ · Automatenhalle', hour: 21, weather: 'klar', venue: 'casino', from: [0, 0], to: [0, 0], speed: 0, drive: 32 },
 ];
 
 const SETTLE = 4;
+/** Innenraum-Abschnitte: Einschwingen nach dem (wiederholten) Einlass, bevor gemessen wird */
+const VENUE_SETTLE = 3;
 const ABLATIONS = ['outlines', 'shadows', 'bloom', 'water', 'characters', 'vegetation', 'labels'] as const;
 export type Ablation = typeof ABLATIONS[number] | 'none';
 
@@ -143,10 +152,16 @@ export class Bench {
       return;
     }
     if (this.phase === 'settle' || this.phase === 'ablate') { this.host.drive(0, 0, Btn.BRAKE); }
-    if (this.phase === 'settle' && this.t >= SETTLE) { this.phase = 'drive'; this.t = 0; this.heap0 = heapMB(); }
+    if (this.phase === 'settle' && this.t >= SETTLE) {
+      this.phase = 'drive'; this.t = 0; this.heap0 = heapMB();
+      // Innenraum: Einlass wiederholen (das Story-Intro kann den Spieler beim Überspringen nach draußen versetzt haben)
+      if (this.sec.venue) this.host.command(`/${this.sec.venue} voll`);
+    }
     if (this.phase === 'drive') {
-      this.autopilot(dt);
-      if (this.t >= this.sec.drive) {
+      // Innenraum: Rundgang zu Fuß (Achter-Schleife, die Kamera sieht Tanzfläche bzw. Automatenreihen)
+      if (this.sec.venue) this.host.drive(Math.sin(this.t * 0.55) * 0.8, Math.cos(this.t * 0.37) * 0.7, 0);
+      else this.autopilot(dt);
+      if (this.t >= this.sec.drive + (this.sec.venue ? VENUE_SETTLE : 0)) {
         this.host.drive(0, 0, Btn.BRAKE);
         if (this.ablate) { this.phase = 'ablate'; this.t = 0; this.abl = { idx: -1, t: 0, frames: [], out: {} }; }
         else this.finishSection();
@@ -159,6 +174,7 @@ export class Bench {
     const P = this.host.prof;
     const info = this.host.renderer.info;
     if (this.phase === 'settle') { this.settle.push(dtMs); }
+    if (this.phase === 'drive' && this.sec?.venue && this.t < VENUE_SETTLE) { this.host.prof.gpu.take(); this.draw(); return; }
     if (this.phase === 'drive') {
       const cc = this.host.calls;
       if (cc.on) {
@@ -190,11 +206,17 @@ export class Bench {
     this.samples = []; this.settle = []; this.gpuFrames = []; this.stuckT = 0;
     this.prog0 = this.host.renderer.info.programs?.length ?? 0;
     this.callFrames = 0; this.callSum = {}; this.triSum = {}; this.host.calls.on = false; this.host.calls.take(); this.host.calls.takeTris();
-    this.path = roadRoute(this.host.map, { x: s.from[0], z: s.from[1] }, { x: s.to[0], z: s.to[1] }) as [number, number][];
-    if (!this.path.length) this.path = [s.from, s.to];
-    const [x0, z0] = this.path[0];
-    // Befehle zeitversetzt (Chat-Spamschutz des Servers: 0,7 s)
-    this.host.command(`/ort ${Math.round(x0)} ${Math.round(z0)}`);
+    if (s.venue) {
+      // Innenraum: Auto stehen lassen, hinein (Dev: Einlass ohne Prüfung, Menge aufgefüllt)
+      this.path = [s.from, s.to];
+      this.host.command(`/${s.venue} voll`);
+    } else {
+      this.path = roadRoute(this.host.map, { x: s.from[0], z: s.from[1] }, { x: s.to[0], z: s.to[1] }) as [number, number][];
+      if (!this.path.length) this.path = [s.from, s.to];
+      const [x0, z0] = this.path[0];
+      // Befehle zeitversetzt (Chat-Spamschutz des Servers: 0,7 s)
+      this.host.command(`/ort ${Math.round(x0)} ${Math.round(z0)}`);
+    }
     const cmds = [`/zeit ${s.hour}`, `/wetter ${s.weather}`, ...(s.extra ?? [])];
     cmds.forEach((c, k) => this.later(0.75 * (k + 1), c));
   }

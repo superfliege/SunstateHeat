@@ -275,6 +275,8 @@ export class KenneyCharacter {
 
   /** Animations-ID (npc/scenarios Act) setzen; seed = fester Phasenversatz je NPC. */
   setAct(act: number, seed: number) { this.acts.setAct(act, seed); }
+  /** Tanzschritt-Akzent (Dance-Minispiel). */
+  pulse(strength = 1) { this.acts.pulse(strength); }
 
   /** Kopfdrehung (Blickkontakt): yaw relativ zum Körper, w = Gewicht. */
   setLook(yaw: number, w: number, anxious = false) { this.acts.setLook(yaw, w, anxious); }

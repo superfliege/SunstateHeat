@@ -10,6 +10,31 @@ import { join, resolve } from 'node:path';
 import { BALANCE } from '../../../shared/src/balance';
 import { freshStory, type StoryProgress } from '../../../shared/src/story';
 
+export interface VenueProfile {
+  /** Casino-Chips (Spielgeld, 1:1 gegen Bargeld an der Kasse, nicht übertragbar). */
+  chips: number;
+  /** Casino-Spiele für dieses Konto gesperrt (Einstellung). */
+  casinoOff: boolean;
+  /** Bilanz: gewonnen / verloren (Brutto je Runde), Anzahl Runden, Jackpots. */
+  won: number; lost: number; spins: number; hands: number; spinsRu: number; races: number; jackpots: number;
+  /** Gleitendes Stundenfenster: [Zeit (ms), Netto] je Runde. */
+  hour: [number, number][];
+  /** Gekaufte VIP-Karte (Club). */
+  vip: boolean;
+  /** Spieltag des letzten Ruf-Bonus fürs Tanzen (max. 1x pro Spieltag). */
+  danceDay: number;
+  /** Freigeschaltete Tanzstile (shared/content/dance DANCE_STYLES). */
+  styles: string[];
+  /** Bestwerte je „song:diff“. */
+  best: Record<string, number>;
+  /** Angezogenes Outfit (Gegenstand) oder null. */
+  outfit: string | null;
+  /** Leih-Sakko (Casino-Einlass) gültig bis (ms). */
+  jacket: number;
+  /** Beim Valet abgegebenes Fahrzeug. */
+  valet: { kind: number; variant: number; color: number } | null;
+}
+
 export interface PlayerProfile {
   /** Schlüssel im Speicher: "acc:<name>" (Konto) oder "guest:<id>" (Gast). */
   key: string;
@@ -30,6 +55,8 @@ export interface PlayerProfile {
   weapons: Record<string, number>;
   /** Hauptgeschichte: Intro, Rang, Entscheidungen, Wohnorte, Crew (shared/story). Fehlt bei alten Spielständen. */
   story?: StoryProgress;
+  /** Club & Casino: Chips, Statistik, Limits, Tanzstile, Bestwerte, Outfit, Valet (server/venues). Fehlt bei alten Spielständen. */
+  venue?: VenueProfile;
   /** Letzte Position (null = Standard-Spawn). */
   pos: { x: number; z: number } | null;
   playtimeSeconds: number;

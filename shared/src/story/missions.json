@@ -242,5 +242,25 @@
         "objectives": [{ "type": "defeat", "tag": "gus" }] }
     ],
     "rewards": { "money": 10000, "xp": 1500 }
+  },
+  {
+    "id": "story_side_jackpot_coup", "title": "Der Jackpot-Coup", "giver": { "type": "npc", "id": "carla" }, "minLevel": 1,
+    "coop": { "min": 1, "max": 2 }, "repeatable": false, "intro": [],
+    "stages": [
+      { "id": "enter", "description": "Rein ins Palm Royale. Benimm dich wie jemand mit zu viel Geld.",
+        "objectives": [{ "type": "venue", "venue": "casino", "goal": "enter" }] },
+      { "id": "sneak", "description": "Schleich in den High-Roller-Raum und fotografier Mister Sundays Bücher im Hinterzimmer (E halten). Die Wachen dürfen dich nicht sehen!",
+        "timeLimitSeconds": 300,
+        "onStart": [
+          { "do": "dialog", "kind": "call", "lines": [
+            { "who": "carla", "text": "Ich hab dir ein Personal-Armband besorgt – damit gehen die Türen zum High-Roller-Raum und zum Hinterzimmer auf." },
+            { "who": "carla", "text": "Zwei Wachen drehen dort Runden. Schau, wohin sie schauen. Und dann schau woanders hin." }
+          ] }
+        ],
+        "objectives": [{ "type": "venue", "venue": "casino", "goal": "sneak" }] },
+      { "id": "out", "description": "Raus mit den Beweisen – zur Gasse am Personalausgang.",
+        "objectives": [{ "type": "goTo", "at": "casinoBack", "radius": 8 }] }
+    ],
+    "rewards": { "money": 3000, "xp": 700 }
   }
 ]

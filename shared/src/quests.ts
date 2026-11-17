@@ -51,7 +51,16 @@ export type Objective =
    * Herde treiben: `count` Rinder erscheinen bei `from` und fliehen vor Fahrzeugen der Teilnehmer
    * (halten als Herde zusammen). Erfüllt, wenn 80 % im Radius um `at` stehen.
    */
-  | { type: 'herd'; tag: string; from: LocRef; at: LocRef; count: number; radius?: number; text?: string };
+  | { type: 'herd'; tag: string; from: LocRef; at: LocRef; count: number; radius?: number; text?: string }
+  /**
+   * Ziel in einem Innenraum (shared/venues), ausgewertet vom Innenraum-Server (server/venues):
+   *   enter     – Club/Casino betreten
+   *   battle    – Dance-Battle gegen den Quest-Rivalen gewinnen (Rivale steht auf der Tanzfläche, E zum Herausfordern)
+   *   observe   – Verdächtigen am Blackjack-Tisch `seconds` lang aus der Nähe beobachten, ohne aufzufallen
+   *   catch     – flüchtenden Verdächtigen draußen einholen (zu Fuß, 2,5 m)
+   *   sneak     – Schleich-Abschnitt im High-Roller-Raum: Beweise am Schreibtisch fotografieren (E halten), ohne von Wachen gesehen zu werden
+   */
+  | { type: 'venue'; venue: 'club' | 'casino'; goal: 'enter' | 'battle' | 'observe' | 'catch' | 'sneak'; seconds?: number; text?: string };
 
 export interface QuestStage {
   id: string;

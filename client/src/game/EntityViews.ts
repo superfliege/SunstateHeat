@@ -35,7 +35,7 @@ import { rankOf } from '../../../shared/src/story';
 import type { KenneyRole } from '../render/kenneyCharacters';
 
 /** rank: Story-Rang (Kleidung/Look und Symbol am Namensschild, siehe shared/story/ranks.json). */
-export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number; rank?: number; /** Fallschirm offen (#41) */ chute?: boolean }
+export interface PlayerState { id: number; name: string; x: number; z: number; a: number; veh: number; color: number; carrying: boolean; h: number; ragdoll: boolean; weapon: number; rank?: number; /** Fallschirm offen (#41) */ chute?: boolean; /** Tanzen/Emote (Act-ID) */ act?: number }
 export interface VehicleViewState {
   id: number; kind: number; variant: number; color: number; driver: number;
   x: number; y: number; z: number; q: THREE.Quaternion;
@@ -285,7 +285,13 @@ export class EntityViews {
     return g;
   }
 
-  private groundY(x: number, z: number) { return this.map.surfaceY(x, z); }
+  /** Innenraum: Bodenhöhe (Empore, Podest) statt Kartenhöhe – null = normale Karte. */
+  groundOverride: ((x: number, z: number) => number | null) | null = null;
+  private groundY(x: number, z: number) { return this.groundOverride?.(x, z) ?? this.map.surfaceY(x, z); }
+  /** Tanzschritt-Akzent einer Spielerfigur (Dance Floor Heat). */
+  pulsePlayer(id: number, strength: number) { (this.players.get(id)?.model as { pulse?: (s: number) => void } | undefined)?.pulse?.(strength); }
+  /** Position (Kopf) einer Spielerfigur für Sprechblasen. */
+  playerAnchor(id: number): THREE.Vector3 | null { return this.players.get(id)?.anchor ?? null; }
 
   private addShadow(x: number, y: number, z: number, r: number, a = 0, sz = 1) {
     if (this.shadowCount >= MAX_SHADOWS) return;
@@ -797,7 +803,7 @@ export class EntityViews {
       if (old.held) this.group.remove(old.held);
       this.players.delete(s.id);
     }
-    const c = this.updateChar(this.players, s.id, s.color, s.x, s.z, s.a, dt, seatedOn, s.h, s.ragdoll, s.weapon, 0, -1, 0, -1, rank);
+    const c = this.updateChar(this.players, s.id, s.color, s.x, s.z, s.a, dt, seatedOn, s.h, s.ragdoll, s.act ? -1 : s.weapon, 0, -1, s.act ?? 0, -1, rank);
     if (!isMe && !c.label) {
       c.label = makeLabel(rank > 0 ? `${rankOf(rank).icon} ${s.name}` : s.name, OUTFIT_COLORS[s.color % OUTFIT_COLORS.length]);
       this.group.add(c.label);

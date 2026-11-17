@@ -6,6 +6,7 @@ import type { StuntTracker } from '../../../shared/src/sim/stunts';
 import type { SimVehicle } from '../../../shared/src/sim/vehicle';
 import type { VehicleSpawn } from '../../../shared/src/world/WorldMap';
 import type { PlayerProfile } from '../services/PlayerStore';
+import type { InteriorFrame, InteriorId } from '../../../shared/src/venues/interiors';
 
 /** Abstrakte Verbindung – entkoppelt die Spiellogik vom Transport (ws, später evtl. Colyseus). */
 export interface Connection {
@@ -77,6 +78,19 @@ export interface ServerPlayer {
   reports: { t: number; heat: number; /** Mindeststufe */ min: number; /** Zeuge (Ped-ID) */ by?: number }[];
   /** Stufe zuletzt gemeldet (für Aufstiegs-Hinweis). */
   level: number;
+  /** Im Innenraum (Club/Casino): Gebäude, Gate-Maske, besetzter Platz (server/venues). */
+  interior?: PlayerInterior | null;
+  /** Animation (Tanzen/Emote, Act-ID) und Restzeit; 0 = keine. */
+  act?: number;
+  actT?: number;
+}
+
+export interface PlayerInterior {
+  id: InteriorId;
+  f: InteriorFrame;
+  mask: number;
+  /** Besetzter Platz (Spot-ID: Automat, Tisch-Sitz, Kachel) */
+  seat: string | null;
 }
 
 export const DRIVER_NONE = -1;

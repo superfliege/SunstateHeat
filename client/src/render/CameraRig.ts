@@ -57,6 +57,9 @@ export class CameraRig {
   get zoom() { return FOOT_DISTANCE / this.distance; }
 
   /** Stoß: Stärke 0..1 (Aufprall) */
+  /** Zusätzlicher Zoom-Faktor (Innenräume: näher dran, < 1). */
+  extraZoom = 1;
+
   kick(strength: number) {
     if (!this.shakeEnabled) return;
     this.shake = Math.min(1, Math.max(this.shake, strength));
@@ -81,7 +84,7 @@ export class CameraRig {
     const fx = Math.sin(a), fz = Math.cos(a);
     const tx = x + this.look.x + fx * this.pull, tz = z + this.look.z + fz * this.pull;
     const altZoom = Math.min(CAMERA.maxAltitudeZoom, this.altitude * CAMERA.zoomPerAltitude);
-    const wantDist = (inVehicle ? VEHICLE_DISTANCE + Math.min(speed, CAMERA.maxSpeedZoom) * CAMERA.zoomPerSpeed + altZoom : FOOT_DISTANCE) * CAMERA.zoomMul;
+    const wantDist = (inVehicle ? VEHICLE_DISTANCE + Math.min(speed, CAMERA.maxSpeedZoom) * CAMERA.zoomPerSpeed + altZoom : FOOT_DISTANCE) * CAMERA.zoomMul * this.extraZoom;
 
     if (!this.initialized) {
       this.focus.set(tx, y, tz);

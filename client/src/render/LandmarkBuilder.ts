@@ -155,4 +155,64 @@ export function buildLandmark(ctx: LandmarkCtx, b: BuildingDef, base: number) {
     place(textSign('BUBBLE BATH', 9, 1.3, '#ff5fa2', '#ffffff'), -hw * 0.45, top - 1.0, hd + 0.25);
     place(textSign('GARAGE', 5, 0.9, '#2a2430', '#ffd23a'), hw * 0.42, base + 5.1, hd + 0.25);
   }
+
+  if (b.tag === 'club') {
+    // Club „Pink Static“ (Neon Syndicate): dunkler Art-déco-Block, Stufenkrone, senkrechte Neonrippen,
+    // große pinke Leuchtschrift, Vordach mit Glühbirnen, Samtkordel (Figuren/Schlange: render/venues)
+    ctx.facade(b.x, b.z, b.w, b.d, b.rot, y0, top - y0, 'facade_office', new THREE.Color(0x2a1838), 'roof_gravel');
+    const g = ctx.solid;
+    g.use('flat');
+    // Stufenkrone (Art déco)
+    box(g, 0, top, 0, b.w * 0.7, 1.4, b.d * 0.6, 0x3a2050);
+    box(g, 0, top + 1.4, 0, b.w * 0.42, 1.2, b.d * 0.4, 0x4a2a62);
+    box(g, 0, top + 2.6, 0, b.w * 0.18, 2.4, b.d * 0.2, 0x5a3274);
+    // Senkrechte Rippen + Neonkanten
+    for (const lx of [-hw + 1.2, -hw * 0.5, hw * 0.5, hw - 1.2]) {
+      box(g, lx, base, hd + 0.2, 0.9, b.h - 0.4, 0.4, 0x3a2050);
+      box(ctx.neon, lx, base + 4.6, hd + 0.42, 0.14, b.h - 5.2, 0.08, 0xff3fa4);
+    }
+    box(ctx.neon, 0, top - 0.25, hd + 0.3, b.w + 0.2, 0.2, 0.12, 0x3af2ff);
+    box(ctx.neon, 0, top + 1.32, 0, b.w * 0.72, 0.12, b.d * 0.62, 0xff3fa4);
+    // Eingang: schwarze Doppeltür, Vordach mit Glühbirnen
+    box(g, 0, base, hd + 0.08, 3.4, 3.0, 0.2, 0x0e0a14);
+    box(g, 0, base + 3.3, hd + 1.6, 7.5, 0.35, 3.2, 0x1a1024);
+    for (let i = 0; i < 12; i++) box(ctx.neon, -3.4 + i * 0.62, base + 3.22, hd + 3.15, 0.14, 0.14, 0.14, 0xffe7a0);
+    // Roter Teppich
+    const g2 = ctx.flat;
+    g2.use('paint_white');
+    box(g2, 0, base + 0.03, hd + 2.4, 2.4, 0.02, 4.8, 0xb0102a);
+    place(textSign('PINK STATIC', 14, 2.6, '#1a0b22', '#ff3fa4', '900'), 0, top - 3.2, hd + 0.5);
+    place(textSign('NIGHTCLUB · 22–5 UHR', 6, 0.7, '#1a0b22', '#3af2ff'), 0, base + 4.2, hd + 3.25);
+    return;
+  }
+
+  if (b.tag === 'casino') {
+    // Casino „Palm Royale“ (Hotel-Casino, offiziell eine Firma, inoffiziell der Marlin Club): heller
+    // Art-déco-Bau, goldene Kuppel, Säulenportikus, Leuchtband, Palmen-Ornamente
+    ctx.facade(b.x, b.z, b.w, b.d, b.rot, y0, top - y0, 'facade_office', new THREE.Color(0xf6ead2), 'roof_gravel');
+    const g = ctx.solid;
+    g.use('flat');
+    box(g, 0, top, 0, b.w * 0.5, 2.0, b.d * 0.5, 0xf0dfbe);
+    // Goldene Kuppel (Halbkugel aus Ringen)
+    for (let k = 0; k < 6; k++) {
+      const r = (b.d * 0.24) * Math.cos((k / 6) * Math.PI / 2), y = top + 2 + (b.d * 0.24) * Math.sin((k / 6) * Math.PI / 2);
+      const [x, z] = L(0, 0);
+      g.cylinder(x, y, z, r, b.d * 0.24 / 6 + 0.05, 16, k % 2 ? 0xe8b83a : 0xf2c84a);
+    }
+    { const [x, z] = L(0, 0); g.cylinder(x, top + 2 + b.d * 0.24, z, 0.25, 3, 6, 0xf2c84a); }
+    // Portikus: Säulen, Gesims, Treppe
+    for (let i = 0; i < 6; i++) { const [x, z] = L(-7.5 + i * 3, hd + 3.4); g.cylinder(x, base, z, 0.45, 6.5, 10, 0xfff4dc); }
+    box(g, 0, base + 6.5, hd + 2.6, 18, 0.9, 5.2, 0xf6ead2);
+    box(g, 0, base + 7.4, hd + 2.6, 18.6, 0.3, 5.6, 0xe8b83a);
+    g.use('concrete');
+    box(g, 0, base, hd + 2.8, 16, 0.22, 5.6, 0xe8e0d0);
+    g.use('flat');
+    box(g, 0, base, hd + 0.08, 6, 3.6, 0.2, 0x3a1a10); // Drehtür (dunkel)
+    // Goldene Bänder + Leuchtband
+    box(g, 0, top - 1.0, hd + 0.12, b.w + 0.2, 0.5, 0.3, 0xe8b83a);
+    box(ctx.neon, 0, base + 7.75, hd + 5.42, 18.6, 0.16, 0.1, 0xffd23a);
+    for (const lx of [-hw + 2, hw - 2]) box(ctx.neon, lx, base + 1, hd + 0.3, 0.2, b.h - 2, 0.1, 0xffd23a);
+    place(textSign('PALM ROYALE', 16, 2.4, '#7a1f2e', '#ffd23a', '900', '🌴'), 0, top - 2.6, hd + 0.35);
+    place(textSign('CASINO · HOTEL · 24 STUNDEN', 9, 0.8, '#f6ead2', '#7a1f2e'), 0, base + 8.3, hd + 5.45);
+  }
 }

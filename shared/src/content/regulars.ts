@@ -19,6 +19,12 @@ export const REGULARS: RegularStub[] = [
   { id: 'ok_ranger', name: 'Ranger Marge Tolliver', district: 'okeefield', role: 'Rangerin am Okee Peak, zählt Hirsche und verwarnt Wanderer' },
   { id: 'ok_summit_cafe', name: 'Summit Sal', district: 'okeefield', role: 'Wirt des Gipfelcafés, hat das Missionstelefon direkt neben der Kuchentheke' },
   { id: 'ok_quarry', name: '„Boomer“ Briggs', district: 'okeefield', role: 'Sprengmeister im Steinbruch, liebt seine Sirene' },
+  // Club „Pink Static“ & Casino „Palm Royale“ (shared/venues)
+  { id: 'os_big_teo', name: 'Big Teo', district: 'ocean_strip', role: 'Türsteher am Pink Static, Herz aus Gold, Blick aus Beton („Nicht mit den Schuhen.“)' },
+  { id: 'os_vee', name: 'Vee', district: 'ocean_strip', role: 'Barkeeperin im Pink Static, kennt jedes Gerücht, bevor es passiert' },
+  { id: 'os_dj_lux', name: 'DJ Lux', district: 'ocean_strip', role: 'Resident-DJ im Pink Static, verschwindet gern „nur kurz“' },
+  { id: 'os_margot', name: 'Margot', district: 'ocean_strip', role: 'Croupière im Palm Royale, seit 30 Jahren unbeeindruckt („Die Bank dankt.“)' },
+  { id: 'os_valet_rico', name: 'Rico', district: 'ocean_strip', role: 'Valet am Palm Royale, parkt schneller, als du „Vorsicht“ sagen kannst' },
   { id: 'ok_peak_hiker', name: 'Reginald Summit-Smythe', district: 'okeefield', role: 'Übermotivierter Gipfelstürmer „ohne Hilfsmittel“' },
 ];
 export const REGULAR_IDS: ReadonlySet<string> = new Set(REGULARS.map((r) => r.id));

@@ -26,7 +26,17 @@ export const ITEMS: Record<string, ItemDef> = {
   jewelry: { id: 'jewelry', name: 'Gestohlener Schmuck', kind: 'trade', stack: 10, price: 0 },
   parts: { id: 'parts', name: 'Ersatzteile', kind: 'trade', stack: 10, price: 0 },
   crate: { id: 'crate', name: 'Kiste mit unbekanntem Inhalt', kind: 'illegal', stack: 5, price: 0 },
+  // Club & Casino (shared/venues). Kosmetik: „Benutzen“ zieht das Outfit an bzw. aus (Einlass Club/Casino).
+  free_drink: { id: 'free_drink', name: 'Freigetränk „Pink Static“', kind: 'consumable', stack: 3, price: 0, heal: 30, stamina: 50 },
+  lucky_salt: { id: 'lucky_salt', name: 'Badesalz-Glücksbringer (wirkt nur dienstags)', kind: 'cosmetic', stack: 1, price: 0 },
+  outfit_evening: { id: 'outfit_evening', name: 'Abendgarderobe „Palm Royale“', kind: 'cosmetic', stack: 1, price: 1500 },
+  outfit_disco: { id: 'outfit_disco', name: 'Glitzer-Outfit „Dance Floor Heat“', kind: 'cosmetic', stack: 1, price: 0 },
+  usb_stick: { id: 'usb_stick', name: 'Gestohlener USB-Stick (Neon Syndicate)', kind: 'quest', stack: 1, price: 0 },
+  evidence: { id: 'evidence', name: 'Beweisfotos (Hinterzimmer Palm Royale)', kind: 'quest', stack: 3, price: 0 },
 };
+
+/** Kosmetik-Gegenstände, die als Outfit angezogen werden können (Einlassprüfung Club/Casino). */
+export const OUTFIT_ITEMS = new Set(['outfit_evening', 'outfit_disco']);
 
 export const BACKPACK_SLOTS = 8;
 export const BACKPACK_SLOTS_MAX = 16;
