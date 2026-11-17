@@ -75,7 +75,7 @@ const CLUB: InteriorDef = (() => {
     { id: 'backdoor', kind: 'backdoor', x: -16, z: -9.9, a: Math.PI / 2, r: 1.4, label: 'Hinterausgang zur Gasse' },
     { id: 'bar', kind: 'bar', x: -11.4, z: 0, a: -Math.PI / 2, r: 2.2, label: 'Mit Vee reden (Bar)' },
     { id: 'dj', kind: 'dj', x: 0, z: -8.2, a: Math.PI, r: 1.6, label: 'DJ-Pult' },
-    { id: 'vipdesk', kind: 'vipdesk', x: 8.2, z: 0.6, a: 0, r: 1.6, label: 'VIP-Karte (5.000 $)' },
+    { id: 'vipdesk', kind: 'vipdesk', x: 8.2, z: 1.9, a: Math.PI, r: 1.4, label: 'VIP-Karte (5.000 $)' },
     { id: 'lounge', kind: 'lounge', x: 12.6, z: 5, a: Math.PI, r: 2, label: 'Lounge' },
   ];
   for (let n = 0; n < DANCE_COLS * DANCE_ROWS; n++) {
@@ -153,7 +153,7 @@ const CASINO: InteriorDef = (() => {
     { id: 'piano', kind: 'piano', x: -14.5, z: -10.5, a: 0, r: 2.4, label: 'Bar & Lounge-Pianist' },
     { id: 'buffet', kind: 'buffet', x: -2, z: -14.4, a: Math.PI, r: 2.4, label: 'Buffet (25 $)' },
     { id: 'ledger', kind: 'ledger', x: 22.2, z: -15.2, a: Math.PI / 2, r: 1.4, label: 'Schreibtisch im Hinterzimmer' },
-    { id: 'boutique', kind: 'boutique', x: 13.5, z: 14.8, a: Math.PI / 2, r: 1.8, label: 'Boutique' },
+    { id: 'boutique', kind: 'boutique', x: 11.4, z: 15.2, a: Math.PI / 2, r: 1.6, label: 'Boutique' },
   ];
   for (const m of SLOT_MACHINES) spots.push({ id: `slot${m.n}`, kind: 'slot', x: m.x, z: m.z + (m.a === 0 ? 0.95 : -0.95), a: m.a + Math.PI, r: 0.75, label: m.v === 'classic' ? 'Lucky Flamingo Classic' : 'Lucky Flamingo Gold Rush', n: m.n, v: m.v });
   for (const t of CASINO_TABLES) for (let i = 0; i < t.seats; i++) {

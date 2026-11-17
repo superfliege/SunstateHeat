@@ -97,6 +97,7 @@ export class Venues {
         hasVip: (p) => vprof(p).vip,
         rumor: (text, p) => this.rumor(text, p),
         heal: (p) => { p.health = BALANCE.player.maxHealth; },
+        holding: (key) => (key === 'dj_missing' ? !!this.dance.dj : key === 'gang_dance_battle' ? this.dance.hasSide() : false),
       });
       this.v.set(id, st);
     }
@@ -863,7 +864,7 @@ export class Venues {
         if (!f) return true;
         if (args[0] === 'offen') { this.forceOpen = !this.forceOpen; this.h.notice(p, `Club ${this.forceOpen ? 'immer offen' : 'mit Öffnungszeiten'}.`, 'info'); return true; }
         if (p.interior) this.exit(p, 'none');
-        p.pawn = newPawn(f.door.x + Math.sin(f.door.a) * 2.5, f.door.z + Math.cos(f.door.a) * 2.5, f.door.a + Math.PI);
+        this.h.placeOnFoot(p, f.door.x + Math.sin(f.door.a) * 2.5, f.door.z + Math.cos(f.door.a) * 2.5, f.door.a + Math.PI);
         if (args[0] === 'rein' || args[0] === 'voll') {
           this.enter(p, id, false, true);
           if (args[0] === 'voll') this.fill(id);
@@ -895,6 +896,7 @@ export class Venues {
   /** Dev/Benchmark: Club zur Hauptzeit (40 Tänzer + 8 „Spieler“-Tänzer) bzw. volle Automatenhalle. */
   private fill(id: InteriorId) {
     const st = this.v.get(id)!;
+    if ([...st.crowd.npcs.values()].some((n) => n.tag === 'bench')) return; // schon aufgefüllt
     if (id === 'club') {
       for (let i = 0; i < 8; i++) { const s = st.crowd.danceSpot(); st.crowd.add(VNpcKind.DANCER, 'bench', s.x, s.z, 0, Act.Dance4, 30 + i); }
     } else {

@@ -37,6 +37,8 @@ const last = <T extends ServerMsg['t']>(msgs: ServerMsg[], t: T) => [...msgs].re
 const V = (p: ServerPlayer, v: object) => room.handleMessage(p, { t: 'venue', v } as never);
 const chat = (p: ServerPlayer, t: string) => { p.lastChatAt = 0; room.handleMessage(p, { t: 'chat', text: t }); };
 const club = interiorFrame(map, 'club')!, casino = interiorFrame(map, 'casino')!;
+// Zufällige Ereignisse aus (der Test startet sie gezielt mit /event)
+for (const st of (room.venues as unknown as { v: Map<string, { director: { nextT: number } }> }).v.values()) st.director.nextT = 1e9;
 const atDoor = (p: ServerPlayer, f: typeof club) => { p.pawn = newPawn(f.door.x + Math.sin(f.door.a) * 2, f.door.z + Math.cos(f.door.a) * 2, 0); };
 const goLocal = (p: ServerPlayer, f: typeof club, x: number, z: number) => { const w = toWorld(f, x, z); p.pawn.x = w.x; p.pawn.z = w.z; };
 

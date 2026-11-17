@@ -23,7 +23,7 @@ export const VENUE_EVENTS: StreetEventDef[] = [
       phase('back', [6, 8], { actions: [act('dj', 'DJ', 'goto', 'deck')], physics: [{ kind: 'music_start' }], lines: [say('dj', 'Was hab ich verpasst? …Warum guckt ihr so?')] }),
     ],
     interventions: [
-      { id: 'take_over', label: 'Ans DJ-Pult und einen Song lang im Takt Effekte auslösen', detect: { kind: 'venue_game', game: 'dj' }, phases: ['silence'], outcome: 'saved_party' },
+      { id: 'take_over', label: 'Ans DJ-Pult und einen Song lang im Takt Effekte auslösen', detect: { kind: 'venue_game', game: 'dj' }, phases: ['silence', 'back'], outcome: 'saved_party' },
     ],
     outcomes: {
       saved_party: {

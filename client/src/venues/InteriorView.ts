@@ -24,7 +24,7 @@ function coneMaterial(color: THREE.Color) {
     uniforms: { uColor: { value: color }, uAlpha: { value: 0.32 } },
     vertexShader: 'varying float vY; void main(){ vY = uv.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: 'uniform vec3 uColor; uniform float uAlpha; varying float vY; void main(){ gl_FragColor = vec4(uColor * uAlpha * pow(vY, 1.6), 1.0); }',
-    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.FrontSide, toneMapped: false,
   });
 }
 
@@ -34,7 +34,8 @@ export class InteriorView {
   private t = 0;
   // Club
   private tiles: THREE.InstancedMesh | null = null;
-  private tileU = { uBeat: { value: 0 }, uTime: { value: 0 }, uOn: { value: 1 }, uMine: { value: new Float32Array(30) }, uSpot: { value: new THREE.Vector3(0, 0, -1) } };
+  private tileU = { uBeat: { value: 0 }, uTime: { value: 0 }, uOn: { value: 1 }, uSpot: { value: new THREE.Vector3(0, 0, -1) } };
+  private tileMine: THREE.InstancedBufferAttribute | null = null;
   private cones: THREE.Mesh[] = [];
   private lasers: THREE.LineSegments | null = null;
   private ball: THREE.Mesh | null = null;
@@ -142,19 +143,21 @@ export class InteriorView {
     const idx = new Float32Array(DANCE_COLS * DANCE_ROWS);
     for (let i = 0; i < idx.length; i++) idx[i] = i;
     tileGeo.setAttribute('tileIdx', new THREE.InstancedBufferAttribute(idx, 1));
+    this.tileMine = new THREE.InstancedBufferAttribute(new Float32Array(idx.length), 1);
+    this.tileMine.setUsage(THREE.DynamicDrawUsage);
+    tileGeo.setAttribute('tileMine', this.tileMine);
     const tileMat = new THREE.ShaderMaterial({
       uniforms: this.tileU,
-      vertexShader: `attribute float tileIdx; varying float vI; varying vec3 vW; void main(){ vI = tileIdx; vec4 w = modelMatrix * instanceMatrix * vec4(position,1.0); vW = (instanceMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
-      fragmentShader: `uniform float uBeat, uTime, uOn; uniform float uMine[30]; uniform vec3 uSpot; varying float vI; varying vec3 vW;
+      vertexShader: `attribute float tileIdx; attribute float tileMine; varying float vI; varying float vMine; varying vec3 vW; void main(){ vI = tileIdx; vMine = tileMine; vec4 w = modelMatrix * instanceMatrix * vec4(position,1.0); vW = (instanceMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: `uniform float uBeat, uTime, uOn; uniform vec3 uSpot; varying float vI; varying float vMine; varying vec3 vW;
         vec3 pal(float k){ k = mod(k, 4.0); return k < 1.0 ? vec3(1.0,0.2,0.65) : k < 2.0 ? vec3(0.2,0.9,1.0) : k < 3.0 ? vec3(1.0,0.85,0.2) : vec3(0.6,0.3,1.0); }
         void main(){
-          int i = int(vI + 0.5);
           float c = mod(vI, ${DANCE_COLS}.0), r = floor(vI / ${DANCE_COLS}.0);
           float b = floor(uBeat);
           float pulse = exp(-fract(uBeat) * 3.5);
           float wave = step(0.5, fract((c + r + b) * 0.5));
           vec3 col = pal(c + r * 2.0 + b) * (0.35 + 0.65 * pulse * (0.5 + 0.5 * wave)) * uOn;
-          float mine = uMine[i];
+          float mine = vMine;
           col = mix(col, vec3(1.0, 0.95, 0.8) * (1.2 + 0.6 * pulse), mine * 0.55);
           float sp = uSpot.z > 0.0 ? smoothstep(2.6, 1.2, length(vW.xz - uSpot.xy)) : 0.0;
           col += vec3(1.0, 0.95, 0.7) * sp * 0.8;
@@ -220,7 +223,7 @@ export class InteriorView {
     // Lichtkegel (Fake-Volumen) an der Truss
     const cols = [0xff3fa4, 0x3af2ff, 0xffd23a, 0x9a5aff].map((c) => new THREE.Color(c));
     for (let i = 0; i < 4; i++) {
-      const g = new THREE.ConeGeometry(2.0, 6.0, 16, 1, true);
+      const g = new THREE.ConeGeometry(1.6, 5.6, 12, 1, true);
       g.translate(0, -3, 0);
       const cone = new THREE.Mesh(g, coneMaterial(cols[i]));
       cone.position.set(-6 + i * 4, 6.1, i % 2 ? 4.4 : -6.4);
@@ -418,7 +421,17 @@ export class InteriorView {
   /** Spotlight folgt dem Spieler (lokal). */
   moveSpot(x: number, z: number) { if (this.spot && this.t < this.spotUntil) { this.spot.position.x = x; this.spot.position.z = z; this.tileU.uSpot.value.set(x, z, 1); } }
   /** Eigene Tanzkachel(n) hervorheben. */
-  setMyTiles(tiles: number[]) { const a = this.tileU.uMine.value; a.fill(0); for (const t of tiles) if (t >= 0 && t < a.length) a[t] = 1; }
+  setMyTiles(tiles: number[]) {
+    const m = this.tileMine;
+    if (!m) return;
+    const key = tiles.join(',');
+    if (key === this.mineKey) return;
+    this.mineKey = key;
+    (m.array as Float32Array).fill(0);
+    for (const t of tiles) if (t >= 0 && t < m.count) m.setX(t, 1);
+    m.needsUpdate = true;
+  }
+  private mineKey = '';
 
   /** Pro Bild: beat = Beat-Position der Musik (−1 ohne Musik), cam = Kameraposition (Welt). */
   update(dt: number, beat: number, cam: THREE.Vector3) {

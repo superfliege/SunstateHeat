@@ -50,6 +50,8 @@ export interface DirectorCtx {
   hasVip(p: ServerPlayer): boolean;
   rumor(text: string, p: ServerPlayer | null): void;
   heal(p: ServerPlayer): void;
+  /** Läuft gerade ein Minispiel, das zu diesem Ereignis gehört (DJ-Pult, Gang-Battle)? Dann wartet die Phase. */
+  holding(key: string): boolean;
 }
 
 export class Director {
@@ -195,6 +197,7 @@ export class Director {
       if (who) { this.apply(run.def.outcomes[iv.outcome], who, iv.outcome); run.outcome = iv.outcome; run.t = Math.min(run.t, 3); break; }
     }
     this.signals.length = 0;
+    if (!run.outcome && this.c.holding(run.def.key)) return; // Minispiel läuft: Phase wartet
     run.t -= dt;
     if (run.t <= 0) {
       if (run.outcome && run.def.key !== 'fire_alarm') { this.end(run.outcome); return; }

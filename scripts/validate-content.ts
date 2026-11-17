@@ -3,6 +3,10 @@
 import { GANG_IDS } from '../shared/src/gangs';
 import { ARCHETYPES } from '../shared/src/npc/archetypes';
 import { STREET_EVENTS, validateAllEvents } from '../shared/src/content/events';
+import { BEATMAPS, SONGS, songBeats, validateBeatmap } from '../shared/src/content/dance';
+import { slotRtp } from '../shared/src/content/casino/slots';
+import { INTERIORS, localFree } from '../shared/src/venues/interiors';
+import { BALANCE } from '../shared/src/balance';
 import { GANG_PROFILES, gangRelation } from '../shared/src/factions';
 import { DISTRICT_DNA, DISTRICT_IDS } from '../shared/src/world/districts';
 import { DISTRICTS } from '../shared/src/world/palmara';
@@ -66,6 +70,28 @@ for (const g of GANG_IDS) {
 // Ereignisse
 errs.push(...validateAllEvents());
 for (let i = 1; i <= 45; i++) { const id = `E${String(i).padStart(2, '0')}`; if (!STREET_EVENTS.some((e) => e.id === id)) errs.push(`Ereignis ${id} fehlt`); }
+
+// Club & Casino (shared/venues): Innenraum-Ereignisse, Beatmaps, Automaten-RTP, Innenraum-Plätze
+for (let i = 57; i <= 64; i++) { const e = STREET_EVENTS.find((x) => x.id === `E${i}`); if (!e) errs.push(`Ereignis E${i} fehlt`); else if (!e.venue) errs.push(`E${i}: venue fehlt`); }
+for (const song of SONGS) {
+  const bm = BEATMAPS[song.id];
+  if (!bm) { errs.push(`Beatmap ${song.id}.json fehlt`); continue; }
+  if (bm.bpm !== song.bpm) errs.push(`Beatmap ${song.id}: BPM ${bm.bpm} ≠ Song ${song.bpm}`);
+  errs.push(...validateBeatmap(bm, songBeats(song)));
+}
+for (const v of ['classic', 'goldrush'] as const) {
+  const r = slotRtp(v).rtp + BALANCE.casino.jackpotShare;
+  if (r < 0.92 || r > 0.95) errs.push(`Automat ${v}: Auszahlungsquote ${(r * 100).toFixed(1)} % außerhalb 92–95 %`);
+}
+for (const def of Object.values(INTERIORS)) {
+  const ids = new Set<string>();
+  for (const sp of def.spots) {
+    if (ids.has(sp.id)) errs.push(`${def.name}: Platz ${sp.id} doppelt`);
+    ids.add(sp.id);
+    if (Math.abs(sp.x) > def.hw || Math.abs(sp.z) > def.hd) errs.push(`${def.name}: Platz ${sp.id} außerhalb des Raums`);
+    if (sp.kind !== 'tile' && !localFree(def, sp.x, sp.z, 0.3)) errs.push(`${def.name}: Platz ${sp.id} liegt in einem Hindernis`);
+  }
+}
 
 const lines = STREET_EVENTS.reduce((n, e) => n + e.phases.reduce((m, p) => m + (p.lines?.length ?? 0), 0) + Object.values(e.outcomes).reduce((m, o) => m + (o.lines?.length ?? 0), 0), 0);
 if (errs.length) {

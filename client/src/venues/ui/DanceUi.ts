@@ -378,7 +378,7 @@ export class DanceUi {
     if (e.code === 'Escape') { this.ui.close(); return true; }
     if (lane === undefined) return false;
     if (this.phase === 'setup' || this.phase === 'result') {
-      if (e.code === 'Space' && e.type === 'keydown') this.onClick(this.phase === 'setup' ? Object.assign(document.createElement('b'), { dataset: { dance: 'go' } }) : Object.assign(document.createElement('b'), { dataset: { dance: 'again' } }));
+      if (e.code === 'Space' && e.type === 'keydown') { const el = document.createElement('b'); el.dataset.dance = this.phase === 'setup' ? 'go' : 'again'; this.onClick(el); }
       return true;
     }
     if (e.type === 'keydown' && !e.repeat) this.press(lane);

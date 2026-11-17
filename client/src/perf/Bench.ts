@@ -1,8 +1,9 @@
 // Reproduzierbare Benchmark-Route (`?bench=1`, nur mit Dev-Server – nutzt Dev-Chatbefehle).
 //
-// Sieben Abschnitte à ~36 s (zusammen ~4 min): Teleport an den Start, Tageszeit/Wetter/Ereignis per
+// Neun Abschnitte à ~36 s (zusammen ~5,5 min): Teleport an den Start, Tageszeit/Wetter/Ereignis per
 // Dev-Befehl setzen, 4 s Einschwingen (Streaming/Spawns – Hänger werden extra gezählt), dann fährt
-// ein Autopilot im Sportwagen die Straßenroute ab. Zufall ist auf Client UND Server geseedet
+// ein Autopilot im Sportwagen die Straßenroute ab. Die beiden letzten Abschnitte spielen in den
+// Innenräumen (Club zur Hauptzeit, Casino-Automatenhalle): Einlass per Dev-Befehl, Rundgang zu Fuß. Zufall ist auf Client UND Server geseedet
 // (Math.random; Server mit BENCH_SEED), damit NPCs, Verkehr und Partikel jedes Mal gleich starten.
 //
 // Pro Abschnitt: Ø-FPS, 1 %-Low, Bildzeit-Verteilung, Draw-Calls, Dreiecke, Shader-Programme,
@@ -53,6 +54,8 @@ export const BENCH_ROUTE: BenchSection[] = [
 ];
 
 const SETTLE = 4;
+/** Innenraum-Abschnitte: Einschwingen nach dem (wiederholten) Einlass, bevor gemessen wird */
+const VENUE_SETTLE = 3;
 const ABLATIONS = ['outlines', 'shadows', 'bloom', 'water', 'characters', 'vegetation', 'labels'] as const;
 export type Ablation = typeof ABLATIONS[number] | 'none';
 
@@ -149,12 +152,16 @@ export class Bench {
       return;
     }
     if (this.phase === 'settle' || this.phase === 'ablate') { this.host.drive(0, 0, Btn.BRAKE); }
-    if (this.phase === 'settle' && this.t >= SETTLE) { this.phase = 'drive'; this.t = 0; this.heap0 = heapMB(); }
+    if (this.phase === 'settle' && this.t >= SETTLE) {
+      this.phase = 'drive'; this.t = 0; this.heap0 = heapMB();
+      // Innenraum: Einlass wiederholen (das Story-Intro kann den Spieler beim Überspringen nach draußen versetzt haben)
+      if (this.sec.venue) this.host.command(`/${this.sec.venue} voll`);
+    }
     if (this.phase === 'drive') {
       // Innenraum: Rundgang zu Fuß (Achter-Schleife, die Kamera sieht Tanzfläche bzw. Automatenreihen)
       if (this.sec.venue) this.host.drive(Math.sin(this.t * 0.55) * 0.8, Math.cos(this.t * 0.37) * 0.7, 0);
       else this.autopilot(dt);
-      if (this.t >= this.sec.drive) {
+      if (this.t >= this.sec.drive + (this.sec.venue ? VENUE_SETTLE : 0)) {
         this.host.drive(0, 0, Btn.BRAKE);
         if (this.ablate) { this.phase = 'ablate'; this.t = 0; this.abl = { idx: -1, t: 0, frames: [], out: {} }; }
         else this.finishSection();
@@ -167,6 +174,7 @@ export class Bench {
     const P = this.host.prof;
     const info = this.host.renderer.info;
     if (this.phase === 'settle') { this.settle.push(dtMs); }
+    if (this.phase === 'drive' && this.sec?.venue && this.t < VENUE_SETTLE) { this.host.prof.gpu.take(); this.draw(); return; }
     if (this.phase === 'drive') {
       const cc = this.host.calls;
       if (cc.on) {

@@ -63,6 +63,8 @@ export class DanceFloor {
   constructor(private c: DanceCtx, private board: Leaderboard, private instBoard: Map<string, [string, number][]>) {}
 
   sessionOf(pid: number) { return this.byPlayer.get(pid) ?? null; }
+  /** Läuft ein Ereignis-Battle (E58)? */
+  hasSide() { return this.sessions.some((s) => s.side && s.phase !== 'result'); }
   tileTaken(tile: number) { return this.sessions.some((s) => s.dancers.some((d) => d.tile === tile)); }
 
   /** Spieler startet auf seiner Kachel eine Session (Solo sofort, Battle/Crew mit Warteraum). */
